@@ -21,9 +21,11 @@
     "@microsoft/sp-office-ui-fabric-core": "1.20.0",
     "@microsoft/sp-property-pane": "1.20.0",
     "@microsoft/sp-webpart-base": "1.20.0",
-    "@mui/icons-material": "^9.2.0",
-    "@mui/material": "^9.2.0",
+    "@mui/icons-material": "^5.18.0",
+    "@mui/material": "^5.18.0",
+    "@mui/x-date-pickers": "^6.20.2",
     "@pnp/sp": "^4.20.0",
+    "material-react-table": "^2.13.3",
     "react": "17.0.1",
     "react-dom": "17.0.1",
     "tslib": "2.3.1"

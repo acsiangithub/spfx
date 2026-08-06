@@ -5,39 +5,157 @@ import * as React from 'react';
 //import '@pnp/sp/items';
 import { IHelloWorldProps } from './IHelloWorldProps';
 import { sp } from '../HelloWorldWebPart';
+import { useMemo } from 'react';
+import {
+  MaterialReactTable,
+  useMaterialReactTable,
+  type MRT_ColumnDef,
+} from 'material-react-table';
 
-interface IListItem {
-  Title?: string;
-}
+/*type Person = {
+  name: {
+    firstName: string;
+    lastName: string;
+  };
+  address: string;
+  city: string;
+  state: string;
+};*/
+type PIMProduct = {
+  Title: string;
+  PIMProductName: string; 
+  PIMProductSearchText: string;
+};
+
+type doclib_AllProducts = {
+  filename: string;
+  PIMProduct: PIMProduct[];
+  BusinessLine: string;
+  CountrySoldTo: string;
+  GlobalClient: string;
+};
+
+
+const choiceToString = (
+  value: string | string[] | undefined | null
+): string => {
+  if (!value) return '';
+
+  return Array.isArray(value)
+    ? value.join(', ')
+    : value;
+};
+
+
+
 
 const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
-  const [items, setItems] = React.useState<string[]>([]);
-  const [loading, setLoading] = React.useState<boolean>(true);
+  const [items_AllProducts, setItems_AllProducts] =
+    React.useState<doclib_AllProducts[]>([]);
+  //const [loading, setLoading] = React.useState<boolean>(true);
+
+  const columns_AllProducts = useMemo<MRT_ColumnDef<doclib_AllProducts>[]>(
+    () => [
+      {
+        accessorKey: 'filename',
+        header: 'File Name',
+      },
+      {
+        accessorKey: 'PIMProductSearchText',
+        header: 'Products',
+
+        Cell: ({ row }) => (
+          <div>
+            {row.original.PIMProduct.map((p, idx) => (
+              <div key={idx}>
+                {p.Title} | {p.PIMProductName} 
+              </div>
+            ))}
+          </div>
+        ),
+      },
+      
+      {
+        accessorKey: 'BusinessLine',
+        header: 'Business Line',
+        filterFn: 'contains',
+      },
+      {
+        accessorKey: 'CountrySoldTo',
+        header: 'Country Sold To',
+        filterFn: 'contains',
+      },
+      {
+        accessorKey: 'GlobalClient',
+        header: 'Global Client',
+        filterFn: 'contains',
+        
+      },
+    ],
+    [],
+  );
+
+
+
+  const table = useMaterialReactTable({
+    columns: columns_AllProducts,
+    data: items_AllProducts,
+  });
 
   React.useEffect(() => {
     const loadItems = async (): Promise<void> => {
       try {
-        setLoading(true);
+        //setLoading(true);
+
+
 
         // Initialize PnP JS with SPFx Context
         //const sp = spfi().using(SPFx(props.context));
 
         // PnP JS v4 Syntax to get list items with selected fields
-        const results: IListItem[] = await sp.web.lists
+        const allproducts = await sp.web.lists
+          .getByTitle("Clients & Products")
+          .items.select("Id", "Title", "FileLeafRef", "FileRef","Manufacturer",  "Country","Business_x0020_Line","PIMProductCode/Title","PIMProductCode/PIMProductName") /*"PIMProductCode/PIMProductName", "PIMProductCode/BusinessLine", "PIMProductCode/Country")*/
+          .expand("PIMProductCode")
+          .top(5000)()
+
+        const mappedData: doclib_AllProducts[] =
+          allproducts.map((item) => ({
+            filename: item.FileLeafRef ?? "",
+            PIMProduct: item.PIMProductCode ?? [],
+            PIMProductSearchText:
+              (item.PIMProductCode ?? [])
+                .map((p:PIMProduct) =>
+                  `${p.Title} ${p.PIMProductName}`
+                )
+                .join(" "),
+            BusinessLine: choiceToString(item.Business_x0020_Line),
+            CountrySoldTo: choiceToString(item.Country),
+            GlobalClient: item.Manufacturer ?? "",
+          }));
+
+        setItems_AllProducts(mappedData);
+
+
+        //console.log('doclib_Allproducts:', doclib_Allproducts);
+
+
+
+        /*const results: IListItem[] = await sp.web.lists
           .getByTitle('PIM Product')
           .items.select('Title') // Note the empty parenthesis () at the end instead of .get()
           .filter("Title eq 'PIM000139469'")
-          ();
+          ();*/
 
-        const titles = results
+        /*const titles = doclib_Allproducts
           .map((item) => item.Title || '')
           .filter((title) => title.length > 0);
 
-        setItems(titles);
+        setItems(titles);*/
       } catch (error) {
         console.error('Error loading list items:', error);
       } finally {
-        setLoading(false);
+        //setLoading(false);
       }
     };
 
@@ -50,20 +168,10 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
 
   return (
     <div>
-      <h2>Hello from list1</h2>
-      <p>{props.description}</p>
+      <h2>Clients & Products</h2>     
+      <MaterialReactTable table={table} />
 
-      {loading ? (
-        <p>Loading...</p>
-      ) : items.length > 0 ? (
-        <ul>
-          {items.map((title, index) => (
-            <li key={`${title}-${index}`}>{title}</li>
-          ))}
-        </ul>
-      ) : (
-        <p>No items found.</p>
-      )}
+     
     </div>
   );
 };
