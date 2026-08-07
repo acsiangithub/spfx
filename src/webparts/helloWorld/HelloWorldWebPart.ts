@@ -15,6 +15,7 @@ import { spfi, SPFx, SPFI } from '@pnp/sp';
 import '@pnp/sp/webs';
 import '@pnp/sp/lists';
 import '@pnp/sp/items';
+import "@pnp/sp/search";
 
 export interface IHelloWorldWebPartProps {
   description: string;

@@ -12,6 +12,7 @@ import {
   type MRT_ColumnDef,
 } from 'material-react-table';
 
+
 /*type Person = {
   name: {
     firstName: string;
@@ -23,7 +24,7 @@ import {
 };*/
 type PIMProduct = {
   Title: string;
-  PIMProductName: string; 
+  PIMProductName: string;
   PIMProductSearchText: string;
 };
 
@@ -59,22 +60,24 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
       {
         accessorKey: 'filename',
         header: 'File Name',
+        size: 100,
       },
       {
         accessorKey: 'PIMProductSearchText',
         header: 'Products',
+        size: 400,
 
         Cell: ({ row }) => (
           <div>
             {row.original.PIMProduct.map((p, idx) => (
               <div key={idx}>
-                {p.Title} | {p.PIMProductName} 
+                {p.Title} | {p.PIMProductName}
               </div>
             ))}
           </div>
         ),
       },
-      
+
       {
         accessorKey: 'BusinessLine',
         header: 'Business Line',
@@ -89,7 +92,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         accessorKey: 'GlobalClient',
         header: 'Global Client',
         filterFn: 'contains',
-        
+
       },
     ],
     [],
@@ -100,12 +103,40 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
   const table = useMaterialReactTable({
     columns: columns_AllProducts,
     data: items_AllProducts,
+    //enablePagination: false,
   });
 
   React.useEffect(() => {
     const loadItems = async (): Promise<void> => {
       try {
         //setLoading(true);
+
+       /*const items = await sp.web.lists
+      .getByTitle("Clients & Products")
+      .items
+      // .filter(`PIMProductTermSet eq 'PIM000002676 : CAPTEX 8000'`)()
+      .top(5000)()
+      console.log(items);*/
+
+
+
+        const globalClient = "ABITEC CORPORATION";
+        //const pimProduct = "";//"CAPTEX 8000";
+        //${pimProduct} AND
+
+        const results = await sp.search({
+          Querytext: ` ${globalClient} AND Path:"https://dksh.sharepoint.com/sites/FileRestore/Products/*"`,
+          SelectProperties: [
+            "Title",            
+            "ListItemID",           
+            "RefinableString00"
+          ],
+          RowLimit: 500,
+        });
+
+        console.log(results.PrimarySearchResults);
+
+
 
 
 
@@ -115,7 +146,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         // PnP JS v4 Syntax to get list items with selected fields
         const allproducts = await sp.web.lists
           .getByTitle("Clients & Products")
-          .items.select("Id", "Title", "FileLeafRef", "FileRef","Manufacturer",  "Country","Business_x0020_Line","PIMProductCode/Title","PIMProductCode/PIMProductName") /*"PIMProductCode/PIMProductName", "PIMProductCode/BusinessLine", "PIMProductCode/Country")*/
+          .items.select("Id", "Title", "FileLeafRef", "FileRef", "Manufacturer", "Country", "Business_x0020_Line", "PIMProductCode/Title", "PIMProductCode/PIMProductName") /*"PIMProductCode/PIMProductName", "PIMProductCode/BusinessLine", "PIMProductCode/Country")*/
           .expand("PIMProductCode")
           .top(5000)()
 
@@ -125,7 +156,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
             PIMProduct: item.PIMProductCode ?? [],
             PIMProductSearchText:
               (item.PIMProductCode ?? [])
-                .map((p:PIMProduct) =>
+                .map((p: PIMProduct) =>
                   `${p.Title} ${p.PIMProductName}`
                 )
                 .join(" "),
@@ -137,15 +168,13 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         setItems_AllProducts(mappedData);
 
 
-        //console.log('doclib_Allproducts:', doclib_Allproducts);
-
 
 
         /*const results: IListItem[] = await sp.web.lists
           .getByTitle('PIM Product')
           .items.select('Title') // Note the empty parenthesis () at the end instead of .get()
           .filter("Title eq 'PIM000139469'")
-          ();*/
+          ();
 
         /*const titles = doclib_Allproducts
           .map((item) => item.Title || '')
@@ -168,10 +197,10 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
 
   return (
     <div>
-      <h2>Clients & Products</h2>     
+      <h2>Clients & Products</h2>
       <MaterialReactTable table={table} />
 
-     
+
     </div>
   );
 };
