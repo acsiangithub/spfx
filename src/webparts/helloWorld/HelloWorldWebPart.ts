@@ -31,6 +31,7 @@ export default class HelloWorldWebPart extends BaseClientSideWebPart<IHelloWorld
       HelloWorld,
       {
         description: this.properties.description,
+        urlSite: this.properties.urldata,
         isDarkTheme: this._isDarkTheme,
         environmentMessage: this._environmentMessage,
         hasTeamsContext: !!this.context.sdks.microsoftTeams,

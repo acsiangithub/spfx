@@ -2,6 +2,7 @@
 import { WebPartContext } from "@microsoft/sp-webpart-base";
 export interface IHelloWorldProps {
   description: string;
+  urlSite: string;
   isDarkTheme: boolean;
   environmentMessage: string;
   hasTeamsContext: boolean;
