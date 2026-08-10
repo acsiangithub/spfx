@@ -14,7 +14,9 @@ import {
 
 import Autocomplete from "@mui/material/Autocomplete";
 import TextField from "@mui/material/TextField";
-//import CircularProgress from "@mui/material/CircularProgress";
+import CircularProgress from "@mui/material/CircularProgress";
+import ToggleButton from '@mui/material/ToggleButton';
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 
 
 
@@ -25,9 +27,11 @@ type PIMProduct = {
   PIMProductSearchText: string;
 };
 
+
 type doclib_AllProducts = {
   filename: string;
   PIMProduct: PIMProduct[];
+  PIMProductSearchText: string;
   BusinessLine: string;
   CountrySoldTo: string;
   GlobalClient: string;
@@ -38,9 +42,13 @@ type IProductLookupItem = {
   ID: number;
   Title: string;
   PIMProductName: string;
-  PIM_x0020_Product?: string;
+  PIM_x0020_Product: string;
 };
 
+type IClientLookupItem = {
+  ID: number;
+  Title: string;
+};
 
 
 const choiceToString = (
@@ -62,15 +70,20 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
   //const [loading, setLoading] = React.useState<boolean>(true);
 
   const [products, setProducts] = React.useState<IProductLookupItem[]>([]);
+  const [searchType, setSearchType] =
+    React.useState<"product" | "client">("product");
+
+  const [clients, setClients] = React.useState<IClientLookupItem[]>([]);
+
   const [loading, setLoading] = React.useState(false);
   const [selectedProduct, setSelectedProduct] = React.useState<IProductLookupItem | null>(null);
+  const [selectedClient, setSelectedClient] = React.useState<IClientLookupItem | null>(null);
 
   const searchProducts = async (searchText: string) => {
     if (searchText.length < 3) {
       setProducts([]);
       return;
     }
-
     setLoading(true);
 
     try {
@@ -90,9 +103,10 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         .filter(
           `substringof('${escapedText}', PIMProductName)`
         )
-        .top(100)();
+        .top(5000)();
 
-      setProducts(results);
+
+      setProducts(results as IProductLookupItem[]);
     }
     catch (error) {
       console.error(error);
@@ -101,21 +115,67 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
       setLoading(false);
     }
   };
+  const searchClients = async (
+    searchText: string
+  ) => {
+
+    if (searchText.length < 3) {
+      setClients([]);
+      return;
+    }
+    setLoading(true);
+
+    try {
+      const escapedText =
+        searchText.replace(/'/g, "''");
+
+      const results = await sp.web.lists
+        .getByTitle("PIM Global Client")
+        .items
+        .select(
+          "ID",
+          "Title"
+        )
+        .filter(
+          `substringof('${escapedText}', Title)`
+        )
+        .top(5000)();
+
+      setClients(results as IClientLookupItem[]);
+    }
+    catch (error) {
+      console.error(error);
+    }
+    finally {
+      setLoading(false);
+    }
+  };
+
   const [searchText, setSearchText] = React.useState("");
 
   React.useEffect(() => {
 
     const timer = setTimeout(() => {
 
+
       if (searchText.length >= 3) {
-        searchProducts(searchText);
+
+        if (searchType === "product") {
+          searchProducts(searchText);
+        }
+        else {
+          searchClients(searchText);
+        }
+
       }
+
 
     }, 500);
 
     return () => clearTimeout(timer);
 
-  }, [searchText]);
+
+  }, [searchText, searchType]);
 
 
 
@@ -209,9 +269,9 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         //const sp = spfi().using(SPFx(props.context));
 
         // PnP JS v4 Syntax to get list items with selected fields
-      /*  const allproducts = await sp.web.lists
+        const allproducts = await sp.web.lists
           .getByTitle("Clients & Products")
-          .items.select("Id", "Title", "FileLeafRef", "FileRef", "Manufacturer", "Country", "Business_x0020_Line", "PIMProductCode/Title", "PIMProductCode/PIMProductName") 
+          .items.select("Id", "Title", "FileLeafRef", "FileRef", "Manufacturer", "Country", "Business_x0020_Line", "PIMProductCode/Title", "PIMProductCode/PIMProductName")
           .expand("PIMProductCode")
           .top(5000)()
 
@@ -230,7 +290,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
             GlobalClient: item.Manufacturer ?? "",
           }));
 
-        setItems_AllProducts(mappedData);*/
+        setItems_AllProducts(mappedData);
 
 
 
@@ -263,18 +323,67 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
   return (
     <div>
       <h2>Clients & Products</h2>
-      <Autocomplete
+      <ToggleButtonGroup
+        color="primary"
+        exclusive
+        value={searchType}
+        onChange={(_, value) => {
+
+          if (!value) {
+            return;
+          }
+
+          setSearchType(value);
+
+          // Reset current selection
+
+          setSelectedProduct(null);
+          setSelectedClient(null);
+          setSearchText("");
+
+          // Clear options
+          setProducts([]);
+          setClients([]);
+          setItems_AllProducts([]);
+        }}
+      >
+        <ToggleButton value="product">
+          Product
+        </ToggleButton>
+
+        <ToggleButton value="client">
+          Client
+        </ToggleButton>
+      </ToggleButtonGroup>
+      <Autocomplete<any>
         fullWidth
         loading={loading}
-        options={products}
-        value={selectedProduct}
-        getOptionLabel={(option) =>
-          `${option.Title} | ${option.PIMProductName}`
 
+        options={
+          searchType === "product"
+            ? products
+            : clients
         }
+
+
+
+        value={
+          searchType === "product"
+            ? selectedProduct
+            : selectedClient
+        }
+
+        getOptionLabel={(option: any) =>
+          searchType === "product"
+            ? `${option.Title} | ${option.PIMProductName}`
+            : option.Title
+        }
+
+
         isOptionEqualToValue={(option, value) =>
           option.ID === value.ID
         }
+
         onInputChange={(_, value) => {
           setSearchText(value);
         }}
@@ -282,111 +391,170 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
 
         onChange={async (_, selectedOption) => {
 
-          setSelectedProduct(selectedOption);
+
+
 
           if (selectedOption) {
+            setLoading(true);
+            try {
 
-            const productName = selectedOption.PIMProductName;
-            const path = props.urlSite +   "Products/*";
-            const results = await sp.search({
-              Querytext:
-                `"${productName}" AND Path:"${path}"`,
+              setItems_AllProducts([]);
 
-              SelectProperties: [
-                "Title",
-                "ListItemID",
-                "Path",
-              ],
+              let searchCodeName = ""; //selectedOption.Title +':'+ selectedOption.PIMProductName;
 
-              RowLimit: 500,
-            });
+              if (searchType === "product") {
 
-            console.log(results.PrimarySearchResults);
+                searchCodeName = selectedOption.PIM_x0020_Product;
 
-            const ids: number[] = [];
+                setSelectedProduct(selectedOption);
 
-            results.PrimarySearchResults.forEach((r: any) => {
 
-              const id = Number(r.ListItemID);
+              } else {
+                searchCodeName = selectedOption.Title;
+                setSelectedClient(selectedOption);
 
-              if (
-                !isNaN(id) &&
-                ids.indexOf(id) === -1
-              ) {
-                ids.push(id);
+
               }
-            });
+              const path = props.urlSite + "Products/*";
+              const results = await sp.search({
+                Querytext:
+                  `"${searchCodeName}" AND Path:"${path}"`,
 
-            console.log("Unique IDs:", ids);
-
-            const allProducts: any[] = [];
-
-            for (let i = 0; i < ids.length; i += 10) {
-
-              const currentIds = ids.slice(i, i + 10);
-
-              const filter = currentIds
-                .map((id) => `Id eq ${id}`)
-                .join(" or ");
-
-              const items = await sp.web.lists
-                .getByTitle("Clients & Products")
-                .items
-                .select(
-                  "Id",
+                SelectProperties: [
                   "Title",
-                  "FileLeafRef",
-                  "FileRef",
-                  "Manufacturer",
-                  "Country",
-                  "Business_x0020_Line",
-                  "PIMProductCode/Title",
-                  "PIMProductCode/PIMProductName"
-                )
-                .expand("PIMProductCode")
-                .filter(filter)();
+                  "ListItemID",
+                  "Path",
+                ],
 
-              allProducts.push(...items);
+                RowLimit: 500,
+              });
+
+              console.log(results.PrimarySearchResults);
+
+              const ids: number[] = [];
+
+              results.PrimarySearchResults.forEach((r: any) => {
+
+                const id = Number(r.ListItemID);
+
+                if (
+                  !isNaN(id) &&
+                  ids.indexOf(id) === -1
+                ) {
+                  ids.push(id);
+                }
+              });
+
+              console.log("Unique IDs:", ids);
+
+              const allProducts: any[] = [];
+              if (ids.length === 0) {
+                setItems_AllProducts([]);
+                return;
+              }
+
+              for (let i = 0; i < ids.length; i += 30) {
+
+
+                const currentIds = ids.slice(i, i + 30);
+
+
+                const filter = currentIds
+                  .map((id) => `Id eq ${id}`)
+                  .join(" or ");
+
+                const items = await sp.web.lists
+                  .getByTitle("Clients & Products")
+                  .items
+                  .select(
+                    "Id",
+                    "Title",
+                    "FileLeafRef",
+                    "FileRef",
+                    "Manufacturer",
+                    "Country",
+                    "Business_x0020_Line",
+                    "PIMProductCode/Title",
+                    "PIMProductCode/PIMProductName"
+                  )
+                  .expand("PIMProductCode")
+                  .filter(filter)();
+
+                allProducts.push(...items);
+              }
+
+              const mappedData: doclib_AllProducts[] =
+                allProducts.map((item: any) => ({
+                  filename: item.FileLeafRef ?? "",
+                  PIMProduct: item.PIMProductCode ?? [],
+
+                  PIMProductSearchText:
+                    (item.PIMProductCode ?? [])
+                      .map(
+                        (p: PIMProduct) =>
+                          `${p.Title} ${p.PIMProductName}`
+                      )
+                      .join(" "),
+
+                  BusinessLine: choiceToString(
+                    item.Business_x0020_Line
+                  ),
+
+                  CountrySoldTo: choiceToString(
+                    item.Country
+                  ),
+
+                  GlobalClient:
+                    item.Manufacturer ?? "",
+                }));
+
+              setItems_AllProducts(mappedData);
+
             }
-
-            const mappedData: doclib_AllProducts[] =
-              allProducts.map((item: any) => ({
-                filename: item.FileLeafRef ?? "",
-                PIMProduct: item.PIMProductCode ?? [],
-
-                PIMProductSearchText:
-                  (item.PIMProductCode ?? [])
-                    .map(
-                      (p: PIMProduct) =>
-                        `${p.Title} ${p.PIMProductName}`
-                    )
-                    .join(" "),
-
-                BusinessLine: choiceToString(
-                  item.Business_x0020_Line
-                ),
-
-                CountrySoldTo: choiceToString(
-                  item.Country
-                ),
-
-                GlobalClient:
-                  item.Manufacturer ?? "",
-              }));
-
-            setItems_AllProducts(mappedData);
-
-
+            catch (error) {
+              console.error(error);
+            } finally {
+              setLoading(false);
+            }
           }
-        }}
+
+
+        }
+        }
         renderInput={(params) => (
           <TextField
             {...params}
-            label="PIM Product"
-            placeholder="Enter Product Code or Description"
+
+            label={
+              searchType === "product"
+                ? "PIM Product"
+                : "Global Client"
+            }
+            placeholder={
+              searchType === "product"
+                ? "Enter a Product Code or Description"
+                : "Enter a Global Client Name"
+            }
+            InputProps={{
+              ...params.InputProps,
+              endAdornment: (
+                <>
+                  {loading ? (
+                    <CircularProgress
+                      color="inherit"
+                      size={20}
+                    />
+                  ) : null}
+
+                  {params.InputProps.endAdornment}
+                </>
+              ),
+            }}
+
           />
         )}
       />
+
       <MaterialReactTable table={table} />
 
 
