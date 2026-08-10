@@ -17,6 +17,7 @@ import TextField from "@mui/material/TextField";
 import CircularProgress from "@mui/material/CircularProgress";
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
+import Button from '@mui/material/Button';
 
 
 
@@ -70,12 +71,17 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
   //const [loading, setLoading] = React.useState<boolean>(true);
 
   const [products, setProducts] = React.useState<IProductLookupItem[]>([]);
+  const [allRecordsCache, setAllRecordsCache] =
+    React.useState<doclib_AllProducts[]>([]);
+
   const [searchType, setSearchType] =
-    React.useState<"product" | "client">("product");
+    React.useState<"product" | "client" | "all">("product");
 
   const [clients, setClients] = React.useState<IClientLookupItem[]>([]);
 
-  const [loading, setLoading] = React.useState(false);
+  //const [loading, setLoading] = React.useState(false);
+  const [lookupLoading, setLookupLoading] = React.useState(false);
+  const [resultsLoading, setResultsLoading] = React.useState(false);
   const [selectedProduct, setSelectedProduct] = React.useState<IProductLookupItem | null>(null);
   const [selectedClient, setSelectedClient] = React.useState<IClientLookupItem | null>(null);
 
@@ -84,7 +90,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
       setProducts([]);
       return;
     }
-    setLoading(true);
+    setLookupLoading(true);
 
     try {
 
@@ -112,7 +118,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
       console.error(error);
     }
     finally {
-      setLoading(false);
+      setLookupLoading(false);
     }
   };
   const searchClients = async (
@@ -123,7 +129,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
       setClients([]);
       return;
     }
-    setLoading(true);
+    setLookupLoading(true);
 
     try {
       const escapedText =
@@ -147,7 +153,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
       console.error(error);
     }
     finally {
-      setLoading(false);
+      setLookupLoading(false);
     }
   };
 
@@ -186,10 +192,12 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         accessorKey: 'filename',
         header: 'File Name',
         size: 100,
+        filterFn: 'contains',
       },
       {
         accessorKey: 'PIMProductSearchText',
         header: 'Products',
+        filterFn: 'contains',
         size: 400,
 
         Cell: ({ row }) => (
@@ -228,97 +236,95 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
   const table = useMaterialReactTable({
     columns: columns_AllProducts,
     data: items_AllProducts,
+    state: {
+      isLoading: resultsLoading,
+    },
     //enablePagination: false,
   });
 
-  React.useEffect(() => {
-    const loadItems = async (): Promise<void> => {
-      try {
-        //setLoading(true);
-
-        /*const items = await sp.web.lists
-       .getByTitle("Clients & Products")
-       .items
-       // .filter(`PIMProductTermSet eq 'PIM000002676 : CAPTEX 8000'`)()
-       .top(5000)()
-       console.log(items);*/
 
 
 
-        /*const globalClient = "ABITEC CORPORATION";
-        //const pimProduct = "";//"CAPTEX 8000";
-        //${pimProduct} AND
-        const path = props.urlSite +   "Products/*";
-        const results = await sp.search({
-          Querytext: ` ${globalClient} AND Path:${path}`,
-          SelectProperties: [
-            "Title",
-            "ListItemID",
-            "RefinableString00"
-          ],
-          RowLimit: 500,
-        });
+  const loadAllRecords = async (): Promise<void> => {
 
-        console.log(results.PrimarySearchResults);*/
+    setResultsLoading(true);
 
+    try {
 
+      const allProducts: any[] = [];
+      const pageSize = 5000;
 
+      let lastId = 0;
 
+      while (true) {
 
-        // Initialize PnP JS with SPFx Context
-        //const sp = spfi().using(SPFx(props.context));
-
-        // PnP JS v4 Syntax to get list items with selected fields
-        const allproducts = await sp.web.lists
+        const batch = await sp.web.lists
           .getByTitle("Clients & Products")
-          .items.select("Id", "Title", "FileLeafRef", "FileRef", "Manufacturer", "Country", "Business_x0020_Line", "PIMProductCode/Title", "PIMProductCode/PIMProductName")
+          .items
+          .select(
+            "Id",
+            "Title",
+            "FileLeafRef",
+            "FileRef",
+            "Manufacturer",
+            "Country",
+            "Business_x0020_Line",
+            "PIMProductCode/Title",
+            "PIMProductCode/PIMProductName"
+          )
           .expand("PIMProductCode")
-          .top(5000)()
+          .filter(`Id gt ${lastId}`)
+          .orderBy("Id")
+          .top(pageSize)();
 
-        const mappedData: doclib_AllProducts[] =
-          allproducts.map((item) => ({
-            filename: item.FileLeafRef ?? "",
-            PIMProduct: item.PIMProductCode ?? [],
-            PIMProductSearchText:
-              (item.PIMProductCode ?? [])
-                .map((p: PIMProduct) =>
-                  `${p.Title} ${p.PIMProductName}`
-                )
-                .join(" "),
-            BusinessLine: choiceToString(item.Business_x0020_Line),
-            CountrySoldTo: choiceToString(item.Country),
-            GlobalClient: item.Manufacturer ?? "",
-          }));
+        if (batch.length === 0) {
+          break;
+        }
 
-        setItems_AllProducts(mappedData);
+        allProducts.push(...batch);
 
+        console.log(
+          `Loaded ${allProducts.length} records`
+        );
 
+        lastId = batch[batch.length - 1].Id;
 
-
-        /*const results: IListItem[] = await sp.web.lists
-          .getByTitle('PIM Product')
-          .items.select('Title') // Note the empty parenthesis () at the end instead of .get()
-          .filter("Title eq 'PIM000139469'")
-          ();
-
-        /*const titles = doclib_Allproducts
-          .map((item) => item.Title || '')
-          .filter((title) => title.length > 0);
-
-        setItems(titles);*/
-      } catch (error) {
-        console.error('Error loading list items:', error);
-      } finally {
-        //setLoading(false);
+        if (batch.length < pageSize) {
+          break;
+        }
       }
-    };
 
-    if (props.context) {
-      loadItems().catch((error) => {
-        console.error('Error loading list items:', error);
-      });
+      const mappedData: doclib_AllProducts[] =
+        allProducts.map((item: any) => ({
+          filename: item.FileLeafRef ?? "",
+          PIMProduct: item.PIMProductCode ?? [],
+          PIMProductSearchText:
+            (item.PIMProductCode ?? [])
+              .map(
+                (p: PIMProduct) =>
+                  `${p.Title} ${p.PIMProductName}`
+              )
+              .join(" "),
+          BusinessLine: choiceToString(
+            item.Business_x0020_Line
+          ),
+          CountrySoldTo: choiceToString(
+            item.Country
+          ),
+          GlobalClient:
+            item.Manufacturer ?? "",
+        }));
+
+      setItems_AllProducts(mappedData);
+      setAllRecordsCache(mappedData);
     }
-  }, [props.context]);
+    catch (error) {
+      console.error(error);
+    }
+    finally {
+      setResultsLoading(false);
+    }
+  };
 
   return (
     <div>
@@ -329,233 +335,290 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         value={searchType}
         onChange={(_, value) => {
 
-          if (!value) {
-            return;
+
+          if (value !== "all") {
+            setItems_AllProducts([]);
           }
 
           setSearchType(value);
-
-          // Reset current selection
 
           setSelectedProduct(null);
           setSelectedClient(null);
           setSearchText("");
 
-          // Clear options
           setProducts([]);
           setClients([]);
           setItems_AllProducts([]);
+
+
+
+          if (value === "all") {
+
+            // already loaded once
+            if (allRecordsCache.length > 0) {
+              setItems_AllProducts(allRecordsCache);
+            }
+            else {
+              loadAllRecords().catch(console.error);
+            }
+
+          } else {
+
+            setItems_AllProducts([]);
+          }
         }}
       >
         <ToggleButton value="product">
           Product
         </ToggleButton>
-
         <ToggleButton value="client">
           Client
         </ToggleButton>
+
+        <ToggleButton value="all">
+          All Records
+        </ToggleButton>
+
       </ToggleButtonGroup>
-      <Autocomplete<any>
-        fullWidth
-        loading={loading}
+      {searchType !== "all" && (
+        <Autocomplete<any>
+          fullWidth
+          loading={lookupLoading}
 
-        options={
-          searchType === "product"
-            ? products
-            : clients
-        }
-
-
-
-        value={
-          searchType === "product"
-            ? selectedProduct
-            : selectedClient
-        }
-
-        getOptionLabel={(option: any) =>
-          searchType === "product"
-            ? `${option.Title} | ${option.PIMProductName}`
-            : option.Title
-        }
-
-
-        isOptionEqualToValue={(option, value) =>
-          option.ID === value.ID
-        }
-
-        onInputChange={(_, value) => {
-          setSearchText(value);
-        }}
-
-
-        onChange={async (_, selectedOption) => {
-
-
-
-
-          if (selectedOption) {
-            setLoading(true);
-            try {
-
-              setItems_AllProducts([]);
-
-              let searchCodeName = ""; //selectedOption.Title +':'+ selectedOption.PIMProductName;
-
-              if (searchType === "product") {
-
-                searchCodeName = selectedOption.PIM_x0020_Product;
-
-                setSelectedProduct(selectedOption);
-
-
-              } else {
-                searchCodeName = selectedOption.Title;
-                setSelectedClient(selectedOption);
-
-
-              }
-              const path = props.urlSite + "Products/*";
-              const results = await sp.search({
-                Querytext:
-                  `"${searchCodeName}" AND Path:"${path}"`,
-
-                SelectProperties: [
-                  "Title",
-                  "ListItemID",
-                  "Path",
-                ],
-
-                RowLimit: 500,
-              });
-
-              console.log(results.PrimarySearchResults);
-
-              const ids: number[] = [];
-
-              results.PrimarySearchResults.forEach((r: any) => {
-
-                const id = Number(r.ListItemID);
-
-                if (
-                  !isNaN(id) &&
-                  ids.indexOf(id) === -1
-                ) {
-                  ids.push(id);
-                }
-              });
-
-              console.log("Unique IDs:", ids);
-
-              const allProducts: any[] = [];
-              if (ids.length === 0) {
-                setItems_AllProducts([]);
-                return;
-              }
-
-              for (let i = 0; i < ids.length; i += 30) {
-
-
-                const currentIds = ids.slice(i, i + 30);
-
-
-                const filter = currentIds
-                  .map((id) => `Id eq ${id}`)
-                  .join(" or ");
-
-                const items = await sp.web.lists
-                  .getByTitle("Clients & Products")
-                  .items
-                  .select(
-                    "Id",
-                    "Title",
-                    "FileLeafRef",
-                    "FileRef",
-                    "Manufacturer",
-                    "Country",
-                    "Business_x0020_Line",
-                    "PIMProductCode/Title",
-                    "PIMProductCode/PIMProductName"
-                  )
-                  .expand("PIMProductCode")
-                  .filter(filter)();
-
-                allProducts.push(...items);
-              }
-
-              const mappedData: doclib_AllProducts[] =
-                allProducts.map((item: any) => ({
-                  filename: item.FileLeafRef ?? "",
-                  PIMProduct: item.PIMProductCode ?? [],
-
-                  PIMProductSearchText:
-                    (item.PIMProductCode ?? [])
-                      .map(
-                        (p: PIMProduct) =>
-                          `${p.Title} ${p.PIMProductName}`
-                      )
-                      .join(" "),
-
-                  BusinessLine: choiceToString(
-                    item.Business_x0020_Line
-                  ),
-
-                  CountrySoldTo: choiceToString(
-                    item.Country
-                  ),
-
-                  GlobalClient:
-                    item.Manufacturer ?? "",
-                }));
-
-              setItems_AllProducts(mappedData);
-
-            }
-            catch (error) {
-              console.error(error);
-            } finally {
-              setLoading(false);
-            }
+          options={
+            searchType === "product"
+              ? products
+              : clients
           }
 
 
-        }
-        }
-        renderInput={(params) => (
-          <TextField
-            {...params}
 
-            label={
-              searchType === "product"
-                ? "PIM Product"
-                : "Global Client"
+          value={
+            searchType === "product"
+              ? selectedProduct
+              : selectedClient
+          }
+
+          getOptionLabel={(option: any) =>
+            searchType === "product"
+              ? `${option.Title} | ${option.PIMProductName}`
+              : option.Title
+          }
+
+
+          isOptionEqualToValue={(option, value) =>
+            option.ID === value.ID
+          }
+
+          onInputChange={(_, value) => {
+            setSearchText(value);
+          }}
+
+
+          onChange={async (_, selectedOption) => {
+
+            setResultsLoading(true);
+
+
+            if (selectedOption) {
+
+              try {
+
+                setItems_AllProducts([]);
+
+                let searchCodeName = ""; //selectedOption.Title +':'+ selectedOption.PIMProductName;
+
+                if (searchType === "product") {
+
+                  searchCodeName = selectedOption.PIM_x0020_Product;
+
+                  setSelectedProduct(selectedOption);
+
+
+                } else {
+                  searchCodeName = selectedOption.Title;
+                  setSelectedClient(selectedOption);
+
+
+                }
+                const path = props.urlSite + "Products/*";
+                /*const results = await sp.search({
+                  Querytext:
+                    `"${searchCodeName}" AND Path:"${path}"`,
+  
+                  SelectProperties: [
+                    "Title",
+                    "ListItemID",
+                    "Path",
+                  ],
+  
+                  RowLimit: 2000,
+                });*/
+
+
+
+
+                let allResults = [];
+                let startRow = 0;
+                const pageSize = 500;
+
+                while (true) {
+                  const results = await sp.search({
+                    Querytext: `"${searchCodeName}" AND Path:"${path}"`,
+                    RowLimit: pageSize,
+                    StartRow: startRow,
+                    SelectProperties: [
+                      "Title",
+                      "ListItemID",
+                      "Path",
+                    ],
+                  });
+
+                  allResults.push(...results.PrimarySearchResults);
+
+                  if (results.RowCount < pageSize) {
+                    break;
+                  }
+
+                  startRow += pageSize;
+                }
+
+                console.log(allResults);
+
+                const ids: number[] = [];
+
+                allResults.forEach((r: any) => {
+
+                  const id = Number(r.ListItemID);
+
+                  if (
+                    !isNaN(id) &&
+                    ids.indexOf(id) === -1
+                  ) {
+                    ids.push(id);
+                  }
+                });
+
+                console.log("Unique IDs:", ids);
+
+                const allProducts: any[] = [];
+                if (ids.length === 0) {
+                  setItems_AllProducts([]);
+                  return;
+                }
+
+                for (let i = 0; i < ids.length; i += 100) {
+
+
+                  const currentIds = ids.slice(i, i + 100);
+
+
+                  const filter = currentIds
+                    .map((id) => `Id eq ${id}`)
+                    .join(" or ");
+
+                  const items = await sp.web.lists
+                    .getByTitle("Clients & Products")
+                    .items
+                    .select(
+                      "Id",
+                      "Title",
+                      "FileLeafRef",
+                      "FileRef",
+                      "Manufacturer",
+                      "Country",
+                      "Business_x0020_Line",
+                      "PIMProductCode/Title",
+                      "PIMProductCode/PIMProductName"
+                    )
+                    .expand("PIMProductCode")
+                    .filter(filter)();
+
+                  allProducts.push(...items);
+                }
+
+                const mappedData: doclib_AllProducts[] =
+                  allProducts.map((item: any) => ({
+                    filename: item.FileLeafRef ?? "",
+                    PIMProduct: item.PIMProductCode ?? [],
+
+                    PIMProductSearchText:
+                      (item.PIMProductCode ?? [])
+                        .map(
+                          (p: PIMProduct) =>
+                            `${p.Title} ${p.PIMProductName}`
+                        )
+                        .join(" "),
+
+                    BusinessLine: choiceToString(
+                      item.Business_x0020_Line
+                    ),
+
+                    CountrySoldTo: choiceToString(
+                      item.Country
+                    ),
+
+                    GlobalClient:
+                      item.Manufacturer ?? "",
+                  }));
+
+                setItems_AllProducts(mappedData);
+
+              }
+              catch (error) {
+                console.error(error);
+              } finally {
+                setResultsLoading(false);
+              }
             }
-            placeholder={
-              searchType === "product"
-                ? "Enter a Product Code or Description"
-                : "Enter a Global Client Name"
-            }
-            InputProps={{
-              ...params.InputProps,
-              endAdornment: (
-                <>
-                  {loading ? (
-                    <CircularProgress
-                      color="inherit"
-                      size={20}
-                    />
-                  ) : null}
 
-                  {params.InputProps.endAdornment}
-                </>
-              ),
-            }}
 
-          />
-        )}
-      />
+          }
+          }
+          renderInput={(params) => (
+            <TextField
+              {...params}
+
+              label={
+                searchType === "product"
+                  ? "PIM Product"
+                  : "Global Client"
+              }
+              placeholder={
+                searchType === "product"
+                  ? "Enter a Product Code or Description"
+                  : "Enter a Global Client Name"
+              }
+              InputProps={{
+                ...params.InputProps,
+                endAdornment: (
+                  <>
+                    {lookupLoading ? (
+                      <CircularProgress
+                        color="inherit"
+                        size={20}
+                      />
+                    ) : null}
+
+                    {params.InputProps.endAdornment}
+                  </>
+                ),
+              }}
+
+            />
+          )}
+        />
+      )}
 
       <MaterialReactTable table={table} />
+      <Button
+        onClick={() => {
+          setAllRecordsCache([]);
+          loadAllRecords().catch(console.error);
+        }}
+      >
+        Refresh All Records
+      </Button>
 
 
     </div>
