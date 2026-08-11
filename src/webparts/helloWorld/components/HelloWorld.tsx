@@ -22,20 +22,16 @@ import Button from '@mui/material/Button';
 
 
 
-type PIMProduct = {
-  Title: string;
-  PIMProductName: string;
-  PIMProductSearchText: string;
-};
 
 
 type doclib_AllProducts = {
   filename: string;
-  PIMProduct: PIMProduct[];
+  PIMProduct: IProductLookupItem[];
   PIMProductSearchText: string;
   BusinessLine: string;
   CountrySoldTo: string;
-  GlobalClient: string;
+  Manufacturer: IClientLookupItem[];
+  ManufacturerSearchText: string;
 };
 
 
@@ -195,6 +191,22 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         filterFn: 'contains',
       },
       {
+        accessorKey: 'ManufacturerSearchText',
+        header: 'Clients',
+        filterFn: 'contains',
+
+
+        Cell: ({ row }) => (
+          <div>
+            {row.original.Manufacturer.map((p, idx) => (
+              <div key={idx}>
+                {p.Title}
+              </div>
+            ))}
+          </div>
+        ),
+      },
+      {
         accessorKey: 'PIMProductSearchText',
         header: 'Products',
         filterFn: 'contains',
@@ -211,6 +223,8 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         ),
       },
 
+
+
       {
         accessorKey: 'BusinessLine',
         header: 'Business Line',
@@ -221,12 +235,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         header: 'Country Sold To',
         filterFn: 'contains',
       },
-      {
-        accessorKey: 'GlobalClient',
-        header: 'Global Client',
-        filterFn: 'contains',
 
-      },
     ],
     [],
   );
@@ -270,9 +279,11 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
             "Country",
             "Business_x0020_Line",
             "PIMProductCode/Title",
-            "PIMProductCode/PIMProductName"
+            "PIMProductCode/PIMProductName",
+            "ManufacturerLookup/Title",
+
           )
-          .expand("PIMProductCode")
+          .expand("PIMProductCode", "ManufacturerLookup")
           .filter(`Id gt ${lastId}`)
           .orderBy("Id")
           .top(pageSize)();
@@ -300,19 +311,26 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
           PIMProduct: item.PIMProductCode ?? [],
           PIMProductSearchText:
             (item.PIMProductCode ?? [])
-              .map(
-                (p: PIMProduct) =>
-                  `${p.Title} ${p.PIMProductName}`
+              .map((p: any) =>
+                `${p.Title} ${p.PIMProductName}`
               )
               .join(" "),
+          Manufacturer: item.ManufacturerLookup ?? [],
+          ManufacturerSearchText:
+            (item.ManufacturerLookup ?? [])
+              .map(
+                (m: IClientLookupItem) =>
+                  m.Title
+              )
+              .join(" "),
+
           BusinessLine: choiceToString(
             item.Business_x0020_Line
           ),
           CountrySoldTo: choiceToString(
             item.Country
           ),
-          GlobalClient:
-            item.Manufacturer ?? "",
+
         }));
 
       setItems_AllProducts(mappedData);
@@ -432,11 +450,8 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
                 let searchCodeName = ""; //selectedOption.Title +':'+ selectedOption.PIMProductName;
 
                 if (searchType === "product") {
-
                   searchCodeName = selectedOption.PIM_x0020_Product;
-
                   setSelectedProduct(selectedOption);
-
 
                 } else {
                   searchCodeName = selectedOption.Title;
@@ -465,7 +480,8 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
                 let startRow = 0;
                 const pageSize = 500;
 
-                while (true) {
+                while (startRow < 2500) {
+
                   const results = await sp.search({
                     Querytext: `"${searchCodeName}" AND Path:"${path}"`,
                     RowLimit: pageSize,
@@ -528,13 +544,13 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
                       "Title",
                       "FileLeafRef",
                       "FileRef",
-                      "Manufacturer",
                       "Country",
                       "Business_x0020_Line",
                       "PIMProductCode/Title",
-                      "PIMProductCode/PIMProductName"
+                      "PIMProductCode/PIMProductName",
+                      "ManufacturerLookup/Title"
                     )
-                    .expand("PIMProductCode")
+                    .expand("PIMProductCode", "ManufacturerLookup")
                     .filter(filter)();
 
                   allProducts.push(...items);
@@ -544,25 +560,28 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
                   allProducts.map((item: any) => ({
                     filename: item.FileLeafRef ?? "",
                     PIMProduct: item.PIMProductCode ?? [],
-
                     PIMProductSearchText:
                       (item.PIMProductCode ?? [])
+                        .map((p: any) =>
+                          `${p.Title} ${p.PIMProductName}`
+                        )
+                        .join(" "),
+                    Manufacturer: item.ManufacturerLookup ?? [],
+                    ManufacturerSearchText:
+                      (item.ManufacturerLookup ?? [])
                         .map(
-                          (p: PIMProduct) =>
-                            `${p.Title} ${p.PIMProductName}`
+                          (m: IClientLookupItem) =>
+                            m.Title
                         )
                         .join(" "),
 
                     BusinessLine: choiceToString(
                       item.Business_x0020_Line
                     ),
-
                     CountrySoldTo: choiceToString(
                       item.Country
                     ),
 
-                    GlobalClient:
-                      item.Manufacturer ?? "",
                   }));
 
                 setItems_AllProducts(mappedData);
@@ -589,7 +608,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
               }
               placeholder={
                 searchType === "product"
-                  ? "Enter a Product Code or Description"
+                  ? "Enter a Product Name"
                   : "Enter a Global Client Name"
               }
               InputProps={{
