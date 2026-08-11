@@ -335,9 +335,8 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         value={searchType}
         onChange={(_, value) => {
 
-
-          if (value !== "all") {
-            setItems_AllProducts([]);
+          if (!value) {
+            return;
           }
 
           setSearchType(value);
@@ -348,17 +347,21 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
 
           setProducts([]);
           setClients([]);
-          setItems_AllProducts([]);
-
-
 
           if (value === "all") {
 
-            // already loaded once
             if (allRecordsCache.length > 0) {
+
+              console.log(
+                `Using cache: ${allRecordsCache.length}`
+              );
+
               setItems_AllProducts(allRecordsCache);
-            }
-            else {
+
+            } else {
+
+              console.log("Loading all records");
+
               loadAllRecords().catch(console.error);
             }
 
