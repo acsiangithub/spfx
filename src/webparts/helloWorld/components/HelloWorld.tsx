@@ -30,12 +30,16 @@ type doclib_AllProducts = {
   PIMProductSearchText: string;
   BusinessLine: string;
   CountrySoldTo: string;
-  Manufacturer: IClientLookupItem[];
+  ManufacturerSearchText: string;
+  DocumentTypeSearchText: string;
+  SubDocumentTypeSearchText: string;
+
+  /*Manufacturer: IClientLookupItem[];
   ManufacturerSearchText: string;
   DocumentType?: IDocumentTypeLookupItem;
   DocumentTypeSearchText: string;
   SubDocumentType: ISubDocumentTypeLookupItem[];
-  SubDocumentTypeSearchText: string;
+  SubDocumentTypeSearchText: string;*/
 
 
 };
@@ -53,14 +57,14 @@ type IClientLookupItem = {
   Title: string;
 };
 
-type IDocumentTypeLookupItem = {
+/*type IDocumentTypeLookupItem = {
   ID: number;
   Title: string;
 };
 type ISubDocumentTypeLookupItem = {
   ID: number;
   Title: string;
-};
+};*/
 
 
 const choiceToString = (
@@ -212,16 +216,17 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         filterFn: 'contains',
         size: 400,
 
-
-        Cell: ({ row }) => (
-          <div>
-            {row.original.Manufacturer.map((p, idx) => (
-              <div key={idx}>
-                {p.Title}
-              </div>
-            ))}
-          </div>
+        Cell: ({ cell }) => (
+          <>
+            {String(cell.getValue() || "")
+              .split(";")
+              .filter(Boolean)
+              .map((item, idx) => (
+                <div key={idx}>{item.trim()}</div>
+              ))}
+          </>
         ),
+
       },
       {
         accessorKey: 'PIMProductSearchText',
@@ -232,7 +237,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
 
         Cell: ({ row }) => (
           <div>
-            {row.original.PIMProduct.map((p, idx) => (
+            {row.original.PIMProduct.map((p: IProductLookupItem, idx) => (
               <div key={idx}>
                 {p.Title} {p.PIMProductName}
               </div>
@@ -244,32 +249,26 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         accessorKey: 'DocumentTypeSearchText',
         header: 'Document Type',
         filterFn: 'contains',
-        size: 400,
+        size: 400
 
-        Cell: ({ row }) => (
-          <div>
-            {row.original.DocumentType?.Title ?? ""}
-          </div>
-        ),
+
       },
       {
         accessorKey: 'SubDocumentTypeSearchText',
         header: 'Sub Document Type',
         filterFn: 'contains',
-        size: 400,
-
-        Cell: ({ row }) => (
-          <div>
-            {row.original.SubDocumentType.map((p, idx) => (
-              <div key={idx}>
-                {p.Title}
-              </div>
-            ))}
-          </div>
+        Cell: ({ cell }) => (
+          <>
+            {String(cell.getValue() || "")
+              .split(";")
+              .filter(Boolean)
+              .map((item, idx) => (
+                <div key={idx}>{item.trim()}</div>
+              ))}
+          </>
         ),
+
       },
-
-
 
       {
         accessorKey: 'BusinessLine',
@@ -294,13 +293,12 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
     data: items_AllProducts,
     enableGrouping: true,
     enableColumnDragging: true,
-    initialState: {
-      showColumnFilters: true,
-    },
+    //initialState: {
+    //showColumnFilters: true,
+    // grouping: ['ManufacturerSearchText'],
+    //},
     state: {
       isLoading: resultsLoading,
-      grouping: ['PIMProductSearchText'],
-      expanded: true,
       showColumnFilters: true,
     },
     //enablePagination: false,
@@ -309,12 +307,14 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
 
 
 
+
+
   const loadAllRecords = async (): Promise<void> => {
 
-    setResultsLoading(true);
+
 
     try {
-
+      setResultsLoading(true);
       const allProducts: any[] = [];
       const pageSize = 5000;
 
@@ -334,12 +334,16 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
             "Business_x0020_Line",
             "PIMProductCode/Title",
             "PIMProductCode/PIMProductName",
-            "ManufacturerLookup/Title",
-            "DocumentType/Title",
-            "SubDocumentType/Title",
-            "PIMProductTermSet",
-            "GlobalClientTermSet")
-          .expand("PIMProductCode", "ManufacturerLookup", "DocumentType", "SubDocumentType")
+            "Manufacturer",
+            "Document_x0020_Type",
+            "Sub_x0020_Document_x0020_Type",
+            //"ManufacturerLookup/Title",
+            //"DocumentType/Title",
+            //"SubDocumentType/Title",
+          )
+          //.expand("PIMProductCode", "ManufacturerLookup", "DocumentType", "SubDocumentType")
+          .expand("PIMProductCode")
+
           .filter(`Id gt ${lastId}`)
           .orderBy("Id")
           .top(pageSize)();
@@ -373,14 +377,15 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
               .join(" "),
 
 
-          Manufacturer: item.ManufacturerLookup ?? [],
-          ManufacturerSearchText:
-            (item.ManufacturerLookup ?? [])
-              .map(
-                (m: IClientLookupItem) =>
-                  m.Title
-              )
-              .join(" "),
+          /* Manufacturer: item.ManufacturerLookup ?? [],
+           ManufacturerSearchText:
+             (item.ManufacturerLookup ?? [])
+               .map(
+                 (m: IClientLookupItem) =>
+                   m.Title
+               )
+               .join(" "),*/
+          ManufacturerSearchText: item.Manufacturer ?? "",
 
           BusinessLine: choiceToString(
             item.Business_x0020_Line
@@ -388,14 +393,17 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
           CountrySoldTo: choiceToString(
             item.Country
           ),
-          DocumentType: item.DocumentType ?? undefined,
-          DocumentTypeSearchText:
-            item.DocumentType?.Title || "",
-          SubDocumentType: item.SubDocumentType ?? [],
-          SubDocumentTypeSearchText:
-            (item.SubDocumentType ?? [])
-              .map((sdt: ISubDocumentTypeLookupItem) => sdt.Title)
-              .join(" "),
+          DocumentTypeSearchText: item.Document_x0020_Type ?? "",
+          SubDocumentTypeSearchText: item.Sub_x0020_Document_x0020_Type ?? "",
+
+          /* DocumentType: item.DocumentType ?? undefined,
+           DocumentTypeSearchText:
+             item.DocumentType?.Title || "",
+           SubDocumentType: item.SubDocumentType ?? [],
+           SubDocumentTypeSearchText:
+             (item.SubDocumentType ?? [])
+               .map((sdt: ISubDocumentTypeLookupItem) => sdt.Title)
+               .join(" "),*/
 
         }));
 
@@ -619,14 +627,18 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
                       "Business_x0020_Line",
                       "PIMProductCode/Title",
                       "PIMProductCode/PIMProductName",
-                      "ManufacturerLookup/Title",
-                      "DocumentType/Title",
-                      "SubDocumentType/Title",
-                      "PIMProductTermSet",
-                      "GlobalClientTermSet"
+                      "Manufacturer",
+                      "Document_x0020_Type",
+                      "Sub_x0020_Document_x0020_Type",
+                      //"ManufacturerLookup/Title",
+                      //"DocumentType/Title",
+                      //"SubDocumentType/Title",
+
 
                     )
-                    .expand("PIMProductCode", "ManufacturerLookup", "DocumentType", "SubDocumentType")
+                    .expand("PIMProductCode")
+
+                    //.expand("PIMProductCode", "ManufacturerLookup", "DocumentType", "SubDocumentType")
                     .filter(filter)();
 
                   allProducts.push(...items);
@@ -642,14 +654,17 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
                           `${p.Title} ${p.PIMProductName}`
                         )
                         .join(" "),
-                    Manufacturer: item.ManufacturerLookup ?? [],
-                    ManufacturerSearchText:
-                      (item.ManufacturerLookup ?? [])
-                        .map(
-                          (m: IClientLookupItem) =>
-                            m.Title
-                        )
-                        .join(" "),
+
+
+                    /* Manufacturer: item.ManufacturerLookup ?? [],
+                     ManufacturerSearchText:
+                       (item.ManufacturerLookup ?? [])
+                         .map(
+                           (m: IClientLookupItem) =>
+                             m.Title
+                         )
+                         .join(" "),*/
+                    ManufacturerSearchText: item.Manufacturer ?? "",
 
                     BusinessLine: choiceToString(
                       item.Business_x0020_Line
@@ -657,14 +672,17 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
                     CountrySoldTo: choiceToString(
                       item.Country
                     ),
-                    DocumentType: item.DocumentType ?? undefined,
-                    DocumentTypeSearchText:
-                      item.DocumentType?.Title || "",
-                    SubDocumentType: item.SubDocumentType ?? [],
-                    SubDocumentTypeSearchText:
-                      (item.SubDocumentType ?? [])
-                        .map((sdt: ISubDocumentTypeLookupItem) => sdt.Title)
-                        .join(" "),
+                    DocumentTypeSearchText: item.Document_x0020_Type ?? "",
+                    SubDocumentTypeSearchText: item.Sub_x0020_Document_x0020_Type ?? "",
+
+                    /* DocumentType: item.DocumentType ?? undefined,
+                     DocumentTypeSearchText:
+                       item.DocumentType?.Title || "",
+                     SubDocumentType: item.SubDocumentType ?? [],
+                     SubDocumentTypeSearchText:
+                       (item.SubDocumentType ?? [])
+                         .map((sdt: ISubDocumentTypeLookupItem) => sdt.Title)
+                         .join(" "),*/
 
                   }));
 
