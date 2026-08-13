@@ -18,6 +18,9 @@ import CircularProgress from "@mui/material/CircularProgress";
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Button from '@mui/material/Button';
+//import EditIcon from "@mui/icons-material/Edit";
+//import IconButton from "@mui/material/IconButton";
+//import Tooltip from "@mui/material/Tooltip";
 
 
 
@@ -33,6 +36,7 @@ type doclib_AllProducts = {
   ManufacturerSearchText: string;
   DocumentTypeSearchText: string;
   SubDocumentTypeSearchText: string;
+  fileUrl: string;
 
   /*Manufacturer: IClientLookupItem[];
   ManufacturerSearchText: string;
@@ -95,6 +99,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
   const [clients, setClients] = React.useState<IClientLookupItem[]>([]);
 
   //const [loading, setLoading] = React.useState(false);
+  const [additionalKeyword, setAdditionalKeyword] = React.useState("");
   const [lookupLoading, setLookupLoading] = React.useState(false);
   const [resultsLoading, setResultsLoading] = React.useState(false);
   const [selectedProduct, setSelectedProduct] = React.useState<IProductLookupItem | null>(null);
@@ -196,7 +201,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
     return () => clearTimeout(timer);
 
 
-  }, [searchText, searchType]);
+  }, [searchText, searchType, ]);
 
 
 
@@ -209,12 +214,29 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         header: 'File Name',
         size: 100,
         filterFn: 'contains',
+        Cell: ({ row }) => {
+          const fileUrl =
+            `${props.urlSite}Products/${encodeURIComponent(
+              row.original.filename,
+            )}`;
+
+          return (
+            <a
+              href={fileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {row.original.filename}
+            </a >
+          );
+        },
       },
       {
         accessorKey: 'ManufacturerSearchText',
         header: 'Clients',
         filterFn: 'contains',
         size: 400,
+
 
         Cell: ({ cell }) => (
           <>
@@ -293,6 +315,9 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
     data: items_AllProducts,
     enableGrouping: true,
     enableColumnDragging: true,
+    muiPaginationProps: {
+      rowsPerPageOptions: [50, 100, 500, 1000],
+    },
     //initialState: {
     //showColumnFilters: true,
     // grouping: ['ManufacturerSearchText'],
@@ -368,6 +393,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
       const mappedData: doclib_AllProducts[] =
         allProducts.map((item: any) => ({
           filename: item.FileLeafRef ?? "",
+          fileUrl: item.FileRef,
           PIMProduct: item.PIMProductCode ?? [],
           PIMProductSearchText:
             (item.PIMProductCode ?? [])
@@ -537,13 +563,13 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
                 /*const results = await sp.search({
                   Querytext:
                     `"${searchCodeName}" AND Path:"${path}"`,
-  
+   
                   SelectProperties: [
                     "Title",
                     "ListItemID",
                     "Path",
                   ],
-  
+   
                   RowLimit: 2000,
                 });*/
 
@@ -554,10 +580,17 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
                 let startRow = 0;
                 const pageSize = 500;
 
+                let queryText = `"${searchCodeName}" AND Path:"${path}"`;
+
+                if (additionalKeyword?.trim()) {
+                  queryText += ` AND "${additionalKeyword.trim()}"`;
+                }
+
                 while (startRow < 2500) {
 
                   const results = await sp.search({
-                    Querytext: `"${searchCodeName}" AND Path:"${path}"`,
+                    //Querytext: `"${searchCodeName}" AND Path:"${path}"`,
+                    Querytext: queryText,
                     RowLimit: pageSize,
                     StartRow: startRow,
                     SelectProperties: [
@@ -565,8 +598,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
                       "ListItemID",
                       "Path",
                       'RefinableString100',
-                      'RefinableString00',
-                      'owstaxIdPIMProductTermSet',
+                      'PIMProductCode'
 
 
                     ],
@@ -647,6 +679,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
                 const mappedData: doclib_AllProducts[] =
                   allProducts.map((item: any) => ({
                     filename: item.FileLeafRef ?? "",
+                    fileUrl: item.FileRef,
                     PIMProduct: item.PIMProductCode ?? [],
                     PIMProductSearchText:
                       (item.PIMProductCode ?? [])
@@ -735,6 +768,17 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
           )}
         />
       )}
+
+      <TextField
+        fullWidth
+        margin="normal"
+        label="Additional Keyword"
+        placeholder="Enter keyword found in document metadata or content"
+        value={additionalKeyword}
+        onChange={(e) =>
+          setAdditionalKeyword(e.target.value)
+        }
+      />
 
       <MaterialReactTable table={table} />
       <Button
