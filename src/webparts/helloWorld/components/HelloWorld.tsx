@@ -12,6 +12,10 @@ import Autocomplete from "@mui/material/Autocomplete";
 import TextField from "@mui/material/TextField";
 import CircularProgress from "@mui/material/CircularProgress";
 import Button from "@mui/material/Button";
+import FormControl from "@mui/material/FormControl";
+import InputLabel from "@mui/material/InputLabel";
+import MenuItem from "@mui/material/MenuItem";
+import Select from "@mui/material/Select";
 
 type doclib_AllProducts = {
   filename: string;
@@ -37,6 +41,20 @@ type IClientLookupItem = {
   Title: string;
 };
 
+type IDocumentTypeItem = {
+  ID: number;
+  Title: string;
+  ShortTitle?: string;
+};
+
+type ISubDocumentTypeItem = {
+  ID: number;
+  Title: string;
+  DocumentType?: {
+    Title?: string;
+  } | null;
+};
+
 const choiceToString = (value: string | string[] | undefined | null): string => {
   if (!value) return "";
   return Array.isArray(value) ? value.join(", ") : value;
@@ -59,6 +77,14 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
   const [selectedClients, setSelectedClients] = React.useState<
     IClientLookupItem[]
   >([]);
+  const [documentTypes, setDocumentTypes] = React.useState<IDocumentTypeItem[]>([]);
+  const [subDocumentTypes, setSubDocumentTypes] = React.useState<
+    ISubDocumentTypeItem[]
+  >([]);
+  const [selectedDocumentType, setSelectedDocumentType] =
+    React.useState<string>("");
+  const [selectedSubDocumentType, setSelectedSubDocumentType] =
+    React.useState<string>("");
 
   const [productSearchText, setProductSearchText] = React.useState("");
   const [clientSearchText, setClientSearchText] = React.useState("");
@@ -66,6 +92,9 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
 
   const [lookupLoading, setLookupLoading] = React.useState(false);
   const [resultsLoading, setResultsLoading] = React.useState(false);
+  const [documentTypeLoading, setDocumentTypeLoading] = React.useState(false);
+  const [subDocumentTypeLoading, setSubDocumentTypeLoading] =
+    React.useState(false);
 
   const searchProducts = async (searchText: string) => {
     if (searchText.trim().length < 3) {
@@ -141,6 +170,66 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
     return () => clearTimeout(timer);
   }, [clientSearchText]);
 
+  React.useEffect(() => {
+    const loadDocumentTypes = async (): Promise<void> => {
+      setDocumentTypeLoading(true);
+
+      try {
+        const items = await sp.web.lists
+          .getByTitle("Document Type")
+          .items.select("ID", "Title", "ShortTitle")
+          .orderBy("Title")();
+
+        setDocumentTypes(items as IDocumentTypeItem[]);
+      } catch (error) {
+        console.error("loadDocumentTypes error:", error);
+        setDocumentTypes([]);
+      } finally {
+        setDocumentTypeLoading(false);
+      }
+    };
+
+    void loadDocumentTypes();
+  }, []);
+
+  React.useEffect(() => {
+    const loadSubDocumentTypes = async (): Promise<void> => {
+      if (!selectedDocumentType) {
+        setSubDocumentTypes([]);
+        setSelectedSubDocumentType("");
+        return;
+      }
+
+      setSubDocumentTypeLoading(true);
+
+      try {
+        const escapedValue = selectedDocumentType.replace(/'/g, "''");
+        const items = await sp.web.lists
+          .getByTitle("Sub Document Type")
+          .items.select("ID", "Title", "DocumentType/Title")
+          .expand("DocumentType")
+          .filter(`DocumentType/Title eq '${escapedValue}'`)
+          .orderBy("Title")();
+
+        setSubDocumentTypes(items as ISubDocumentTypeItem[]);
+
+        if (
+          selectedSubDocumentType &&
+          !items.some((item: any) => item.Title === selectedSubDocumentType)
+        ) {
+          setSelectedSubDocumentType("");
+        }
+      } catch (error) {
+        console.error("loadSubDocumentTypes error:", error);
+        setSubDocumentTypes([]);
+      } finally {
+        setSubDocumentTypeLoading(false);
+      }
+    };
+
+    void loadSubDocumentTypes();
+  }, [selectedDocumentType, selectedSubDocumentType]);
+
   const buildSearchQuery = (): string => {
     const clauses: string[] = [];
 
@@ -155,6 +244,14 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
       .map((item) => (item.Title || "").trim())
       .filter(Boolean);
 
+    const documentTypeValues = selectedDocumentType
+      ? [selectedDocumentType.trim()].filter(Boolean)
+      : [];
+
+    const subDocumentTypeValues = selectedSubDocumentType
+      ? [selectedSubDocumentType.trim()].filter(Boolean)
+      : [];
+
     if (productValues.length > 0) {
       clauses.push(
         `(${productValues
@@ -166,6 +263,22 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
     if (clientValues.length > 0) {
       clauses.push(
         `(${clientValues
+          .map((value) => `"${sanitizeKqlValue(value)}"`)
+          .join(" OR ")})`
+      );
+    }
+
+    if (documentTypeValues.length > 0) {
+      clauses.push(
+        `(${documentTypeValues
+          .map((value) => `"${sanitizeKqlValue(value)}"`)
+          .join(" OR ")})`
+      );
+    }
+
+    if (subDocumentTypeValues.length > 0) {
+      clauses.push(
+        `(${subDocumentTypeValues
           .map((value) => `"${sanitizeKqlValue(value)}"`)
           .join(" OR ")})`
       );
@@ -275,7 +388,13 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
       .map((item) => (item.Title || "").trim())
       .filter(Boolean);
 
-    if (selectedProductValues.length === 0 && selectedClientValues.length === 0) {
+    const hasAnySelection =
+      selectedProductValues.length > 0 ||
+      selectedClientValues.length > 0 ||
+      selectedDocumentType.trim().length > 0 ||
+      selectedSubDocumentType.trim().length > 0;
+
+    if (!hasAnySelection) {
       await loadAllRecords();
       return;
     }
@@ -568,6 +687,51 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
             />
           )}
         />
+
+        <FormControl fullWidth disabled={documentTypeLoading}>
+          <InputLabel id="document-type-select-label">Document Type</InputLabel>
+          <Select
+            labelId="document-type-select-label"
+            value={selectedDocumentType}
+            label="Document Type"
+            onChange={(event) => setSelectedDocumentType(event.target.value as string)}
+          >
+            <MenuItem value="">
+              <em>All</em>
+            </MenuItem>
+            {documentTypes.map((item) => (
+              <MenuItem key={item.ID} value={item.Title}>
+                {item.ShortTitle ? `${item.Title} (${item.ShortTitle})` : item.Title}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+
+        <FormControl
+          fullWidth
+          disabled={!selectedDocumentType || subDocumentTypeLoading}
+        >
+          <InputLabel id="sub-document-type-select-label">
+            Sub Document Type
+          </InputLabel>
+          <Select
+            labelId="sub-document-type-select-label"
+            value={selectedSubDocumentType}
+            label="Sub Document Type"
+            onChange={(event) =>
+              setSelectedSubDocumentType(event.target.value as string)
+            }
+          >
+            <MenuItem value="">
+              <em>All</em>
+            </MenuItem>
+            {subDocumentTypes.map((item) => (
+              <MenuItem key={item.ID} value={item.Title}>
+                {item.Title}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
       </div>
 
       <TextField
