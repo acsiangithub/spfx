@@ -53,7 +53,8 @@ type IProductLookupItem = {
   ID: number;
   Title: string;
   PIMProductName: string;
-  PIM_x0020_Product: string;
+  Manufacturer?: string;
+  
 };
 
 type IClientLookupItem = {
@@ -122,14 +123,14 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         .select(
           "ID",
           "Title",
-          "PIMProductName", "PIM_x0020_Product"
-
+          "PIMProductName", "PIM_x0020_Product", "Manufacturer"
         )
-
+        
         .filter(
           `substringof('${escapedText}', PIMProductName)`
         )
         .top(5000)();
+
 
 
       setProducts(results as IProductLookupItem[]);
@@ -201,7 +202,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
     return () => clearTimeout(timer);
 
 
-  }, [searchText, searchType, ]);
+  }, [searchText, searchType,]);
 
 
 
@@ -522,7 +523,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
 
           getOptionLabel={(option: any) =>
             searchType === "product"
-              ? `${option.Title} | ${option.PIMProductName}`
+              ? `${option.Title} | ${option.PIMProductName} | ${option.Manufacturer ?? ""}`
               : option.Title
           }
 
