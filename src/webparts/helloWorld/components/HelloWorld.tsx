@@ -614,9 +614,10 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
       <h2>Clients & Products</h2>
 
       <div
+        className="filter-row-grid"
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+          gridTemplateColumns: "repeat(2, minmax(280px, 1fr))",
           gap: "16px",
           marginBottom: "16px",
         }}
@@ -687,7 +688,17 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
             />
           )}
         />
+      </div>
 
+      <div
+        className="filter-row-grid"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(2, minmax(280px, 1fr))",
+          gap: "16px",
+          marginBottom: "16px",
+        }}
+      >
         <FormControl fullWidth disabled={documentTypeLoading}>
           <InputLabel id="document-type-select-label">Document Type</InputLabel>
           <Select
@@ -734,14 +745,28 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         </FormControl>
       </div>
 
-      <TextField
-        fullWidth
-        margin="normal"
-        label="Additional Keyword"
-        placeholder="Optional keyword"
-        value={additionalKeyword}
-        onChange={(e) => setAdditionalKeyword(e.target.value)}
-      />
+      <div
+        style={{
+          marginBottom: "16px",
+          width: "100%",
+        }}
+      >
+        <TextField
+          fullWidth
+          label="Additional Keyword"
+          placeholder="Optional keyword"
+          value={additionalKeyword}
+          onChange={(e) => setAdditionalKeyword(e.target.value)}
+        />
+      </div>
+
+      <style>{`
+        @media (max-width: 768px) {
+          .filter-row-grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
 
       <div style={{ marginBottom: "16px" }}>
         <Button
