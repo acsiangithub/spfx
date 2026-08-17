@@ -16,6 +16,7 @@ import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
+import { ThemeProvider, createTheme } from "@mui/material/styles";
 
 type doclib_AllProducts = {
   filename: string;
@@ -62,6 +63,84 @@ const choiceToString = (value: string | string[] | undefined | null): string => 
 
 const sanitizeKqlValue = (value: string): string =>
   value.replace(/"/g, '\\"').trim();
+
+const compactTheme = createTheme({
+  components: {
+    MuiInputBase: {
+      styleOverrides: {
+        root: {
+          fontSize: "14px",
+          minHeight: "36px",
+        },
+        input: {
+          paddingTop: "8px",
+          paddingBottom: "8px",
+        },
+      },
+    },
+    MuiOutlinedInput: {
+      styleOverrides: {
+        root: {
+          fontSize: "14px",
+          minHeight: "36px",
+        },
+        input: {
+          padding: "8px 12px",
+        },
+      },
+    },
+    MuiInputLabel: {
+      styleOverrides: {
+        root: {
+          fontSize: "14px",
+        },
+      },
+    },
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          minHeight: "36px",
+          padding: "7px 14px",
+          fontSize: "14px",
+          lineHeight: 1.3,
+        },
+      },
+    },
+    MuiMenuItem: {
+      styleOverrides: {
+        root: {
+          fontSize: "14px",
+          minHeight: "36px",
+        },
+      },
+    },
+    MuiAutocomplete: {
+      styleOverrides: {
+        inputRoot: {
+          minHeight: "36px",
+        },
+      },
+    },
+    MuiTableCell: {
+      styleOverrides: {
+        root: {
+          padding: "8px 10px",
+          fontSize: "13px",
+        },
+      },
+    },
+    MuiPaper: {
+      styleOverrides: {
+        root: {
+          fontSize: "14px",
+        },
+      },
+    },
+  },
+  typography: {
+    fontSize: 14,
+  },
+});
 
 const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
   const [items_AllProducts, setItems_AllProducts] =
@@ -600,8 +679,35 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
     data: items_AllProducts,
     enableGrouping: true,
     enableColumnDragging: true,
+    initialState: {
+      density: "compact",
+    },
+    muiTablePaperProps: {
+      sx: {
+        boxShadow: "none",
+        border: "1px solid #e1dfdd",
+      },
+    },
+    muiTableHeadCellProps: {
+      sx: {
+        fontSize: "13px",
+        padding: "10px 12px",
+        lineHeight: 1.2,
+      },
+    },
+    muiTableBodyCellProps: {
+      sx: {
+        fontSize: "13px",
+        padding: "9px 12px",
+      },
+    },
     muiPaginationProps: {
       rowsPerPageOptions: [50, 100, 500, 1000],
+      sx: {
+        ".MuiTablePagination-selectLabel, .MuiTablePagination-displayedRows": {
+          fontSize: "13px",
+        },
+      },
     },
     state: {
       isLoading: resultsLoading,
@@ -610,21 +716,23 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
   });
 
   return (
-    <div>
-      <h2>Clients & Products</h2>
+    <ThemeProvider theme={compactTheme}>
+      <div>
+        <h2>Clients & Products</h2>
 
       <div
         className="filter-row-grid"
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(2, minmax(280px, 1fr))",
-          gap: "16px",
-          marginBottom: "16px",
+          gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
+          gap: "12px",
+          marginBottom: "12px",
         }}
       >
         <Autocomplete
           multiple
           fullWidth
+          size="small"
           loading={lookupLoading}
           options={products}
           value={selectedProducts}
@@ -640,6 +748,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
           renderInput={(params) => (
             <TextField
               {...params}
+              size="small"
               label="Product"
               placeholder="Search product"
               InputProps={{
@@ -660,6 +769,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         <Autocomplete
           multiple
           fullWidth
+          size="small"
           loading={lookupLoading}
           options={clients}
           value={selectedClients}
@@ -672,6 +782,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
           renderInput={(params) => (
             <TextField
               {...params}
+              size="small"
               label="Client"
               placeholder="Search client"
               InputProps={{
@@ -694,17 +805,18 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         className="filter-row-grid"
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(2, minmax(280px, 1fr))",
-          gap: "16px",
-          marginBottom: "16px",
+          gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
+          gap: "12px",
+          marginBottom: "12px",
         }}
       >
-        <FormControl fullWidth disabled={documentTypeLoading}>
+        <FormControl fullWidth size="small" disabled={documentTypeLoading}>
           <InputLabel id="document-type-select-label">Document Type</InputLabel>
           <Select
             labelId="document-type-select-label"
             value={selectedDocumentType}
             label="Document Type"
+            size="small"
             onChange={(event) => setSelectedDocumentType(event.target.value as string)}
           >
             <MenuItem value="">
@@ -720,6 +832,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
 
         <FormControl
           fullWidth
+          size="small"
           disabled={!selectedDocumentType || subDocumentTypeLoading}
         >
           <InputLabel id="sub-document-type-select-label">
@@ -729,6 +842,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
             labelId="sub-document-type-select-label"
             value={selectedSubDocumentType}
             label="Sub Document Type"
+            size="small"
             onChange={(event) =>
               setSelectedSubDocumentType(event.target.value as string)
             }
@@ -753,6 +867,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
       >
         <TextField
           fullWidth
+          size="small"
           label="Additional Keyword"
           placeholder="Optional keyword"
           value={additionalKeyword}
@@ -772,6 +887,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         <Button
           variant="contained"
           color="primary"
+          size="small"
           onClick={handleSearch}
           disabled={resultsLoading}
         >
@@ -781,20 +897,21 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
 
       <MaterialReactTable table={table} />
 
-      <div style={{ marginTop: "16px" }}>
-        <a
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            //setAllRecordsCache([]);
-            loadAllRecords().catch(console.error);
-          }}
-          style={{ textDecoration: "underline", color: "#1976d2" }}
-        >
-          REFRESH ALL RECORDS
-        </a>
+        <div style={{ marginTop: "16px" }}>
+          <a
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              //setAllRecordsCache([]);
+              loadAllRecords().catch(console.error);
+            }}
+            style={{ textDecoration: "underline", color: "#1976d2" }}
+          >
+            REFRESH ALL RECORDS
+          </a>
+        </div>
       </div>
-    </div>
+    </ThemeProvider>
   );
 };
 
