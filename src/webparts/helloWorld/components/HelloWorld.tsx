@@ -740,7 +740,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
       {
         accessorKey: "DocumentDate",
         header: "Document Date",
-        filterFn: "between",
+        enableColumnFilter: false,
         Cell: ({ cell }) => {
           const value = cell.getValue<Date | string | null>();
           if (!value) return "-";
