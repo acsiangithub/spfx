@@ -593,16 +593,32 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
       {
         accessorKey: "filename",
         header: "File Name",
-        size: 120,
+        size: 100,
         filterFn: "contains",
         Cell: ({ row }) => {
           const fileUrl = `${props.urlSite}Products/${encodeURIComponent(
             row.original.filename
           )}`;
+          const displayName =
+            row.original.filename.length > 20
+              ? `${row.original.filename.slice(0, 17)}...`
+              : row.original.filename;
 
           return (
-            <a href={fileUrl} target="_blank" rel="noopener noreferrer">
-              {row.original.filename}
+            <a
+              href={fileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={row.original.filename}
+              style={{
+                display: "inline-block",
+                maxWidth: "100%",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {displayName}
             </a>
           );
         },
@@ -611,7 +627,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         accessorKey: "ManufacturerSearchText",
         header: "Clients",
         filterFn: "contains",
-        size: 300,
+        size: 100,
         Cell: ({ cell }) => (
           <>
             {String(cell.getValue() || "")
@@ -627,7 +643,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         accessorKey: "PIMProductSearchText",
         header: "Products",
         filterFn: "contains",
-        size: 300,
+        size: 100,
         Cell: ({ row }) => (
           <div>
             {row.original.PIMProduct.map((p: IProductLookupItem, idx) => (
@@ -642,13 +658,13 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         accessorKey: "DocumentTypeSearchText",
         header: "Document Type",
         filterFn: "contains",
-        size: 220,
+        size: 100,
       },
       {
         accessorKey: "SubDocumentTypeSearchText",
         header: "Sub Document Type",
         filterFn: "contains",
-        size: 220,
+        size: 100,
         Cell: ({ cell }) => (
           <>
             {String(cell.getValue() || "")
@@ -679,6 +695,9 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
     data: items_AllProducts,
     enableGrouping: true,
     enableColumnDragging: true,
+    enableColumnResizing: true,
+    columnResizeMode: "onChange",
+    layoutMode: "grid",
     initialState: {
       density: "compact",
     },
@@ -693,12 +712,17 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         fontSize: "13px",
         padding: "10px 12px",
         lineHeight: 1.2,
+        whiteSpace: "normal",
+        wordBreak: "break-word",
       },
     },
     muiTableBodyCellProps: {
       sx: {
         fontSize: "13px",
         padding: "9px 12px",
+        whiteSpace: "normal",
+        wordBreak: "break-word",
+        overflowWrap: "anywhere",
       },
     },
     muiPaginationProps: {
