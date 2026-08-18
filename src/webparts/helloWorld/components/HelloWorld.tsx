@@ -35,6 +35,7 @@ type IProductLookupItem = {
   Title: string;
   PIMProductName: string;
   Manufacturer?: string;
+  BusinessLine?: string;
 };
 
 type IClientLookupItem = {
@@ -188,7 +189,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
 
       const results = await sp.web.lists
         .getByTitle("PIM Product")
-        .items.select("ID", "Title", "PIMProductName", "Manufacturer")
+        .items.select("ID", "Title", "PIMProductName", "Manufacturer","BusinessLine")
         .filter(`substringof('${escapedText}', PIMProductName)`)
         .top(5000)();
 
@@ -763,7 +764,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
           getOptionLabel={(option: IProductLookupItem) =>
             option
               ? `${option.Title ?? ""} | ${option.PIMProductName ?? ""} | ${option.Manufacturer ?? ""
-              }`
+              } | ${option.BusinessLine ?? ""}`
               : ""
           }
           isOptionEqualToValue={(option, value) => option.ID === value.ID}
