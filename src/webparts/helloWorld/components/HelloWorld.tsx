@@ -16,6 +16,8 @@ import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
+import Box from "@mui/material/Box";
+import Typography from "@mui/material/Typography";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 
 type doclib_AllProducts = {
@@ -431,6 +433,50 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
     }
   };
 
+  const ProductListbox = React.forwardRef<
+    HTMLUListElement,
+    React.HTMLAttributes<HTMLElement>
+  >(function ProductListbox(props, ref) {
+    const { children, ...other } = props;
+
+    return (
+      <ul
+        {...other}
+        ref={ref}
+        style={{
+          padding: 0,
+          margin: 0,
+          listStyle: "none",
+          overflowX: "auto",
+        }}
+      >
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: "2.2fr 1.3fr 1.2fr",
+            gap: 0.5,
+            alignItems: "center",
+            minWidth: "500px",
+            width: "100%",
+            px: 1,
+            py: 0.5,
+            borderBottom: "1px solid",
+            borderColor: "divider",
+            backgroundColor: "rgba(0, 0, 0, 0.02)",
+            color: "text.primary",
+            fontSize: "10.5px",
+            fontWeight: 600,
+          }}
+        >
+          <span>Product</span>
+          <span>Client</span>
+          <span>Business Line</span>
+        </Box>
+        {children}
+      </ul>
+    );
+  });
+
   const handleProductInputChange = (
     _event: React.SyntheticEvent,
     newInputValue: string
@@ -761,15 +807,67 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
           loading={lookupLoading}
           options={products}
           value={selectedProducts}
+          ListboxComponent={ProductListbox}
           getOptionLabel={(option: IProductLookupItem) =>
             option
-              ? `${option.Title ?? ""} | ${option.PIMProductName ?? ""} | ${option.Manufacturer ?? ""
-              } | ${option.BusinessLine ?? ""}`
+              ? `${option.Title ?? ""} | ${option.PIMProductName ?? ""}`
               : ""
           }
           isOptionEqualToValue={(option, value) => option.ID === value.ID}
           onInputChange={handleProductInputChange}
           onChange={handleProductSelectionChange}
+          renderOption={(props, option) => (
+            <li {...props} key={option.ID}>
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: "2.2fr 1.3fr 1.2fr",
+                  gap: 0.5,
+                  alignItems: "center",
+                  minWidth: "500px",
+                  width: "100%",
+                  px: 1,
+                  py: 0.25,
+                  fontSize: "11px",
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  sx={{
+                    fontSize: "10.5px",
+                    fontWeight: 600,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {`${option.Title || ""} | ${option.PIMProductName || ""}`.replace(/\|\s*$/g, "").trim() || "-"}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    fontSize: "10.5px",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {option.Manufacturer || "-"}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    fontSize: "10.5px",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {option.BusinessLine || "-"}
+                </Typography>
+              </Box>
+            </li>
+          )}
           renderInput={(params) => (
             <TextField
               {...params}
