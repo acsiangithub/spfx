@@ -29,6 +29,7 @@ type doclib_AllProducts = {
   ManufacturerSearchText: string;
   DocumentTypeSearchText: string;
   SubDocumentTypeSearchText: string;
+  DocumentDate: Date | null;
   fileUrl: string;
 };
 
@@ -395,7 +396,8 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
             "PIMProductCode/PIMProductName",
             "Manufacturer",
             "Document_x0020_Type",
-            "Sub_x0020_Document_x0020_Type"
+            "Sub_x0020_Document_x0020_Type",
+            "Document_x0020_Date"
           )
           .expand("PIMProductCode")
           .filter(`Id gt ${lastId}`)
@@ -422,6 +424,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         CountrySoldTo: choiceToString(item.Country),
         DocumentTypeSearchText: item.Document_x0020_Type ?? "",
         SubDocumentTypeSearchText: item.Sub_x0020_Document_x0020_Type ?? "",
+        DocumentDate: item.Document_x0020_Date ?? null,
       }));
 
       setItems_AllProducts(mappedData);
@@ -625,6 +628,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         CountrySoldTo: choiceToString(item.Country),
         DocumentTypeSearchText: item.Document_x0020_Type ?? "",
         SubDocumentTypeSearchText: item.Sub_x0020_Document_x0020_Type ?? "",
+        DocumentDate: item.Document_x0020_Date ?? null,
       }));
 
       setItems_AllProducts(mappedData);
@@ -733,6 +737,20 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         header: "Country Sold To",
         filterFn: "contains",
       },
+      {
+        accessorKey: "DocumentDate",
+        header: "Document Date",
+        filterFn: "between",
+        Cell: ({ cell }) => {
+          const value = cell.getValue<Date | string | null>();
+          if (!value) return "-";
+
+          const dateValue = value instanceof Date ? value : new Date(value);
+          if (isNaN(dateValue.getTime())) return "-";
+
+          return dateValue.toLocaleDateString();
+        },
+      },
     ],
     [props.urlSite]
   );
@@ -789,7 +807,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
   return (
     <ThemeProvider theme={compactTheme}>
       <div>
-        <h2>Clients & Products</h2>
+        <h2>Search Clients & Products</h2>
 
       <div
         className="filter-row-grid"
