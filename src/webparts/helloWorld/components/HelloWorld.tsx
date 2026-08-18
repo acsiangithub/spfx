@@ -836,9 +836,10 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
                   sx={{
                     fontSize: "10.5px",
                     fontWeight: 600,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
+                    whiteSpace: "normal",
+                    overflow: "visible",
+                    textOverflow: "clip",
+                    wordBreak: "break-word",
                   }}
                 >
                   {`${option.Title || ""} | ${option.PIMProductName || ""}`.replace(/\|\s*$/g, "").trim() || "-"}
