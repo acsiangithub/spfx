@@ -87,9 +87,13 @@ const documentDateRangeFilter = (
   const rowValue = row.getValue(columnId);
   const rowTime = toTime(rowValue);
 
-  if (isNaN(rowTime) || !Array.isArray(filterValue)) return true;
+  if (!Array.isArray(filterValue)) return true;
 
   const [fromValue, toValue] = filterValue as [unknown, unknown];
+  const hasDateFilter = Boolean(fromValue || toValue);
+  if (!hasDateFilter) return true;
+  if (isNaN(rowTime)) return false;
+
   const fromTime = fromValue ? toTime(fromValue) : -Infinity;
   const toTimeValue = toValue ? toTime(toValue) : Infinity;
 
@@ -113,6 +117,7 @@ const DocumentDateFilter: React.FC<{
 
   return (
     <DatePicker
+      format="MM/DD/YYYY"
       value={pickerValue && pickerValue.isValid() ? pickerValue : null}
       onChange={(newValue) => {
         const nextValues = [...filterValues];
@@ -126,6 +131,15 @@ const DocumentDateFilter: React.FC<{
         textField: {
           size: "small",
           placeholder: rangeFilterIndex === 0 ? "From" : "To",
+          sx: {
+            minWidth: "165px",
+            width: "165px",
+            "& input": {
+              minWidth: "125px",
+              width: "125px",
+              whiteSpace: "nowrap",
+            },
+          },
         },
       }}
     />
@@ -724,7 +738,8 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
       {
         accessorKey: "filename",
         header: "File Name",
-        size: 100,
+        size: 140,
+        minSize: 140,
         filterFn: "contains",
         Cell: ({ row }) => {
           const fileUrl = `${props.urlSite}Products/${encodeURIComponent(
@@ -758,7 +773,8 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         accessorKey: "ManufacturerSearchText",
         header: "Clients",
         filterFn: "contains",
-        size: 100,
+        size: 120,
+        minSize: 120,
         Cell: ({ cell }) => (
           <>
             {String(cell.getValue() || "")
@@ -774,7 +790,8 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         accessorKey: "PIMProductSearchText",
         header: "Products",
         filterFn: "contains",
-        size: 100,
+        size: 160,
+        minSize: 160,
         Cell: ({ row }) => (
           <div>
             {row.original.PIMProduct.map((p: IProductLookupItem, idx) => (
@@ -789,13 +806,15 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         accessorKey: "DocumentTypeSearchText",
         header: "Document Type",
         filterFn: "contains",
-        size: 100,
+        size: 150,
+        minSize: 150,
       },
       {
         accessorKey: "SubDocumentTypeSearchText",
         header: "Sub Document Type",
         filterFn: "contains",
-        size: 100,
+        size: 175,
+        minSize: 175,
         Cell: ({ cell }) => (
           <>
             {String(cell.getValue() || "")
@@ -811,15 +830,21 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         accessorKey: "BusinessLine",
         header: "Business Line",
         filterFn: "contains",
+        size: 140,
+        minSize: 140,
       },
       {
         accessorKey: "CountrySoldTo",
         header: "Country Sold To",
         filterFn: "contains",
+        size: 165,
+        minSize: 165,
       },
       {
         accessorKey: "DocumentDate",
         header: "Document Date",
+        size: 360,
+        minSize: 360,
         filterVariant: "date-range",
         filterFn: documentDateRangeFilter,
         Filter: ({ column, rangeFilterIndex }) => (
@@ -849,7 +874,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
     enableColumnDragging: true,
     enableColumnResizing: true,
     columnResizeMode: "onChange",
-    layoutMode: "grid",
+    layoutMode: "grid-no-grow",
     initialState: {
       density: "compact",
     },
