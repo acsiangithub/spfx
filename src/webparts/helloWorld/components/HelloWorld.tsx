@@ -22,6 +22,7 @@ import { ThemeProvider, createTheme } from "@mui/material/styles";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import * as dayjs from "dayjs";
 import { Dayjs } from "dayjs";
 
 type doclib_AllProducts = {
@@ -71,6 +72,65 @@ const choiceToString = (value: string | string[] | undefined | null): string => 
 
 const sanitizeKqlValue = (value: string): string =>
   value.replace(/"/g, '\\"').trim();
+
+const documentDateRangeFilter = (
+  row: { getValue: (columnId: string) => unknown },
+  columnId: string,
+  filterValue: unknown
+): boolean => {
+  const toTime = (value: unknown): number => {
+    if (!value) return NaN;
+    if (value instanceof Date) return value.getTime();
+    return new Date(value as string | number).getTime();
+  };
+
+  const rowValue = row.getValue(columnId);
+  const rowTime = toTime(rowValue);
+
+  if (isNaN(rowTime) || !Array.isArray(filterValue)) return true;
+
+  const [fromValue, toValue] = filterValue as [unknown, unknown];
+  const fromTime = fromValue ? toTime(fromValue) : -Infinity;
+  const toTimeValue = toValue ? toTime(toValue) : Infinity;
+
+  return (
+    !isNaN(fromTime) &&
+    !isNaN(toTimeValue) &&
+    rowTime >= fromTime &&
+    rowTime <= toTimeValue
+  );
+};
+
+const DocumentDateFilter: React.FC<{
+  column: { getFilterValue: () => unknown; setFilterValue: (value: unknown) => void };
+  rangeFilterIndex?: number;
+}> = ({ column, rangeFilterIndex = 0 }) => {
+  const filterValues = Array.isArray(column.getFilterValue())
+    ? (column.getFilterValue() as [unknown, unknown])
+    : [undefined, undefined];
+  const filterValue = filterValues[rangeFilterIndex];
+  const pickerValue = filterValue ? dayjs(filterValue as string | number | Date) : null;
+
+  return (
+    <DatePicker
+      value={pickerValue && pickerValue.isValid() ? pickerValue : null}
+      onChange={(newValue) => {
+        const nextValues = [...filterValues];
+        nextValues[rangeFilterIndex] = newValue?.isValid()
+          ? newValue.toISOString()
+          : undefined;
+        column.setFilterValue(nextValues);
+      }}
+      slotProps={{
+        field: { clearable: true },
+        textField: {
+          size: "small",
+          placeholder: rangeFilterIndex === 0 ? "From" : "To",
+        },
+      }}
+    />
+  );
+};
 
 const compactTheme = createTheme({
   components: {
@@ -438,7 +498,9 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         CountrySoldTo: choiceToString(item.Country),
         DocumentTypeSearchText: item.Document_x0020_Type ?? "",
         SubDocumentTypeSearchText: item.Sub_x0020_Document_x0020_Type ?? "",
-        DocumentDate: item.Document_x0020_Date ?? null,
+        DocumentDate: item.Document_x0020_Date
+          ? new Date(item.Document_x0020_Date)
+          : null,
       }));
 
       setItems_AllProducts(mappedData);
@@ -644,7 +706,9 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         CountrySoldTo: choiceToString(item.Country),
         DocumentTypeSearchText: item.Document_x0020_Type ?? "",
         SubDocumentTypeSearchText: item.Sub_x0020_Document_x0020_Type ?? "",
-        DocumentDate: item.Document_x0020_Date ?? null,
+        DocumentDate: item.Document_x0020_Date
+          ? new Date(item.Document_x0020_Date)
+          : null,
       }));
 
       setItems_AllProducts(mappedData);
@@ -756,7 +820,14 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
       {
         accessorKey: "DocumentDate",
         header: "Document Date",
-        enableColumnFilter: false,
+        filterVariant: "date-range",
+        filterFn: documentDateRangeFilter,
+        Filter: ({ column, rangeFilterIndex }) => (
+          <DocumentDateFilter
+            column={column}
+            rangeFilterIndex={rangeFilterIndex}
+          />
+        ),
         Cell: ({ cell }) => {
           const value = cell.getValue<Date | string | null>();
           if (!value) return "-";
@@ -1084,7 +1155,9 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
         </Button>
       </div>
 
-      <MaterialReactTable table={table} />
+      <LocalizationProvider dateAdapter={AdapterDayjs}>
+        <MaterialReactTable table={table} />
+      </LocalizationProvider>
 
         <div style={{ marginTop: "16px" }}>
           <a
