@@ -19,6 +19,10 @@ import Select from "@mui/material/Select";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import { Dayjs } from "dayjs";
 
 type doclib_AllProducts = {
   filename: string;
@@ -172,6 +176,8 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
   const [productSearchText, setProductSearchText] = React.useState("");
   const [clientSearchText, setClientSearchText] = React.useState("");
   const [additionalKeyword, setAdditionalKeyword] = React.useState("");
+  const [dateFrom, setDateFrom] = React.useState<Dayjs | null>(null);
+  const [dateTo, setDateTo] = React.useState<Dayjs | null>(null);
 
   const [lookupLoading, setLookupLoading] = React.useState(false);
   const [resultsLoading, setResultsLoading] = React.useState(false);
@@ -371,6 +377,14 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
       clauses.push(`"${sanitizeKqlValue(additionalKeyword)}"`);
     }
 
+    if (dateFrom) {
+      clauses.push(`Document_x0020_Date>="${dateFrom.format("YYYY-MM-DDTHH:mm:ssZ")}"`);
+    }
+
+    if (dateTo) {
+      clauses.push(`Document_x0020_Date<="${dateTo.format("YYYY-MM-DDTHH:mm:ssZ")}"`);
+    }
+
     return clauses.join(" AND ");
   };
 
@@ -521,7 +535,9 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
       selectedProductValues.length > 0 ||
       selectedClientValues.length > 0 ||
       selectedDocumentType.trim().length > 0 ||
-      selectedSubDocumentType.trim().length > 0;
+      selectedSubDocumentType.trim().length > 0 ||
+      dateFrom !== null ||
+      dateTo !== null;
 
     if (!hasAnySelection) {
       await loadAllRecords();
@@ -1000,6 +1016,37 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
           </Select>
         </FormControl>
       </div>
+
+      <LocalizationProvider dateAdapter={AdapterDayjs}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
+            gap: "12px",
+            marginBottom: "12px",
+          }}
+        >
+          <DatePicker
+            label="Document Date From"
+            value={dateFrom}
+            onChange={(newValue) => setDateFrom(newValue)}
+            slotProps={{
+              textField: { size: "small", fullWidth: true },
+              field: { clearable: true },
+            }}
+          />
+          <DatePicker
+            label="Document Date To"
+            value={dateTo}
+            onChange={(newValue) => setDateTo(newValue)}
+            minDate={dateFrom ?? undefined}
+            slotProps={{
+              textField: { size: "small", fullWidth: true },
+              field: { clearable: true },
+            }}
+          />
+        </div>
+      </LocalizationProvider>
 
       <div
         style={{
