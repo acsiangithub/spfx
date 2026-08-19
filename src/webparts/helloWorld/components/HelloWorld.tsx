@@ -451,12 +451,20 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
       clauses.push(`"${sanitizeKqlValue(additionalKeyword)}"`);
     }
 
-    if (dateFrom) {
-      clauses.push(`Document_x0020_Date>="${dateFrom.format("YYYY-MM-DDTHH:mm:ssZ")}"`);
-    }
-
-    if (dateTo) {
-      clauses.push(`Document_x0020_Date<="${dateTo.format("YYYY-MM-DDTHH:mm:ssZ")}"`);
+    if (dateFrom && dateTo) {
+      clauses.push(
+        `DocumentDateOWSTDATE:${dateFrom
+          .startOf("day")
+          .toISOString()}..${dateTo.endOf("day").toISOString()}`
+      );
+    } else if (dateFrom) {
+      clauses.push(
+        `DocumentDateOWSTDATE>=${dateFrom.startOf("day").toISOString()}`
+      );
+    } else if (dateTo) {
+      clauses.push(
+        `DocumentDateOWSTDATE<=${dateTo.endOf("day").toISOString()}`
+      );
     }
 
     return clauses.join(" AND ");
@@ -647,7 +655,7 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
             "Title",
             "ListItemID",
             "Path",
-            "RefinableString100",
+            "DocumentDateOWSTDATE",
             "PIMProductCode",
           ],
         });
@@ -700,7 +708,8 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
             "PIMProductCode/PIMProductName",
             "Manufacturer",
             "Document_x0020_Type",
-            "Sub_x0020_Document_x0020_Type"
+            "Sub_x0020_Document_x0020_Type",
+            "Document_x0020_Date"
           )
           .expand("PIMProductCode")
           .filter(filter)();
