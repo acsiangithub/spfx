@@ -785,15 +785,25 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         accessorKey: "ManufacturerSearchText",
         header: "Clients",
         filterFn: "contains",
-        size: 120,
-        minSize: 120,
+        size: 160,
+        minSize: 160,
         Cell: ({ cell }) => (
           <>
             {String(cell.getValue() || "")
               .split(";")
               .filter(Boolean)
               .map((item, idx) => (
-                <div key={idx}>{item.trim()}</div>
+                <div
+                  key={idx}
+                  style={{
+                    whiteSpace: "normal",
+                    wordBreak: "normal",
+                    overflowWrap: "break-word",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {item.trim()}
+                </div>
               ))}
           </>
         ),
@@ -910,8 +920,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         fontSize: "13px",
         padding: "9px 12px",
         whiteSpace: "normal",
-        wordBreak: "break-word",
-        overflowWrap: "anywhere",
+        wordBreak: "normal",
+        overflowWrap: "break-word",
       },
     },
     muiPaginationProps: {
