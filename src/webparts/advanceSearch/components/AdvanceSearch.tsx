@@ -22,8 +22,7 @@ import { ThemeProvider, createTheme } from "@mui/material/styles";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
-import * as dayjs from "dayjs";
-import { Dayjs } from "dayjs";
+import dayjs, { Dayjs } from "dayjs";
 
 type doclib_AllProducts = {
   filename: string;
@@ -117,7 +116,7 @@ const DocumentDateFilter: React.FC<{
 
   return (
     <DatePicker
-      format="MM/DD/YYYY"
+      format="DD/MM/YYYY"
       value={pickerValue && pickerValue.isValid() ? pickerValue : null}
       onChange={(newValue) => {
         const nextValues = [...filterValues];
@@ -132,12 +131,24 @@ const DocumentDateFilter: React.FC<{
           size: "small",
           placeholder: rangeFilterIndex === 0 ? "From" : "To",
           sx: {
-            minWidth: "165px",
-            width: "165px",
-            "& input": {
-              minWidth: "125px",
-              width: "125px",
-              whiteSpace: "nowrap",
+            width: "100%",
+            minWidth: "145px",
+            "& .MuiInputBase-root": {
+              pr: "2px",
+            },
+            "& .MuiInputBase-input": {
+              fontSize: "12px",
+              padding: "6px 2px 6px 6px",
+              minWidth: 0,
+            },
+            "& .MuiInputAdornment-root": {
+              marginLeft: 0,
+            },
+            "& .MuiIconButton-root": {
+              padding: "2px",
+            },
+            "& .MuiSvgIcon-root": {
+              fontSize: "18px",
             },
           },
         },
@@ -638,7 +649,6 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         return;
       }
 
-     
       let allResults: any[] = [];
       let startRow = 0;
       const pageSize = 500;
@@ -646,7 +656,6 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       const maxResults = 2500;
 
       while (startRow < maxResults) {
-
         const results = await sp.search({
           Querytext: queryText,
           RowLimit: Math.min(pageSize, maxResults - startRow),
@@ -662,7 +671,6 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             "PIMProductNameOWSTEXT",
             "PIMProductCodeOWSTEXT",
             "PIMProductTermSetOWSTEXT"
-            
           ],
         });
 
@@ -882,10 +890,10 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           const value = cell.getValue<Date | string | null>();
           if (!value) return "-";
 
-          const dateValue = value instanceof Date ? value : new Date(value);
-          if (isNaN(dateValue.getTime())) return "-";
+          const d = dayjs(value);
+          if (!d.isValid()) return "-";
 
-          return dateValue.toLocaleDateString();
+          return d.format("DD/MM/YYYY");
         },
       },
     ],
@@ -993,7 +1001,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                     fontWeight: 600,
                     whiteSpace: "normal",
                     overflow: "visible",
-                    textOverflow: "clip",
+                    textFail: "clip",
                     wordBreak: "break-word",
                   }}
                 >
@@ -1149,6 +1157,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         >
           <DatePicker
             label="Document Date From"
+            format="DD/MM/YYYY"
             value={dateFrom}
             onChange={(newValue) => setDateFrom(newValue)}
             slotProps={{
@@ -1158,6 +1167,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           />
           <DatePicker
             label="Document Date To"
+            format="DD/MM/YYYY"
             value={dateTo}
             onChange={(newValue) => setDateTo(newValue)}
             minDate={dateFrom ?? undefined}
