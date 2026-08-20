@@ -656,7 +656,10 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
             "ListItemID",
             "Path",
             "DocumentDateOWSTDATE",
-            "PIMProductCode",
+            "BusinessLineOWSCHCM",
+            "CountryOWSCHCM",
+            //"PIMProductNameOWSTEXT",
+            //"PIMProductCodeOWSTEXT",
           ],
         });
 
