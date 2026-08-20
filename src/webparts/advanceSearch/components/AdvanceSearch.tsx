@@ -132,23 +132,26 @@ const DocumentDateFilter: React.FC<{
           placeholder: rangeFilterIndex === 0 ? "From" : "To",
           sx: {
             width: "100%",
-            minWidth: "145px",
+            minWidth: "130px",
             "& .MuiInputBase-root": {
-              pr: "2px",
+              paddingRight: "8px",
+              paddingLeft: 0,
             },
             "& .MuiInputBase-input": {
               fontSize: "12px",
-              padding: "6px 2px 6px 6px",
+              padding: "6px 2px 6px 8px",
               minWidth: 0,
             },
             "& .MuiInputAdornment-root": {
-              marginLeft: 0,
+              marginLeft: "2px",
+              marginRight: 0,
+              gap: "2px",
             },
             "& .MuiIconButton-root": {
-              padding: "2px",
+              padding: "3px",
             },
             "& .MuiSvgIcon-root": {
-              fontSize: "18px",
+              fontSize: "17px",
             },
           },
         },
