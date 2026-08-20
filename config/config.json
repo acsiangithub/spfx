@@ -5,14 +5,14 @@
     "hello-world-web-part": {
       "components": [
         {
-          "entrypoint": "./lib/webparts/helloWorld/HelloWorldWebPart.js",
-          "manifest": "./src/webparts/helloWorld/HelloWorldWebPart.manifest.json"
+          "entrypoint": "./lib/webparts/advanceSearch/AdvanceSearchWebPart.js",
+          "manifest": "./src/webparts/advanceSearch/AdvanceSearchWebPart.manifest.json"
         }
       ]
     }
   },
   "externals": {},
   "localizedResources": {
-    "HelloWorldWebPartStrings": "lib/webparts/helloWorld/loc/{locale}.js"
+    "AdvanceSearchWebPartStrings": "lib/webparts/advanceSearch/loc/{locale}.js"
   }
 }

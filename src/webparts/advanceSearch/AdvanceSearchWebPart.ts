@@ -8,27 +8,27 @@ import {
 import { BaseClientSideWebPart } from '@microsoft/sp-webpart-base';
 import { IReadonlyTheme } from '@microsoft/sp-component-base';
 
-import * as strings from 'HelloWorldWebPartStrings';
-import HelloWorld from './components/HelloWorld';
-import { IHelloWorldProps } from './components/IHelloWorldProps';
+import * as strings from 'AdvanceSearchWebPartStrings';
+import AdvanceSearch from './components/AdvanceSearch';
+import { IAdvanceSearchProps } from './components/IAdvanceSearchProps';
 import { spfi, SPFx, SPFI } from '@pnp/sp';
 import '@pnp/sp/webs';
 import '@pnp/sp/lists';
 import '@pnp/sp/items';
 import "@pnp/sp/search";
 
-export interface IHelloWorldWebPartProps {
+export interface IAdvanceSearchWebPartProps {
   description: string;
   urldata: string;
 }
 export let sp: SPFI;
-export default class HelloWorldWebPart extends BaseClientSideWebPart<IHelloWorldWebPartProps> {
+export default class AdvanceSearchWebPart extends BaseClientSideWebPart<IAdvanceSearchWebPartProps> {
 
   private _isDarkTheme: boolean = false;
   private _environmentMessage: string = '';
   public render(): void {
-    const element: React.ReactElement<IHelloWorldProps> = React.createElement(
-      HelloWorld,
+    const element: React.ReactElement<IAdvanceSearchProps> = React.createElement(
+      AdvanceSearch,
       {
         description: this.properties.description,
         urlSite: this.properties.urldata,

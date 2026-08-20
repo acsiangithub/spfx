@@ -1,7 +1,7 @@
 {
   "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
   "id": "d2656b99-19a8-4f51-888a-aba97c36605a",
-  "alias": "HelloWorldWebPart",
+  "alias": "AdvanceSearchWebPart",
   "componentType": "WebPart",
 
   // The "*" signifies that the version should be taken from the package.json
@@ -13,16 +13,17 @@
   // https://support.office.com/en-us/article/Turn-scripting-capabilities-on-or-off-1f2c515f-5d7e-448a-9fd7-835da935584f
   "requiresCustomScript": false,
   "supportedHosts": ["SharePointWebPart", "TeamsPersonalApp", "TeamsTab", "SharePointFullPage"],
+  "supportsFullBleed": true,
   "supportsThemeVariants": true,
 
   "preconfiguredEntries": [{
     "groupId": "5c03119e-3074-46fd-976b-c60198311f70", // Advanced
     "group": { "default": "Advanced" },
-    "title": { "default": "HelloWorld" },
-    "description": { "default": "HelloWorld description" },
+    "title": { "default": "AdvanceSearch" },
+    "description": { "default": "Custom Search for Clients & Products" },
     "officeFabricIconFontName": "Page",
     "properties": {
-      "description": "HelloWorld",
+      "description": "AdvanceSearch",
       "urldata": "https://dksh.sharepoint.com/sites/PMDMS/"
     }
   }]

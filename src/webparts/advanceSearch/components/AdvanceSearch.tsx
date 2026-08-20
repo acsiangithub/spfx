@@ -1,6 +1,6 @@
 import * as React from "react";
-import { IHelloWorldProps } from "./IHelloWorldProps";
-import { sp } from "../HelloWorldWebPart";
+import { IAdvanceSearchProps } from "./IAdvanceSearchProps";
+import { sp } from "../AdvanceSearchWebPart";
 import { useMemo } from "react";
 import {
   MaterialReactTable,
@@ -224,7 +224,7 @@ const compactTheme = createTheme({
   },
 });
 
-const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
+const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const [items_AllProducts, setItems_AllProducts] =
     React.useState<doclib_AllProducts[]>([]);
   //const [allRecordsCache, setAllRecordsCache] =
@@ -1214,4 +1214,4 @@ const HelloWorld: React.FC<IHelloWorldProps> = (props) => {
   );
 };
 
-export default HelloWorld;
+export default AdvanceSearch;

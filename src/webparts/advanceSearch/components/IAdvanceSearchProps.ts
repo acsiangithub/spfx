@@ -1,6 +1,6 @@
 //import { IWebPartContext } from '@microsoft/sp-webpart-base';
 import { WebPartContext } from "@microsoft/sp-webpart-base";
-export interface IHelloWorldProps {
+export interface IAdvanceSearchProps {
   description: string;
   urlSite: string;
   isDarkTheme: boolean;

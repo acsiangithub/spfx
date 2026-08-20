@@ -1,4 +1,4 @@
-declare interface IHelloWorldWebPartStrings {
+declare interface IAdvanceSearchWebPartStrings {
   PropertyPaneDescription: string;
   BasicGroupName: string;
   DescriptionFieldLabel: string;
@@ -14,7 +14,7 @@ declare interface IHelloWorldWebPartStrings {
   UnknownEnvironment: string;
 }
 
-declare module 'HelloWorldWebPartStrings' {
-  const strings: IHelloWorldWebPartStrings;
+declare module 'AdvanceSearchWebPartStrings' {
+  const strings: IAdvanceSearchWebPartStrings;
   export = strings;
 }
