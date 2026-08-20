@@ -658,8 +658,11 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             "DocumentDateOWSTDATE",
             "BusinessLineOWSCHCM",
             "CountryOWSCHCM",
-            //"PIMProductNameOWSTEXT",
-            //"PIMProductCodeOWSTEXT",
+            "ManufacturerOWSTEXT",
+            "PIMProductNameOWSTEXT",
+            "PIMProductCodeOWSTEXT",
+            "PIMProductTermSetOWSTEXT"
+            
           ],
         });
 
