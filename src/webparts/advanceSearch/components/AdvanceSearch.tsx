@@ -286,7 +286,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
       const results = await sp.web.lists
         .getByTitle("PIM Product")
-        .items.select("ID", "Title", "PIMProductName", "Manufacturer","BusinessLine")
+        .items.select("ID", "Title", "PIMProductName", "Manufacturer", "BusinessLine")
         .filter(`substringof('${escapedText}', PIMProductName)`)
         .top(5000)();
 
@@ -671,9 +671,12 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             "BusinessLineOWSCHCM",
             "CountryOWSCHCM",
             "ManufacturerOWSTEXT",
-            "PIMProductNameOWSTEXT",
+            "LongProductNameOWSMTXT",
+            "DocumentTypeOWSTEXT",
+            "SubDocumentTypeOWSMTXT",
+            //"PIMProduct*",
+            "owstaxIdPIMProductTermSet",  
             "PIMProductCodeOWSTEXT",
-            "PIMProductTermSetOWSTEXT"
           ],
         });
 
@@ -957,200 +960,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       <div>
         <h2>Search Clients & Products</h2>
 
-      <div
-        className="filter-row-grid"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
-          gap: "12px",
-          marginBottom: "12px",
-        }}
-      >
-        <Autocomplete
-          multiple
-          fullWidth
-          size="small"
-          loading={lookupLoading}
-          options={products}
-          value={selectedProducts}
-          ListboxComponent={ProductListbox}
-          getOptionLabel={(option: IProductLookupItem) =>
-            option
-              ? `${option.Title ?? ""} | ${option.PIMProductName ?? ""}`
-              : ""
-          }
-          isOptionEqualToValue={(option, value) => option.ID === value.ID}
-          onInputChange={handleProductInputChange}
-          onChange={handleProductSelectionChange}
-          renderOption={(props, option) => (
-            <li {...props} key={option.ID}>
-              <Box
-                sx={{
-                  display: "grid",
-                  gridTemplateColumns: "2.2fr 1.3fr 1.2fr",
-                  gap: 0.5,
-                  alignItems: "center",
-                  minWidth: "500px",
-                  width: "100%",
-                  px: 1,
-                  py: 0.25,
-                  fontSize: "11px",
-                }}
-              >
-                <Typography
-                  variant="caption"
-                  sx={{
-                    fontSize: "10.5px",
-                    fontWeight: 600,
-                    whiteSpace: "normal",
-                    overflow: "visible",
-                    textFail: "clip",
-                    wordBreak: "break-word",
-                  }}
-                >
-                  {`${option.Title || ""} | ${option.PIMProductName || ""}`.replace(/\|\s*$/g, "").trim() || "-"}
-                </Typography>
-                <Typography
-                  variant="caption"
-                  sx={{
-                    fontSize: "10.5px",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
-                  {option.Manufacturer || "-"}
-                </Typography>
-                <Typography
-                  variant="caption"
-                  sx={{
-                    fontSize: "10.5px",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
-                  {option.BusinessLine || "-"}
-                </Typography>
-              </Box>
-            </li>
-          )}
-          renderInput={(params) => (
-            <TextField
-              {...params}
-              size="small"
-              label="Product"
-              placeholder="Search product"
-              InputProps={{
-                ...params.InputProps,
-                endAdornment: (
-                  <>
-                    {lookupLoading ? (
-                      <CircularProgress color="inherit" size={20} />
-                    ) : null}
-                    {params.InputProps.endAdornment}
-                  </>
-                ),
-              }}
-            />
-          )}
-        />
-
-        <Autocomplete
-          multiple
-          fullWidth
-          size="small"
-          loading={lookupLoading}
-          options={clients}
-          value={selectedClients}
-          getOptionLabel={(option: IClientLookupItem) =>
-            option ? option.Title : ""
-          }
-          isOptionEqualToValue={(option, value) => option.ID === value.ID}
-          onInputChange={handleClientInputChange}
-          onChange={handleClientSelectionChange}
-          renderInput={(params) => (
-            <TextField
-              {...params}
-              size="small"
-              label="Client"
-              placeholder="Search client"
-              InputProps={{
-                ...params.InputProps,
-                endAdornment: (
-                  <>
-                    {lookupLoading ? (
-                      <CircularProgress color="inherit" size={20} />
-                    ) : null}
-                    {params.InputProps.endAdornment}
-                  </>
-                ),
-              }}
-            />
-          )}
-        />
-      </div>
-
-      <div
-        className="filter-row-grid"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
-          gap: "12px",
-          marginBottom: "12px",
-        }}
-      >
-        <FormControl fullWidth size="small" disabled={documentTypeLoading}>
-          <InputLabel id="document-type-select-label">Document Type</InputLabel>
-          <Select
-            labelId="document-type-select-label"
-            value={selectedDocumentType}
-            label="Document Type"
-            size="small"
-            onChange={(event) => setSelectedDocumentType(event.target.value as string)}
-          >
-            <MenuItem value="">
-              <em>All</em>
-            </MenuItem>
-            {documentTypes.map((item) => (
-              <MenuItem key={item.ID} value={item.Title}>
-                {item.ShortTitle ? `${item.Title} (${item.ShortTitle})` : item.Title}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-
-        <FormControl
-          fullWidth
-          size="small"
-          disabled={!selectedDocumentType || subDocumentTypeLoading}
-        >
-          <InputLabel id="sub-document-type-select-label">
-            Sub Document Type
-          </InputLabel>
-          <Select
-            labelId="sub-document-type-select-label"
-            value={selectedSubDocumentType}
-            label="Sub Document Type"
-            size="small"
-            onChange={(event) =>
-              setSelectedSubDocumentType(event.target.value as string)
-            }
-          >
-            <MenuItem value="">
-              <em>All</em>
-            </MenuItem>
-            {subDocumentTypes.map((item) => (
-              <MenuItem key={item.ID} value={item.Title}>
-                {item.Title}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-      </div>
-
-      <LocalizationProvider dateAdapter={AdapterDayjs}>
         <div
+          className="filter-row-grid"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
@@ -1158,47 +969,239 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             marginBottom: "12px",
           }}
         >
-          <DatePicker
-            label="Document Date From"
-            format="DD/MM/YYYY"
-            value={dateFrom}
-            onChange={(newValue) => setDateFrom(newValue)}
-            slotProps={{
-              textField: { size: "small", fullWidth: true },
-              field: { clearable: true },
-            }}
+          <Autocomplete
+            multiple
+            fullWidth
+            size="small"
+            loading={lookupLoading}
+            options={products}
+            value={selectedProducts}
+            ListboxComponent={ProductListbox}
+            getOptionLabel={(option: IProductLookupItem) =>
+              option
+                ? `${option.Title ?? ""} | ${option.PIMProductName ?? ""}`
+                : ""
+            }
+            isOptionEqualToValue={(option, value) => option.ID === value.ID}
+            onInputChange={handleProductInputChange}
+            onChange={handleProductSelectionChange}
+            renderOption={(props, option) => (
+              <li {...props} key={option.ID}>
+                <Box
+                  sx={{
+                    display: "grid",
+                    gridTemplateColumns: "2.2fr 1.3fr 1.2fr",
+                    gap: 0.5,
+                    alignItems: "center",
+                    minWidth: "500px",
+                    width: "100%",
+                    px: 1,
+                    py: 0.25,
+                    fontSize: "11px",
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontSize: "10.5px",
+                      fontWeight: 600,
+                      whiteSpace: "normal",
+                      overflow: "visible",
+                      textFail: "clip",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    {`${option.Title || ""} | ${option.PIMProductName || ""}`.replace(/\|\s*$/g, "").trim() || "-"}
+                  </Typography>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontSize: "10.5px",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {option.Manufacturer || "-"}
+                  </Typography>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontSize: "10.5px",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {option.BusinessLine || "-"}
+                  </Typography>
+                </Box>
+              </li>
+            )}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                size="small"
+                label="Product"
+                placeholder="Search product"
+                InputProps={{
+                  ...params.InputProps,
+                  endAdornment: (
+                    <>
+                      {lookupLoading ? (
+                        <CircularProgress color="inherit" size={20} />
+                      ) : null}
+                      {params.InputProps.endAdornment}
+                    </>
+                  ),
+                }}
+              />
+            )}
           />
-          <DatePicker
-            label="Document Date To"
-            format="DD/MM/YYYY"
-            value={dateTo}
-            onChange={(newValue) => setDateTo(newValue)}
-            minDate={dateFrom ?? undefined}
-            slotProps={{
-              textField: { size: "small", fullWidth: true },
-              field: { clearable: true },
-            }}
+
+          <Autocomplete
+            multiple
+            fullWidth
+            size="small"
+            loading={lookupLoading}
+            options={clients}
+            value={selectedClients}
+            getOptionLabel={(option: IClientLookupItem) =>
+              option ? option.Title : ""
+            }
+            isOptionEqualToValue={(option, value) => option.ID === value.ID}
+            onInputChange={handleClientInputChange}
+            onChange={handleClientSelectionChange}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                size="small"
+                label="Client"
+                placeholder="Search client"
+                InputProps={{
+                  ...params.InputProps,
+                  endAdornment: (
+                    <>
+                      {lookupLoading ? (
+                        <CircularProgress color="inherit" size={20} />
+                      ) : null}
+                      {params.InputProps.endAdornment}
+                    </>
+                  ),
+                }}
+              />
+            )}
           />
         </div>
-      </LocalizationProvider>
 
-      <div
-        style={{
-          marginBottom: "16px",
-          width: "100%",
-        }}
-      >
-        <TextField
-          fullWidth
-          size="small"
-          label="Additional Keyword"
-          placeholder="Optional keyword"
-          value={additionalKeyword}
-          onChange={(e) => setAdditionalKeyword(e.target.value)}
-        />
-      </div>
+        <div
+          className="filter-row-grid"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
+            gap: "12px",
+            marginBottom: "12px",
+          }}
+        >
+          <FormControl fullWidth size="small" disabled={documentTypeLoading}>
+            <InputLabel id="document-type-select-label">Document Type</InputLabel>
+            <Select
+              labelId="document-type-select-label"
+              value={selectedDocumentType}
+              label="Document Type"
+              size="small"
+              onChange={(event) => setSelectedDocumentType(event.target.value as string)}
+            >
+              <MenuItem value="">
+                <em>All</em>
+              </MenuItem>
+              {documentTypes.map((item) => (
+                <MenuItem key={item.ID} value={item.Title}>
+                  {item.ShortTitle ? `${item.Title} (${item.ShortTitle})` : item.Title}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
 
-      <style>{`
+          <FormControl
+            fullWidth
+            size="small"
+            disabled={!selectedDocumentType || subDocumentTypeLoading}
+          >
+            <InputLabel id="sub-document-type-select-label">
+              Sub Document Type
+            </InputLabel>
+            <Select
+              labelId="sub-document-type-select-label"
+              value={selectedSubDocumentType}
+              label="Sub Document Type"
+              size="small"
+              onChange={(event) =>
+                setSelectedSubDocumentType(event.target.value as string)
+              }
+            >
+              <MenuItem value="">
+                <em>All</em>
+              </MenuItem>
+              {subDocumentTypes.map((item) => (
+                <MenuItem key={item.ID} value={item.Title}>
+                  {item.Title}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </div>
+
+        <LocalizationProvider dateAdapter={AdapterDayjs}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
+              gap: "12px",
+              marginBottom: "12px",
+            }}
+          >
+            <DatePicker
+              label="Document Date From"
+              format="DD/MM/YYYY"
+              value={dateFrom}
+              onChange={(newValue) => setDateFrom(newValue)}
+              slotProps={{
+                textField: { size: "small", fullWidth: true },
+                field: { clearable: true },
+              }}
+            />
+            <DatePicker
+              label="Document Date To"
+              format="DD/MM/YYYY"
+              value={dateTo}
+              onChange={(newValue) => setDateTo(newValue)}
+              minDate={dateFrom ?? undefined}
+              slotProps={{
+                textField: { size: "small", fullWidth: true },
+                field: { clearable: true },
+              }}
+            />
+          </div>
+        </LocalizationProvider>
+
+        <div
+          style={{
+            marginBottom: "16px",
+            width: "100%",
+          }}
+        >
+          <TextField
+            fullWidth
+            size="small"
+            label="Additional Keyword"
+            placeholder="Optional keyword"
+            value={additionalKeyword}
+            onChange={(e) => setAdditionalKeyword(e.target.value)}
+          />
+        </div>
+
+        <style>{`
         @media (max-width: 768px) {
           .filter-row-grid {
             grid-template-columns: 1fr !important;
@@ -1206,21 +1209,21 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         }
       `}</style>
 
-      <div style={{ marginBottom: "16px" }}>
-        <Button
-          variant="contained"
-          color="primary"
-          size="small"
-          onClick={handleSearch}
-          disabled={resultsLoading}
-        >
-          {resultsLoading ? "Searching..." : "Search"}
-        </Button>
-      </div>
+        <div style={{ marginBottom: "16px" }}>
+          <Button
+            variant="contained"
+            color="primary"
+            size="small"
+            onClick={handleSearch}
+            disabled={resultsLoading}
+          >
+            {resultsLoading ? "Searching..." : "Search"}
+          </Button>
+        </div>
 
-      <LocalizationProvider dateAdapter={AdapterDayjs}>
-        <MaterialReactTable table={table} />
-      </LocalizationProvider>
+        <LocalizationProvider dateAdapter={AdapterDayjs}>
+          <MaterialReactTable table={table} />
+        </LocalizationProvider>
 
         <div style={{ marginTop: "16px" }}>
           <a
