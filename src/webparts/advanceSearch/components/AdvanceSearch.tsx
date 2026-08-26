@@ -72,64 +72,40 @@ const choiceToString = (value: string | string[] | undefined | null): string => 
 const sanitizeKqlValue = (value: string): string =>
   value.replace(/"/g, '\\"').trim();
 
-const documentDateRangeFilter = (
+const documentDateFilter = (
   row: { getValue: (columnId: string) => unknown },
   columnId: string,
   filterValue: unknown
 ): boolean => {
-  const toTime = (value: unknown): number => {
-    if (!value) return NaN;
-    if (value instanceof Date) return value.getTime();
-    return new Date(value as string | number).getTime();
-  };
-
   const rowValue = row.getValue(columnId);
-  const rowTime = toTime(rowValue);
+  if (!rowValue || !filterValue) return true;
 
-  if (!Array.isArray(filterValue)) return true;
+  const rowDate = dayjs(rowValue as string | Date);
+  const filterDate = dayjs(filterValue as string);
 
-  const [fromValue, toValue] = filterValue as [unknown, unknown];
-  const hasDateFilter = Boolean(fromValue || toValue);
-  if (!hasDateFilter) return true;
-  if (isNaN(rowTime)) return false;
+  if (!rowDate.isValid() || !filterDate.isValid()) return true;
 
-  const fromTime = fromValue ? toTime(fromValue) : -Infinity;
-  const toTimeValue = toValue ? toTime(toValue) : Infinity;
-
-  return (
-    !isNaN(fromTime) &&
-    !isNaN(toTimeValue) &&
-    rowTime >= fromTime &&
-    rowTime <= toTimeValue
-  );
+  return rowDate.isSame(filterDate, "day") || rowDate.isAfter(filterDate, "day");
 };
 
 const DocumentDateFilter: React.FC<{
   column: { getFilterValue: () => unknown; setFilterValue: (value: unknown) => void };
-  rangeFilterIndex?: number;
-}> = ({ column, rangeFilterIndex = 0 }) => {
-  const filterValues = Array.isArray(column.getFilterValue())
-    ? (column.getFilterValue() as [unknown, unknown])
-    : [undefined, undefined];
-  const filterValue = filterValues[rangeFilterIndex];
-  const pickerValue = filterValue ? dayjs(filterValue as string | number | Date) : null;
+}> = ({ column }) => {
+  const filterValue = column.getFilterValue() as string | null;
+  const pickerValue = filterValue ? dayjs(filterValue) : null;
 
   return (
     <DatePicker
       format="DD/MM/YYYY"
+      label="Min Date"
       value={pickerValue && pickerValue.isValid() ? pickerValue : null}
       onChange={(newValue) => {
-        const nextValues = [...filterValues];
-        nextValues[rangeFilterIndex] = newValue?.isValid()
-          ? newValue.toISOString()
-          : undefined;
-        column.setFilterValue(nextValues);
+        column.setFilterValue(newValue?.isValid() ? newValue.toISOString() : undefined);
       }}
       slotProps={{
         field: { clearable: true },
         textField: {
           size: "small",
-          placeholder: rangeFilterIndex === 0 ? "From" : "To",
           sx: {
             width: "100%",
             minWidth: "130px",
@@ -762,6 +738,36 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     }
   };
 
+  const businessLineOptions = useMemo(
+    () => {
+      const unique = new Set<string>();
+      items_AllProducts.forEach((item) => {
+        if (item.BusinessLine) {
+          item.BusinessLine.split(",").forEach((val) => unique.add(val.trim()));
+        }
+      });
+      const result: string[] = [];
+      unique.forEach((val) => result.push(val));
+      return result.sort();
+    },
+    [items_AllProducts]
+  );
+
+  const countryOptions = useMemo(
+    () => {
+      const unique = new Set<string>();
+      items_AllProducts.forEach((item) => {
+        if (item.CountrySoldTo) {
+          item.CountrySoldTo.split(",").forEach((val) => unique.add(val.trim()));
+        }
+      });
+      const result: string[] = [];
+      unique.forEach((val) => result.push(val));
+      return result.sort();
+    },
+    [items_AllProducts]
+  );
+
   const columns_AllProducts = useMemo<MRT_ColumnDef<doclib_AllProducts>[]>(
     () => [
       {
@@ -868,28 +874,48 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       {
         accessorKey: "BusinessLine",
         header: "Business Line",
-        filterFn: "contains",
+        filterVariant: "multi-select",
+        filterSelectOptions: businessLineOptions,
         size: 140,
         minSize: 140,
+        Cell: ({ cell }) => (
+          <div>
+            {String(cell.getValue() || "")
+              .split(",")
+              .filter(Boolean)
+              .map((item, idx) => (
+                <div key={idx}>{item.trim()}</div>
+              ))}
+          </div>
+        ),
       },
       {
         accessorKey: "CountrySoldTo",
         header: "Country Sold To",
-        filterFn: "contains",
+        filterVariant: "multi-select",
+        filterSelectOptions: countryOptions,
         size: 165,
         minSize: 165,
+        Cell: ({ cell }) => (
+          <div>
+            {String(cell.getValue() || "")
+              .split(",")
+              .filter(Boolean)
+              .map((item, idx) => (
+                <div key={idx}>{item.trim()}</div>
+              ))}
+          </div>
+        ),
       },
       {
         accessorKey: "DocumentDate",
         header: "Document Date",
         size: 360,
         minSize: 360,
-        filterVariant: "date-range",
-        filterFn: documentDateRangeFilter,
-        Filter: ({ column, rangeFilterIndex }) => (
+        filterFn: documentDateFilter,
+        Filter: ({ column }) => (
           <DocumentDateFilter
             column={column}
-            rangeFilterIndex={rangeFilterIndex}
           />
         ),
         Cell: ({ cell }) => {
@@ -903,7 +929,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         },
       },
     ],
-    [props.urlSite]
+    [props.urlSite, businessLineOptions, countryOptions]
   );
 
   const table = useMaterialReactTable({
