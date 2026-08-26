@@ -768,6 +768,21 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     [items_AllProducts]
   );
 
+  const documentTypeOptions = useMemo(
+    () => {
+      const unique = new Set<string>();
+      items_AllProducts.forEach((item) => {
+        if (item.DocumentTypeSearchText) {
+          unique.add(item.DocumentTypeSearchText.trim());
+        }
+      });
+      const result: string[] = [];
+      unique.forEach((val) => result.push(val));
+      return result.sort();
+    },
+    [items_AllProducts]
+  );
+
   const columns_AllProducts = useMemo<MRT_ColumnDef<doclib_AllProducts>[]>(
     () => [
       {
@@ -850,7 +865,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       {
         accessorKey: "DocumentTypeSearchText",
         header: "Document Type",
-        filterFn: "contains",
+        filterVariant: "multi-select",
+        filterSelectOptions: documentTypeOptions,
         size: 150,
         minSize: 150,
       },
@@ -910,8 +926,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       {
         accessorKey: "DocumentDate",
         header: "Document Date",
-        size: 360,
-        minSize: 360,
+        size: 100,
+        minSize: 100,
         filterFn: documentDateFilter,
         Filter: ({ column }) => (
           <DocumentDateFilter
@@ -929,7 +945,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         },
       },
     ],
-    [props.urlSite, businessLineOptions, countryOptions]
+    [props.urlSite, businessLineOptions, countryOptions, documentTypeOptions]
   );
 
   const table = useMaterialReactTable({
