@@ -783,6 +783,21 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     [items_AllProducts]
   );
 
+  const subDocumentTypeOptions = useMemo(
+    () => {
+      const unique = new Set<string>();
+      items_AllProducts.forEach((item) => {
+        if (item.SubDocumentTypeSearchText) {
+          item.SubDocumentTypeSearchText.split(",").forEach((val) => unique.add(val.trim()));
+        }
+      });
+      const result: string[] = [];
+      unique.forEach((val) => result.push(val));
+      return result.sort();
+    },
+    [items_AllProducts]
+  );
+
   const columns_AllProducts = useMemo<MRT_ColumnDef<doclib_AllProducts>[]>(
     () => [
       {
@@ -873,18 +888,19 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       {
         accessorKey: "SubDocumentTypeSearchText",
         header: "Sub Document Type",
-        filterFn: "contains",
+        filterVariant: "multi-select",
+        filterSelectOptions: subDocumentTypeOptions,
         size: 175,
         minSize: 175,
         Cell: ({ cell }) => (
-          <>
+          <div>
             {String(cell.getValue() || "")
-              .split(";")
+              .split(",")
               .filter(Boolean)
               .map((item, idx) => (
                 <div key={idx}>{item.trim()}</div>
               ))}
-          </>
+          </div>
         ),
       },
       {
@@ -945,7 +961,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         },
       },
     ],
-    [props.urlSite, businessLineOptions, countryOptions, documentTypeOptions]
+    [props.urlSite, businessLineOptions, countryOptions, documentTypeOptions, subDocumentTypeOptions]
   );
 
   const table = useMaterialReactTable({
