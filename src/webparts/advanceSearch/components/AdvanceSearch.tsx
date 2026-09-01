@@ -1,6 +1,8 @@
 import * as React from "react";
 import { IAdvanceSearchProps } from "./IAdvanceSearchProps";
 import { sp } from "../AdvanceSearchWebPart";
+import "@pnp/sp/sharing";
+import { SharingRole } from "@pnp/sp/sharing";
 import { useMemo } from "react";
 import {
   MaterialReactTable,
@@ -34,9 +36,13 @@ import dayjs, { Dayjs } from "dayjs";
 const EmailShareDialog: React.FC<{
   open: boolean;
   onClose: () => void;
-}> = ({ open, onClose }) => {
-  const [emailFields, setEmailFields] = React.useState({ to: "", cc: "", bcc: "" });
+  selectedItems?: any[];
+  siteUrl: string;
+}> = ({ open, onClose, selectedItems = [], siteUrl }) => {
+  const [emailFields, setEmailFields] = React.useState({ to: "", cc: "", bcc: "", subject: "", message: "" });
   const [emailErrors, setEmailErrors] = React.useState({ to: "", cc: "", bcc: "" });
+  const [shareErrorMessage, setShareErrorMessage] = React.useState<string>("");
+  const [isSharing, setIsSharing] = React.useState(false);
 
   const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
@@ -52,7 +58,7 @@ const EmailShareDialog: React.FC<{
     return invalidEmail ? `Invalid email: ${invalidEmail}` : "";
   };
 
-  const handleEmailChange = (field: "to" | "cc" | "bcc", value: string) => {
+  const handleEmailChange = (field: string, value: string) => {
     setEmailFields((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -62,20 +68,57 @@ const EmailShareDialog: React.FC<{
   };
 
   const handleClose = () => {
-    setEmailFields({ to: "", cc: "", bcc: "" });
+    setEmailFields({ to: "", cc: "", bcc: "", subject: "", message: "" });
     setEmailErrors({ to: "", cc: "", bcc: "" });
+    setShareErrorMessage("");
     onClose();
   };
 
-  const handleSend = () => {
+  const externalShareFiles = async (recipientEmails: string[]) => {
+    const origin = window.location.origin;
+    for (const item of selectedItems) {
+      const itemUrl: string = item.fileUrl || "";
+      const fullUrl = itemUrl.startsWith("http") ? itemUrl : `${origin}${itemUrl}`;
+
+      const result = await sp.web.shareObject(
+        fullUrl,
+        recipientEmails,
+        SharingRole.View,
+        {
+          subject: emailFields.subject || "Shared document",
+          body: emailFields.message || "Please find the attached document.",
+        }
+      );
+
+      if (result && result.ErrorMessage) {
+        throw new Error(result.ErrorMessage);
+      }
+    }
+  };
+
+  const handleSend = async () => {
     const toError = validateEmailField("to", emailFields.to);
     const ccError = validateEmailField("cc", emailFields.cc);
     const bbcError = validateEmailField("bcc", emailFields.bcc);
     
     if (!toError && !ccError && !bbcError && emailFields.to) {
-      // Send logic here
-      console.log("Sending emails to:", emailFields);
-      handleClose();
+      setIsSharing(true);
+      setShareErrorMessage("");
+      try {
+        const allEmails = [
+          ...emailFields.to.split(/[;,]/).map((e) => e.trim()).filter(Boolean),
+          ...emailFields.cc.split(/[;,]/).map((e) => e.trim()).filter(Boolean),
+          ...emailFields.bcc.split(/[;,]/).map((e) => e.trim()).filter(Boolean),
+        ];
+        await externalShareFiles(allEmails);
+        alert("Files shared successfully!");
+        handleClose();
+      } catch (error: any) {
+        console.error("Error during sharing:", error);
+        setShareErrorMessage(error?.message || "Failed to share files. Please verify permissions.");
+      } finally {
+        setIsSharing(false);
+      }
     } else {
       setEmailErrors({ to: toError, cc: ccError, bcc: bbcError });
     }
@@ -85,6 +128,11 @@ const EmailShareDialog: React.FC<{
     <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
       <DialogTitle>Share Selected Items</DialogTitle>
       <DialogContent>
+        {shareErrorMessage && (
+          <Typography color="error" variant="body2" sx={{ mb: 1, p: 1, backgroundColor: "#ffebee", borderRadius: "4px" }}>
+            {shareErrorMessage}
+          </Typography>
+        )}
         <TextField
           fullWidth
           label="To"
@@ -115,14 +163,30 @@ const EmailShareDialog: React.FC<{
           helperText={emailErrors.bcc}
           margin="dense"
         />
+        <TextField
+          fullWidth
+          label="Subject"
+          value={emailFields.subject}
+          onChange={(e) => handleEmailChange("subject", e.target.value)}
+          margin="dense"
+        />
+        <TextField
+          fullWidth
+          label="Message"
+          value={emailFields.message}
+          onChange={(e) => handleEmailChange("message", e.target.value)}
+          margin="dense"
+          multiline
+          rows={4}
+        />
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose}>Cancel</Button>
         <Button
           onClick={handleSend}
-          disabled={!emailFields.to || !!emailErrors.to || !!emailErrors.cc || !!emailErrors.bcc}
+          disabled={!emailFields.to || !!emailErrors.to || !!emailErrors.cc || !!emailErrors.bcc || isSharing}
         >
-          Send
+          {isSharing ? "Sharing..." : "Send"}
         </Button>
       </DialogActions>
     </Dialog>
@@ -355,6 +419,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const [subDocumentTypeLoading, setSubDocumentTypeLoading] =
     React.useState(false);
   const [isShareDialogOpen, setIsShareDialogOpen] = React.useState(false);
+  const [selectedRowsData, setSelectedRowsData] = React.useState<any[]>([]);
 
   const searchProducts = async (searchText: string) => {
     if (searchText.trim().length < 3) {
@@ -1081,7 +1146,11 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         <IconButton
           color="primary"
           disabled={table.getSelectedRowModel().rows.length === 0}
-          onClick={() => setIsShareDialogOpen(true)}
+          onClick={() => {
+            const selectedRows = table.getSelectedRowModel().rows.map(row => row.original);
+            setSelectedRowsData(selectedRows);
+            setIsShareDialogOpen(true);
+          }}
           title="Share Selected"
         >
           <ShareIcon />
@@ -1422,7 +1491,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           </a>
         </div>
 
-        <EmailShareDialog open={isShareDialogOpen} onClose={() => setIsShareDialogOpen(false)} />
+        <EmailShareDialog open={isShareDialogOpen} onClose={() => setIsShareDialogOpen(false)} selectedItems={selectedRowsData} siteUrl={props.urlSite} />
       </div>
     </ThemeProvider>
   );
