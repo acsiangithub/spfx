@@ -43,6 +43,7 @@ type IProductLookupItem = {
   PIMProductName: string;
   Manufacturer?: string;
   BusinessLine?: string;
+  ManufacturerLookupId?:number;
 };
 
 type IClientLookupItem = {
@@ -262,7 +263,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
       const results = await sp.web.lists
         .getByTitle("PIM Product")
-        .items.select("ID", "Title", "PIMProductName", "Manufacturer", "BusinessLine")
+        .items.select("ID", "Title", "PIMProductName", "Manufacturer", "BusinessLine","ManufacturerLookupId")
         .filter(`substringof('${escapedText}', PIMProductName)`)
         .top(5000)();
 
@@ -1013,6 +1014,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     },
   });
 
+  
   return (
     <ThemeProvider theme={compactTheme}>
       <div>
@@ -1272,7 +1274,10 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             variant="contained"
             color="primary"
             size="small"
-            onClick={handleSearch}
+            onClick={() => {
+              handleSearch();
+              table.setIsFullScreen(true);
+            }}
             disabled={resultsLoading}
           >
             {resultsLoading ? "Searching..." : "Search"}
