@@ -40,10 +40,19 @@ const EmailShareDialog: React.FC<{
   siteUrl: string;
   defaultSubject?: string;
   defaultMessage?: string;
-}> = ({ open, onClose, selectedItems = [], siteUrl, defaultSubject = "", defaultMessage = "" }) => {
+  currentUserEmail?: string;
+}> = ({
+  open,
+  onClose,
+  selectedItems = [],
+  siteUrl,
+  defaultSubject = "",
+  defaultMessage = "",
+  currentUserEmail = "",
+}) => {
   const [emailFields, setEmailFields] = React.useState({
     to: "",
-    cc: "",
+    cc: currentUserEmail,
     bcc: "",
     subject: defaultSubject,
     message: defaultMessage,
@@ -56,11 +65,12 @@ const EmailShareDialog: React.FC<{
     if (open) {
       setEmailFields((prev) => ({
         ...prev,
+        cc: prev.cc || currentUserEmail,
         subject: defaultSubject,
         message: defaultMessage,
       }));
     }
-  }, [open, defaultSubject, defaultMessage]);
+  }, [open, defaultSubject, defaultMessage, currentUserEmail]);
 
   const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
@@ -86,25 +96,39 @@ const EmailShareDialog: React.FC<{
   };
 
   const handleClose = () => {
-    setEmailFields({ to: "", cc: "", bcc: "", subject: "", message: "" });
+    setEmailFields({ to: "", cc: currentUserEmail, bcc: "", subject: "", message: "" });
     setEmailErrors({ to: "", cc: "", bcc: "" });
     setShareErrorMessage("");
     onClose();
   };
 
-  const externalShareFiles = async (recipientEmails: string[]) => {
+  const externalShareFiles = async (
+    toEmails: string[],
+    ccEmails: string[],
+    bccEmails: string[]
+  ) => {
     const origin = window.location.origin;
-    for (const item of selectedItems) {
+    const allRecipients = Array.from(new Set([...toEmails, ...ccEmails, ...bccEmails]));
+
+    // Format custom message (ensuring it stays within SharePoint's 500-char limit)
+    let cleanMessage = (emailFields.message || "").replace(/{}/g, "").trim();
+    if (cleanMessage.length > 490) {
+      cleanMessage = cleanMessage.substring(0, 487) + "...";
+    }
+
+    // Share each file using PnPjs shareObject with custom subject and body
+    for (let index = 0; index < selectedItems.length; index++) {
+      const item = selectedItems[index];
       const itemUrl: string = item.fileUrl || "";
       const fullUrl = itemUrl.startsWith("http") ? itemUrl : `${origin}${itemUrl}`;
 
       const result = await sp.web.shareObject(
         fullUrl,
-        recipientEmails,
+        allRecipients,
         SharingRole.View,
         {
-          subject: emailFields.subject || "Shared document",
-          body: emailFields.message || "Please find the attached document.",
+          subject: (emailFields.subject || "Shared document").substring(0, 200),
+          body: cleanMessage || "Please find the shared document.",
         }
       );
 
@@ -123,13 +147,12 @@ const EmailShareDialog: React.FC<{
       setIsSharing(true);
       setShareErrorMessage("");
       try {
-        const allEmails = [
-          ...emailFields.to.split(/[;,]/).map((e) => e.trim()).filter(Boolean),
-          ...emailFields.cc.split(/[;,]/).map((e) => e.trim()).filter(Boolean),
-          ...emailFields.bcc.split(/[;,]/).map((e) => e.trim()).filter(Boolean),
-        ];
-        await externalShareFiles(allEmails);
-        alert("Files shared successfully!");
+        const toEmails = emailFields.to.split(/[;,]/).map((e) => e.trim()).filter(Boolean);
+        const ccEmails = emailFields.cc.split(/[;,]/).map((e) => e.trim()).filter(Boolean);
+        const bccEmails = emailFields.bcc.split(/[;,]/).map((e) => e.trim()).filter(Boolean);
+
+        await externalShareFiles(toEmails, ccEmails, bccEmails);
+        alert(`Successfully shared ${selectedItems.length} file(s)!`);
         handleClose();
       } catch (error: any) {
         console.error("Error during sharing:", error);
@@ -1233,7 +1256,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       },
     },
     muiPaginationProps: {
-      rowsPerPageOptions: [50, 100, 500, 1000],
+      rowsPerPageOptions: [10, 50, 100, 500, 1000],
       sx: {
         ".MuiTablePagination-selectLabel, .MuiTablePagination-displayedRows": {
           fontSize: "13px",
@@ -1541,6 +1564,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           siteUrl={props.urlSite}
           defaultSubject={sharingConfig.subject}
           defaultMessage={sharingConfig.message}
+          currentUserEmail={props.context?.pageContext?.user?.email || ""}
         />
       </div>
     </ThemeProvider>
