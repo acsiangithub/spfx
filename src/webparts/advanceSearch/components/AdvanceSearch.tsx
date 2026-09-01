@@ -38,11 +38,29 @@ const EmailShareDialog: React.FC<{
   onClose: () => void;
   selectedItems?: any[];
   siteUrl: string;
-}> = ({ open, onClose, selectedItems = [], siteUrl }) => {
-  const [emailFields, setEmailFields] = React.useState({ to: "", cc: "", bcc: "", subject: "", message: "" });
+  defaultSubject?: string;
+  defaultMessage?: string;
+}> = ({ open, onClose, selectedItems = [], siteUrl, defaultSubject = "", defaultMessage = "" }) => {
+  const [emailFields, setEmailFields] = React.useState({
+    to: "",
+    cc: "",
+    bcc: "",
+    subject: defaultSubject,
+    message: defaultMessage,
+  });
   const [emailErrors, setEmailErrors] = React.useState({ to: "", cc: "", bcc: "" });
   const [shareErrorMessage, setShareErrorMessage] = React.useState<string>("");
   const [isSharing, setIsSharing] = React.useState(false);
+
+  React.useEffect(() => {
+    if (open) {
+      setEmailFields((prev) => ({
+        ...prev,
+        subject: defaultSubject,
+        message: defaultMessage,
+      }));
+    }
+  }, [open, defaultSubject, defaultMessage]);
 
   const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
@@ -420,6 +438,10 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     React.useState(false);
   const [isShareDialogOpen, setIsShareDialogOpen] = React.useState(false);
   const [selectedRowsData, setSelectedRowsData] = React.useState<any[]>([]);
+  const [sharingConfig, setSharingConfig] = React.useState<{ subject: string; message: string }>({
+    subject: "",
+    message: "",
+  });
 
   const searchProducts = async (searchText: string) => {
     if (searchText.trim().length < 3) {
@@ -514,7 +536,28 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       }
     };
 
+    const loadSharingConfiguration = async (): Promise<void> => {
+      try {
+        const items = await sp.web.lists
+          .getByTitle("Configuration")
+          .items.select("Title", "Subject", "Message")
+          .filter("Title eq 'External Sharing'")
+          .top(1)();
+
+        if (items && items.length > 0) {
+          const config = items[0];
+          setSharingConfig({
+            subject: config.Subject ?? "",
+            message: config.Message ?? "",
+          });
+        }
+      } catch (err) {
+        console.warn("Could not load 'Configuration' list item for 'External Sharing':", err);
+      }
+    };
+
     void loadDocumentTypes();
+    void loadSharingConfiguration();
   }, []);
 
   React.useEffect(() => {
@@ -1491,7 +1534,14 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           </a>
         </div>
 
-        <EmailShareDialog open={isShareDialogOpen} onClose={() => setIsShareDialogOpen(false)} selectedItems={selectedRowsData} siteUrl={props.urlSite} />
+        <EmailShareDialog
+          open={isShareDialogOpen}
+          onClose={() => setIsShareDialogOpen(false)}
+          selectedItems={selectedRowsData}
+          siteUrl={props.urlSite}
+          defaultSubject={sharingConfig.subject}
+          defaultMessage={sharingConfig.message}
+        />
       </div>
     </ThemeProvider>
   );
