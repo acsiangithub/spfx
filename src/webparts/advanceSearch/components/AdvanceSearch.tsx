@@ -14,6 +14,10 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import ShareIcon from "@mui/icons-material/Share";
+import Dialog from "@mui/material/Dialog";
+import DialogTitle from "@mui/material/DialogTitle";
+import DialogContent from "@mui/material/DialogContent";
+import DialogActions from "@mui/material/DialogActions";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
@@ -25,6 +29,105 @@ import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import dayjs, { Dayjs } from "dayjs";
+
+// Email Share Dialog Component with isolated state
+const EmailShareDialog: React.FC<{
+  open: boolean;
+  onClose: () => void;
+}> = ({ open, onClose }) => {
+  const [emailFields, setEmailFields] = React.useState({ to: "", cc: "", bcc: "" });
+  const [emailErrors, setEmailErrors] = React.useState({ to: "", cc: "", bcc: "" });
+
+  const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  const validateEmailField = (field: "to" | "cc" | "bcc", value: string): string => {
+    const emails = value.split(/[;,]/).map((e) => e.trim()).filter(Boolean);
+    let invalidEmail = "";
+    for (let i = 0; i < emails.length; i++) {
+      if (!validateEmail(emails[i])) {
+        invalidEmail = emails[i];
+        break;
+      }
+    }
+    return invalidEmail ? `Invalid email: ${invalidEmail}` : "";
+  };
+
+  const handleEmailChange = (field: "to" | "cc" | "bcc", value: string) => {
+    setEmailFields((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleEmailBlur = (field: "to" | "cc" | "bcc") => {
+    const error = validateEmailField(field, emailFields[field]);
+    setEmailErrors((prev) => ({ ...prev, [field]: error }));
+  };
+
+  const handleClose = () => {
+    setEmailFields({ to: "", cc: "", bcc: "" });
+    setEmailErrors({ to: "", cc: "", bcc: "" });
+    onClose();
+  };
+
+  const handleSend = () => {
+    const toError = validateEmailField("to", emailFields.to);
+    const ccError = validateEmailField("cc", emailFields.cc);
+    const bbcError = validateEmailField("bcc", emailFields.bcc);
+    
+    if (!toError && !ccError && !bbcError && emailFields.to) {
+      // Send logic here
+      console.log("Sending emails to:", emailFields);
+      handleClose();
+    } else {
+      setEmailErrors({ to: toError, cc: ccError, bcc: bbcError });
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
+      <DialogTitle>Share Selected Items</DialogTitle>
+      <DialogContent>
+        <TextField
+          fullWidth
+          label="To"
+          value={emailFields.to}
+          onChange={(e) => handleEmailChange("to", e.target.value)}
+          onBlur={() => handleEmailBlur("to")}
+          error={!!emailErrors.to}
+          helperText={emailErrors.to}
+          margin="dense"
+        />
+        <TextField
+          fullWidth
+          label="CC"
+          value={emailFields.cc}
+          onChange={(e) => handleEmailChange("cc", e.target.value)}
+          onBlur={() => handleEmailBlur("cc")}
+          error={!!emailErrors.cc}
+          helperText={emailErrors.cc}
+          margin="dense"
+        />
+        <TextField
+          fullWidth
+          label="BCC"
+          value={emailFields.bcc}
+          onChange={(e) => handleEmailChange("bcc", e.target.value)}
+          onBlur={() => handleEmailBlur("bcc")}
+          error={!!emailErrors.bcc}
+          helperText={emailErrors.bcc}
+          margin="dense"
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={handleClose}>Cancel</Button>
+        <Button
+          onClick={handleSend}
+          disabled={!emailFields.to || !!emailErrors.to || !!emailErrors.cc || !!emailErrors.bcc}
+        >
+          Send
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
 
 type doclib_AllProducts = {
   filename: string;
@@ -251,6 +354,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const [documentTypeLoading, setDocumentTypeLoading] = React.useState(false);
   const [subDocumentTypeLoading, setSubDocumentTypeLoading] =
     React.useState(false);
+  const [isShareDialogOpen, setIsShareDialogOpen] = React.useState(false);
 
   const searchProducts = async (searchText: string) => {
     if (searchText.trim().length < 3) {
@@ -977,9 +1081,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         <IconButton
           color="primary"
           disabled={table.getSelectedRowModel().rows.length === 0}
-          onClick={() => {
-            console.log("Share selected rows:", table.getSelectedRowModel().rows);
-          }}
+          onClick={() => setIsShareDialogOpen(true)}
           title="Share Selected"
         >
           <ShareIcon />
@@ -1319,6 +1421,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             REFRESH ALL RECORDS
           </a>
         </div>
+
+        <EmailShareDialog open={isShareDialogOpen} onClose={() => setIsShareDialogOpen(false)} />
       </div>
     </ThemeProvider>
   );
