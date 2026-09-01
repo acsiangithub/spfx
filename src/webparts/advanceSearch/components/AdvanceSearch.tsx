@@ -12,6 +12,8 @@ import Autocomplete from "@mui/material/Autocomplete";
 import TextField from "@mui/material/TextField";
 import CircularProgress from "@mui/material/CircularProgress";
 import Button from "@mui/material/Button";
+import IconButton from "@mui/material/IconButton";
+import ShareIcon from "@mui/icons-material/Share";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
@@ -968,6 +970,22 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const table = useMaterialReactTable({
     columns: columns_AllProducts,
     data: items_AllProducts,
+    enableRowSelection: true,
+    positionToolbarAlertBanner: "none",
+    renderTopToolbarCustomActions: ({ table }) => (
+      <Box sx={{ display: "flex", gap: "8px" }}>
+        <IconButton
+          color="primary"
+          disabled={table.getSelectedRowModel().rows.length === 0}
+          onClick={() => {
+            console.log("Share selected rows:", table.getSelectedRowModel().rows);
+          }}
+          title="Share Selected"
+        >
+          <ShareIcon />
+        </IconButton>
+      </Box>
+    ),
     enableGrouping: true,
     enableColumnDragging: true,
     enableColumnResizing: true,
