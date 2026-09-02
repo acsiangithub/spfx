@@ -23,9 +23,11 @@ import DialogActions from "@mui/material/DialogActions";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
+import Menu from "@mui/material/Menu";
 import Select from "@mui/material/Select";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
+import CloseIcon from "@mui/icons-material/Close";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -235,6 +237,7 @@ const EmailShareDialog: React.FC<{
 };
 
 type doclib_AllProducts = {
+  id?: number;
   filename: string;
   PIMProduct: IProductLookupItem[];
   PIMProductSearchText: string;
@@ -465,6 +468,11 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     subject: "",
     message: "",
   });
+
+  // State for File Context Menu & Edit Modal Dialog
+  const [fileMenuAnchorEl, setFileMenuAnchorEl] = React.useState<null | HTMLElement>(null);
+  const [selectedFileForAction, setSelectedFileForAction] = React.useState<doclib_AllProducts | null>(null);
+  const [editModalUrl, setEditModalUrl] = React.useState<string | null>(null);
 
   const searchProducts = async (searchText: string) => {
     if (searchText.trim().length < 3) {
@@ -737,6 +745,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       }
 
       const mappedData: doclib_AllProducts[] = allProducts.map((item: any) => ({
+        id: item.Id,
         filename: item.FileLeafRef ?? "",
         fileUrl: item.FileRef,
         PIMProduct: item.PIMProductCode ?? [],
@@ -952,6 +961,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       }
 
       const mappedData: doclib_AllProducts[] = allProducts.map((item: any) => ({
+        id: item.Id,
         filename: item.FileLeafRef ?? "",
         fileUrl: item.FileRef,
         PIMProduct: item.PIMProductCode ?? [],
@@ -1045,19 +1055,19 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         minSize: 140,
         filterFn: "contains",
         Cell: ({ row }) => {
-          const fileUrl = `${props.urlSite}Products/${encodeURIComponent(
-            row.original.filename
-          )}`;
           const displayName =
             row.original.filename.length > 20
               ? `${row.original.filename.slice(0, 17)}...`
               : row.original.filename;
 
           return (
-            <a
-              href={fileUrl}
-              target="_blank"
-              rel="noopener noreferrer"
+            <span
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setSelectedFileForAction(row.original);
+                setFileMenuAnchorEl(e.currentTarget);
+              }}
               title={row.original.filename}
               style={{
                 display: "inline-block",
@@ -1065,10 +1075,13 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
+                color: "#1976d2",
+                textDecoration: "underline",
+                cursor: "pointer",
               }}
             >
               {displayName}
-            </a>
+            </span>
           );
         },
       },
@@ -1566,6 +1579,103 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           defaultMessage={sharingConfig.message}
           currentUserEmail={props.context?.pageContext?.user?.email || ""}
         />
+
+        {/* File Actions Popup Menu (View / Edit) */}
+        <Menu
+          anchorEl={fileMenuAnchorEl}
+          open={Boolean(fileMenuAnchorEl)}
+          onClose={() => setFileMenuAnchorEl(null)}
+          anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+          transformOrigin={{ vertical: "top", horizontal: "left" }}
+        >
+          <MenuItem
+            onClick={() => {
+              if (selectedFileForAction) {
+                const origin = window.location.origin;
+                const fileUrl = selectedFileForAction.fileUrl?.startsWith("http")
+                  ? selectedFileForAction.fileUrl
+                  : `${origin}${selectedFileForAction.fileUrl || ""}`;
+                window.open(fileUrl, "_blank", "noopener,noreferrer");
+              }
+              setFileMenuAnchorEl(null);
+            }}
+          >
+            View
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              if (selectedFileForAction) {
+                const baseUrl = props.urlSite ? props.urlSite.replace(/\/$/, "") : window.location.origin;
+                const editUrl = `${baseUrl}/Products/Forms/EditForm.aspx?ID=${selectedFileForAction.id || ""}&IsDlg=1`;
+                setEditModalUrl(editUrl);
+              }
+              setFileMenuAnchorEl(null);
+            }}
+          >
+            Edit
+          </MenuItem>
+        </Menu>
+
+        {/* In-page Modal Dialog for OOB Edit Form */}
+        <Dialog
+          open={Boolean(editModalUrl)}
+          onClose={() => setEditModalUrl(null)}
+          fullWidth
+          maxWidth="md"
+          PaperProps={{
+            sx: {
+              height: "85vh",
+              maxHeight: "850px",
+              display: "flex",
+              flexDirection: "column",
+            },
+          }}
+        >
+          <DialogTitle
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              py: 1.5,
+              px: 2,
+              borderBottom: "1px solid #e0e0e0",
+            }}
+          >
+            <Typography variant="h6" sx={{ fontSize: "16px", fontWeight: 600 }}>
+              Edit Properties - {selectedFileForAction?.filename || "Document"}
+            </Typography>
+            <IconButton size="small" onClick={() => setEditModalUrl(null)}>
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </DialogTitle>
+          <DialogContent
+            sx={{
+              p: 0,
+              flex: "1 1 auto",
+              height: "calc(85vh - 60px)",
+              minHeight: "500px",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+          >
+            {editModalUrl && (
+              <iframe
+                src={editModalUrl}
+                title="Edit Document Form"
+                scrolling="yes"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  minHeight: "100%",
+                  flex: 1,
+                  border: "none",
+                  display: "block",
+                }}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </ThemeProvider>
   );
