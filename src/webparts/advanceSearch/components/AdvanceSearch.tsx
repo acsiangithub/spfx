@@ -1651,25 +1651,21 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           <DialogContent
             sx={{
               p: 0,
-              flex: "1 1 auto",
-              height: "calc(85vh - 60px)",
-              minHeight: "500px",
+              flex: 1,
+              overflow: "auto",
               display: "flex",
               flexDirection: "column",
-              overflow: "hidden",
             }}
           >
             {editModalUrl && (
               <iframe
                 src={editModalUrl}
                 title="Edit Document Form"
-                scrolling="yes"
                 style={{
                   width: "100%",
                   height: "100%",
-                  minHeight: "100%",
-                  flex: 1,
                   border: "none",
+                  flex: 1,
                   display: "block",
                 }}
               />
