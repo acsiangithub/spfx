@@ -1606,7 +1606,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             onClick={() => {
               if (selectedFileForAction) {
                 const baseUrl = props.urlSite ? props.urlSite.replace(/\/$/, "") : window.location.origin;
-                const editUrl = `${baseUrl}/Products/Forms/EditForm.aspx?ID=${selectedFileForAction.id || ""}&IsDlg=1`;
+                const editUrl = `${baseUrl}/Products/Forms/EditForm.aspx?ID=${selectedFileForAction.id || ""}`;
                 setEditModalUrl(editUrl);
               }
               setFileMenuAnchorEl(null);
