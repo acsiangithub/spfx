@@ -286,6 +286,17 @@ const choiceToString = (value: string | string[] | undefined | null): string => 
 const sanitizeKqlValue = (value: string): string =>
   value.replace(/"/g, '\\"').trim();
 
+const multiSelectFilterFn = (
+  row: { getValue: (columnId: string) => unknown },
+  columnId: string,
+  filterValue: unknown
+): boolean => {
+  if (!filterValue || (Array.isArray(filterValue) && filterValue.length === 0)) return true;
+  const rowValue = String(row.getValue(columnId) || "").toLowerCase();
+  const selectedValues = Array.isArray(filterValue) ? filterValue : [filterValue];
+  return selectedValues.some((val) => rowValue.includes(String(val).toLowerCase()));
+};
+
 const documentDateFilter = (
   row: { getValue: (columnId: string) => unknown },
   columnId: string,
@@ -344,6 +355,63 @@ const DocumentDateFilter: React.FC<{
               fontSize: "17px",
             },
           },
+        },
+      }}
+    />
+  );
+};
+
+const MultiSelectAutocompleteFilter: React.FC<{
+  column: { getFilterValue: () => unknown; setFilterValue: (value: unknown) => void };
+  options: string[];
+  placeholder?: string;
+}> = ({ column, options, placeholder = "Filter..." }) => {
+  const filterValue = column.getFilterValue() as string[] | string | undefined;
+  const selectedValues = Array.isArray(filterValue)
+    ? filterValue
+    : filterValue
+    ? [filterValue]
+    : [];
+
+  return (
+    <Autocomplete
+      multiple
+      freeSolo
+      size="small"
+      options={options}
+      value={selectedValues}
+      onChange={(_e, newValue) => {
+        const values = Array.isArray(newValue)
+          ? newValue.map((v) => (typeof v === "string" ? v : "")).filter(Boolean)
+          : [];
+        column.setFilterValue(values.length > 0 ? values : undefined);
+      }}
+      renderInput={(params) => (
+        <TextField
+          {...params}
+          size="small"
+          placeholder={selectedValues.length === 0 ? placeholder : ""}
+          variant="standard"
+          sx={{
+            minWidth: "120px",
+            "& .MuiInputBase-root": {
+              fontSize: "12px",
+              padding: "2px 4px",
+            },
+            "& .MuiInputBase-input": {
+              fontSize: "12px",
+              padding: "2px 4px",
+            },
+          }}
+        />
+      )}
+      sx={{
+        width: "100%",
+        minWidth: "130px",
+        "& .MuiChip-root": {
+          height: "20px",
+          fontSize: "11px",
+          margin: "1px",
         },
       }}
     />
@@ -729,7 +797,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             "Manufacturer",
             "Document_x0020_Type",
             "Sub_x0020_Document_x0020_Type",
-            "Document_x0020_Date"
+            "Document_x0020_Date",
+            "Alerts"
           )
           .expand("PIMProductCode")
           .filter(`Id gt ${lastId}`)
@@ -986,6 +1055,44 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     }
   };
 
+  const clientOptions = useMemo(
+    () => {
+      const unique = new Set<string>();
+      items_AllProducts.forEach((item) => {
+        if (item.ManufacturerSearchText) {
+          item.ManufacturerSearchText.split(";").forEach((val) => {
+            const trimmed = val.trim();
+            if (trimmed) unique.add(trimmed);
+          });
+        }
+      });
+      const result: string[] = [];
+      unique.forEach((val) => result.push(val));
+      return result.sort();
+    },
+    [items_AllProducts]
+  );
+
+  const productOptions = useMemo(
+    () => {
+      const unique = new Set<string>();
+      items_AllProducts.forEach((item) => {
+        if (item.PIMProduct && Array.isArray(item.PIMProduct)) {
+          item.PIMProduct.forEach((p) => {
+            const name = `${p.Title || ""} ${p.PIMProductName || ""}`.trim();
+            if (name) {
+              unique.add(name);
+            }
+          });
+        }
+      });
+      const result: string[] = [];
+      unique.forEach((val) => result.push(val));
+      return result.sort();
+    },
+    [items_AllProducts]
+  );
+
   const businessLineOptions = useMemo(
     () => {
       const unique = new Set<string>();
@@ -1088,7 +1195,9 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       {
         accessorKey: "ManufacturerSearchText",
         header: "Clients",
-        filterFn: "contains",
+        filterVariant: "multi-select",
+        filterSelectOptions: clientOptions,
+        filterFn: multiSelectFilterFn,
         size: 160,
         minSize: 160,
         Cell: ({ cell }) => (
@@ -1115,9 +1224,16 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       {
         accessorKey: "PIMProductSearchText",
         header: "Products",
-        filterFn: "contains",
-        size: 160,
-        minSize: 160,
+        filterFn: multiSelectFilterFn,
+        Filter: ({ column }) => (
+          <MultiSelectAutocompleteFilter
+            column={column}
+            options={productOptions}
+            placeholder="Select/type product..."
+          />
+        ),
+        size: 180,
+        minSize: 180,
         Cell: ({ row }) => (
           <div>
             {row.original.PIMProduct.map((p: IProductLookupItem, idx) => (
@@ -1133,6 +1249,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         header: "Document Type",
         filterVariant: "multi-select",
         filterSelectOptions: documentTypeOptions,
+        filterFn: multiSelectFilterFn,
         size: 150,
         minSize: 150,
       },
@@ -1141,6 +1258,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         header: "Sub Document Type",
         filterVariant: "multi-select",
         filterSelectOptions: subDocumentTypeOptions,
+        filterFn: multiSelectFilterFn,
         size: 175,
         minSize: 175,
         Cell: ({ cell }) => (
@@ -1159,6 +1277,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         header: "Business Line",
         filterVariant: "multi-select",
         filterSelectOptions: businessLineOptions,
+        filterFn: multiSelectFilterFn,
         size: 140,
         minSize: 140,
         Cell: ({ cell }) => (
@@ -1177,6 +1296,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         header: "Country Sold To",
         filterVariant: "multi-select",
         filterSelectOptions: countryOptions,
+        filterFn: multiSelectFilterFn,
         size: 165,
         minSize: 165,
         Cell: ({ cell }) => (
@@ -1212,7 +1332,15 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         },
       },
     ],
-    [props.urlSite, businessLineOptions, countryOptions, documentTypeOptions, subDocumentTypeOptions]
+    [
+      props.urlSite,
+      clientOptions,
+      productOptions,
+      businessLineOptions,
+      countryOptions,
+      documentTypeOptions,
+      subDocumentTypeOptions,
+    ]
   );
 
   const table = useMaterialReactTable({
