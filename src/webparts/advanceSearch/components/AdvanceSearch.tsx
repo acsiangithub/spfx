@@ -424,6 +424,10 @@ const MultiSelectAutocompleteFilter: React.FC<{
 };
 
 const compactTheme = createTheme({
+  typography: {
+    fontFamily: '"Segoe UI", "Segoe UI Web (West European)", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", sans-serif',
+    fontSize: 14,
+  },
   components: {
     MuiInputBase: {
       styleOverrides: {
@@ -462,6 +466,7 @@ const compactTheme = createTheme({
           padding: "7px 14px",
           fontSize: "14px",
           lineHeight: 1.3,
+          textTransform: "none",
         },
       },
     },
@@ -495,9 +500,6 @@ const compactTheme = createTheme({
         },
       },
     },
-  },
-  typography: {
-    fontSize: 14,
   },
 });
 
