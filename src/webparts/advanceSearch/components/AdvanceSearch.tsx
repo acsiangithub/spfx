@@ -9,6 +9,7 @@ import {
   MaterialReactTable,
   useMaterialReactTable,
   type MRT_ColumnDef,
+  type MRT_ColumnFiltersState,
 } from "material-react-table";
 
 import Autocomplete from "@mui/material/Autocomplete";
@@ -396,6 +397,34 @@ const documentDateFilter = (
   return rowDate.isSame(filterDate, "day") || rowDate.isAfter(filterDate, "day");
 };
 
+const itemMatchesFilter = (
+  item: doclib_AllProducts,
+  colId: string,
+  filterValue: unknown
+): boolean => {
+  if (filterValue === undefined || filterValue === null || filterValue === "") return true;
+  if (Array.isArray(filterValue) && filterValue.length === 0) return true;
+
+  if (colId === "filename") {
+    return (item.filename || "").toLowerCase().includes(String(filterValue).toLowerCase());
+  }
+  if (colId === "Alerts") {
+    return (item.Alerts || "").toLowerCase().includes(String(filterValue).toLowerCase());
+  }
+  if (colId === "DocumentDate") {
+    if (!item.DocumentDate) return false;
+    const rowDate = dayjs(item.DocumentDate);
+    const filterDate = dayjs(filterValue as string);
+    if (!rowDate.isValid() || !filterDate.isValid()) return true;
+    return rowDate.isSame(filterDate, "day") || rowDate.isAfter(filterDate, "day");
+  }
+
+  const rawValue = (item as Record<string, unknown>)[colId];
+  const itemVal = String(rawValue || "").toLowerCase();
+  const selectedValues = Array.isArray(filterValue) ? filterValue : [filterValue];
+  return selectedValues.some((val) => itemVal.includes(String(val).toLowerCase()));
+};
+
 const DocumentDateFilter: React.FC<{
   column: { getFilterValue: () => unknown; setFilterValue: (value: unknown) => void };
 }> = ({ column }) => {
@@ -623,6 +652,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     businessLine: Record<string, { bg: string; border: string; text: string }>;
     confidentiality: Record<string, { bg: string; border: string; text: string }>;
   }>({ businessLine: {}, confidentiality: {} });
+
+  const [columnFilters, setColumnFilters] = React.useState<MRT_ColumnFiltersState>([]);
 
   // State for File Context Menu & Edit Modal Dialog
   const [fileMenuAnchorEl, setFileMenuAnchorEl] = React.useState<null | HTMLElement>(null);
@@ -907,6 +938,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     try {
       setResultsLoading(true);
       setHasSearched(true);
+      setColumnFilters([]);
 
       const allProducts: any[] = [];
       const pageSize = 5000;
@@ -1070,6 +1102,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     try {
       setResultsLoading(true);
       setHasSearched(true);
+      setColumnFilters([]);
 
       let queryText = buildSearchQuery();
 
@@ -1195,10 +1228,29 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     }
   };
 
+  const getItemsFilteredExcluding = React.useCallback(
+    (excludedColId: string): doclib_AllProducts[] => {
+      if (!columnFilters || columnFilters.length === 0) {
+        return items_AllProducts;
+      }
+      const activeFilters = columnFilters.filter(
+        (f) => f.id !== excludedColId && f.value !== undefined && f.value !== null && f.value !== ""
+      );
+      if (activeFilters.length === 0) {
+        return items_AllProducts;
+      }
+      return items_AllProducts.filter((item) =>
+        activeFilters.every((f) => itemMatchesFilter(item, f.id, f.value))
+      );
+    },
+    [items_AllProducts, columnFilters]
+  );
+
   const clientOptions = useMemo(
     () => {
+      const items = getItemsFilteredExcluding("ManufacturerSearchText");
       const unique = new Set<string>();
-      items_AllProducts.forEach((item) => {
+      items.forEach((item) => {
         if (item.ManufacturerSearchText) {
           item.ManufacturerSearchText.split(";").forEach((val) => {
             const trimmed = val.trim();
@@ -1210,13 +1262,14 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       unique.forEach((val) => result.push(val));
       return result.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
     },
-    [items_AllProducts]
+    [getItemsFilteredExcluding]
   );
 
   const productOptions = useMemo(
     () => {
+      const items = getItemsFilteredExcluding("PIMProductSearchText");
       const unique = new Set<string>();
-      items_AllProducts.forEach((item) => {
+      items.forEach((item) => {
         if (item.PIMProduct && Array.isArray(item.PIMProduct)) {
           item.PIMProduct.forEach((p) => {
             const name = `${p.Title || ""} ${p.PIMProductName || ""}`.trim();
@@ -1230,13 +1283,14 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       unique.forEach((val) => result.push(val));
       return result.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
     },
-    [items_AllProducts]
+    [getItemsFilteredExcluding]
   );
 
   const businessLineOptions = useMemo(
     () => {
+      const items = getItemsFilteredExcluding("BusinessLine");
       const unique = new Set<string>();
-      items_AllProducts.forEach((item) => {
+      items.forEach((item) => {
         if (item.BusinessLine) {
           item.BusinessLine.split(",").forEach((val) => {
             const trimmed = val.trim();
@@ -1248,13 +1302,14 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       unique.forEach((val) => result.push(val));
       return result.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
     },
-    [items_AllProducts]
+    [getItemsFilteredExcluding]
   );
 
   const countryOptions = useMemo(
     () => {
+      const items = getItemsFilteredExcluding("CountrySoldTo");
       const unique = new Set<string>();
-      items_AllProducts.forEach((item) => {
+      items.forEach((item) => {
         if (item.CountrySoldTo) {
           item.CountrySoldTo.split(",").forEach((val) => {
             const trimmed = val.trim();
@@ -1266,13 +1321,14 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       unique.forEach((val) => result.push(val));
       return result.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
     },
-    [items_AllProducts]
+    [getItemsFilteredExcluding]
   );
 
   const documentTypeOptions = useMemo(
     () => {
+      const items = getItemsFilteredExcluding("DocumentTypeSearchText");
       const unique = new Set<string>();
-      items_AllProducts.forEach((item) => {
+      items.forEach((item) => {
         if (item.DocumentTypeSearchText) {
           const trimmed = item.DocumentTypeSearchText.trim();
           if (trimmed) unique.add(trimmed);
@@ -1282,13 +1338,14 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       unique.forEach((val) => result.push(val));
       return result.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
     },
-    [items_AllProducts]
+    [getItemsFilteredExcluding]
   );
 
   const subDocumentTypeOptions = useMemo(
     () => {
+      const items = getItemsFilteredExcluding("SubDocumentTypeSearchText");
       const unique = new Set<string>();
-      items_AllProducts.forEach((item) => {
+      items.forEach((item) => {
         if (item.SubDocumentTypeSearchText) {
           item.SubDocumentTypeSearchText.split(",").forEach((val) => {
             const trimmed = val.trim();
@@ -1300,13 +1357,14 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       unique.forEach((val) => result.push(val));
       return result.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
     },
-    [items_AllProducts]
+    [getItemsFilteredExcluding]
   );
 
   const confidentialityOptions = useMemo(
     () => {
+      const items = getItemsFilteredExcluding("Confidentiality");
       const unique = new Set<string>();
-      items_AllProducts.forEach((item) => {
+      items.forEach((item) => {
         if (item.Confidentiality) {
           item.Confidentiality.split(",").forEach((val) => {
             const trimmed = val.trim();
@@ -1318,7 +1376,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       unique.forEach((val) => result.push(val));
       return result.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
     },
-    [items_AllProducts]
+    [getItemsFilteredExcluding]
   );
 
   const columns_AllProducts = useMemo<MRT_ColumnDef<doclib_AllProducts>[]>(
@@ -1736,9 +1794,11 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         },
       },
     },
+    onColumnFiltersChange: setColumnFilters,
     state: {
       isLoading: resultsLoading,
       showColumnFilters: true,
+      columnFilters,
     },
   });
 
@@ -2041,7 +2101,10 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
               <Button
                 variant="text"
                 size="small"
-                onClick={() => setHasSearched(false)}
+                onClick={() => {
+                  setHasSearched(false);
+                  setColumnFilters([]);
+                }}
                 style={{ textDecoration: "underline", color: "#1976d2", textTransform: "none", fontWeight: 600 }}
               >
                 &larr; Back to Search Filters
