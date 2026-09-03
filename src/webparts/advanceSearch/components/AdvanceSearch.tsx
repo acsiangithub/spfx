@@ -2,6 +2,7 @@ import * as React from "react";
 import { IAdvanceSearchProps } from "./IAdvanceSearchProps";
 import { sp } from "../AdvanceSearchWebPart";
 import "@pnp/sp/sharing";
+import "@pnp/sp/fields/list";
 import { SharingRole } from "@pnp/sp/sharing";
 import { useMemo } from "react";
 import {
@@ -291,6 +292,83 @@ const choiceToString = (value: string | string[] | undefined | null): string => 
 const sanitizeKqlValue = (value: string): string =>
   value.replace(/"/g, '\\"').trim();
 
+// Deterministic pastel color generator for any string choice
+const getDynamicChipStyle = (str: string) => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const h = Math.abs(hash % 360);
+  return {
+    bg: `hsl(${h}, 65%, 94%)`,
+    border: `hsl(${h}, 50%, 80%)`,
+    text: `hsl(${h}, 75%, 25%)`,
+  };
+};
+
+// SharePoint column formatting CSS class mapping
+const SP_FORMAT_CLASS_MAP: Record<string, { bg: string; border: string; text: string }> = {
+  "sp-css-backgroundcolor-warningbackground1": { bg: "#fff4ce", border: "#fde37f", text: "#795b00" },
+  "sp-css-backgroundcolor-warningbackground2": { bg: "#fff4ce", border: "#fde37f", text: "#795b00" },
+  "sp-css-backgroundcolor-warningbackground3": { bg: "#fff4ce", border: "#fde37f", text: "#795b00" },
+  "sp-css-backgroundcolor-severewarningbackground1": { bg: "#fed9cc", border: "#fca385", text: "#a4262c" },
+  "sp-css-backgroundcolor-severewarningbackground3": { bg: "#fed9cc", border: "#fca385", text: "#a4262c" },
+  "sp-css-backgroundcolor-errorbackground1": { bg: "#fde7e9", border: "#f19999", text: "#a80000" },
+  "sp-css-backgroundcolor-errorbackground3": { bg: "#fde7e9", border: "#f19999", text: "#a80000" },
+  "sp-css-backgroundcolor-successbackground1": { bg: "#dff6dd", border: "#92c353", text: "#107c10" },
+  "sp-css-backgroundcolor-successbackground3": { bg: "#dff6dd", border: "#92c353", text: "#107c10" },
+  "sp-css-backgroundcolor-neutralbackground1": { bg: "#f3f2f1", border: "#edebe9", text: "#323130" },
+};
+
+// Parse color choices from SharePoint field CustomFormatter JSON if present
+const parseSpCustomFormatter = (
+  customFormatterJson?: string
+): Record<string, { bg: string; border: string; text: string }> => {
+  const result: Record<string, { bg: string; border: string; text: string }> = {};
+  if (!customFormatterJson) return result;
+
+  try {
+    const raw = customFormatterJson;
+    const ifRegex = /@currentField\s*==\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]/gi;
+    let match: RegExpExecArray | null;
+    while ((match = ifRegex.exec(raw)) !== null) {
+      const choiceVal = match[1].trim();
+      const styleOrClass = match[2].trim().toLowerCase();
+      if (SP_FORMAT_CLASS_MAP[styleOrClass]) {
+        result[choiceVal.toLowerCase()] = SP_FORMAT_CLASS_MAP[styleOrClass];
+      } else if (styleOrClass.startsWith("#") || styleOrClass.startsWith("rgb")) {
+        result[choiceVal.toLowerCase()] = {
+          bg: styleOrClass,
+          border: styleOrClass,
+          text: "#1a1918",
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("Could not parse field CustomFormatter:", err);
+  }
+
+  return result;
+};
+
+// Fallback semantic styles for confidentiality values if no SharePoint JSON formatter exists
+const getSemanticConfidentialityStyle = (val: string) => {
+  const clean = val.trim().toLowerCase();
+  if (clean.includes("strictly") || clean.includes("high") || clean.includes("secret")) {
+    return { bg: "#fde7e9", border: "#f19999", text: "#a80000" };
+  }
+  if (clean.includes("confidential") || clean.includes("restricted")) {
+    return { bg: "#fed9cc", border: "#fca385", text: "#a4262c" };
+  }
+  if (clean.includes("internal")) {
+    return { bg: "#fff4ce", border: "#fde37f", text: "#795b00" };
+  }
+  if (clean.includes("public") || clean.includes("general")) {
+    return { bg: "#dff6dd", border: "#92c353", text: "#107c10" };
+  }
+  return null;
+};
+
 const multiSelectFilterFn = (
   row: { getValue: (columnId: string) => unknown },
   columnId: string,
@@ -541,6 +619,11 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     message: "",
   });
 
+  const [fieldFormatters, setFieldFormatters] = React.useState<{
+    businessLine: Record<string, { bg: string; border: string; text: string }>;
+    confidentiality: Record<string, { bg: string; border: string; text: string }>;
+  }>({ businessLine: {}, confidentiality: {} });
+
   // State for File Context Menu & Edit Modal Dialog
   const [fileMenuAnchorEl, setFileMenuAnchorEl] = React.useState<null | HTMLElement>(null);
   const [selectedFileForAction, setSelectedFileForAction] = React.useState<doclib_AllProducts | null>(null);
@@ -688,8 +771,33 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       }
     };
 
+    const loadListFieldFormatting = async (): Promise<void> => {
+      try {
+        const fields = await sp.web.lists
+          .getByTitle("Clients & Products")
+          .fields.select("InternalName", "CustomFormatter")
+          .filter("InternalName eq 'Confidentiality' or InternalName eq 'Business_x0020_Line'")();
+
+        let blFormat: Record<string, { bg: string; border: string; text: string }> = {};
+        let confFormat: Record<string, { bg: string; border: string; text: string }> = {};
+
+        fields.forEach((f: any) => {
+          if (f.InternalName === "Business_x0020_Line") {
+            blFormat = parseSpCustomFormatter(f.CustomFormatter);
+          } else if (f.InternalName === "Confidentiality") {
+            confFormat = parseSpCustomFormatter(f.CustomFormatter);
+          }
+        });
+
+        setFieldFormatters({ businessLine: blFormat, confidentiality: confFormat });
+      } catch (err) {
+        console.warn("Could not load field CustomFormatter:", err);
+      }
+    };
+
     void loadTaxonomy();
     void loadSharingConfiguration();
+    void loadListFieldFormatting();
   }, []);
 
   // In-memory filtered sub-document types based on selected Document Types
@@ -1338,18 +1446,46 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         filterVariant: "multi-select",
         filterSelectOptions: businessLineOptions,
         filterFn: multiSelectFilterFn,
-        size: 140,
+        size: 155,
         minSize: 140,
-        Cell: ({ cell }) => (
-          <div>
-            {String(cell.getValue() || "")
-              .split(",")
-              .filter(Boolean)
-              .map((item, idx) => (
-                <div key={idx}>{item.trim()}</div>
-              ))}
-          </div>
-        ),
+        Cell: ({ cell }) => {
+          const raw = String(cell.getValue() || "");
+          if (!raw) return "-";
+
+          return (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+              {raw
+                .split(",")
+                .map((v) => v.trim())
+                .filter(Boolean)
+                .map((item, idx) => {
+                  const style =
+                    fieldFormatters.businessLine[item.toLowerCase()] ||
+                    getDynamicChipStyle(item);
+
+                  return (
+                    <span
+                      key={idx}
+                      style={{
+                        backgroundColor: style.bg,
+                        color: style.text,
+                        border: `1px solid ${style.border}`,
+                        borderRadius: "12px",
+                        padding: "1px 8px",
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        lineHeight: "18px",
+                        display: "inline-block",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {item}
+                    </span>
+                  );
+                })}
+            </div>
+          );
+        },
       },
       {
         accessorKey: "CountrySoldTo",
@@ -1376,18 +1512,47 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         filterVariant: "multi-select",
         filterSelectOptions: confidentialityOptions,
         filterFn: multiSelectFilterFn,
-        size: 140,
+        size: 150,
         minSize: 140,
-        Cell: ({ cell }) => (
-          <div>
-            {String(cell.getValue() || "")
-              .split(",")
-              .filter(Boolean)
-              .map((item, idx) => (
-                <div key={idx}>{item.trim()}</div>
-              ))}
-          </div>
-        ),
+        Cell: ({ cell }) => {
+          const raw = String(cell.getValue() || "");
+          if (!raw) return "-";
+
+          return (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+              {raw
+                .split(",")
+                .map((v) => v.trim())
+                .filter(Boolean)
+                .map((item, idx) => {
+                  const style =
+                    fieldFormatters.confidentiality[item.toLowerCase()] ||
+                    getSemanticConfidentialityStyle(item) ||
+                    getDynamicChipStyle(item);
+
+                  return (
+                    <span
+                      key={idx}
+                      style={{
+                        backgroundColor: style.bg,
+                        color: style.text,
+                        border: `1px solid ${style.border}`,
+                        borderRadius: "12px",
+                        padding: "1px 8px",
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        lineHeight: "18px",
+                        display: "inline-block",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {item}
+                    </span>
+                  );
+                })}
+            </div>
+          );
+        },
       },
       {
         accessorKey: "Alerts",
@@ -1438,6 +1603,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       documentTypeOptions,
       subDocumentTypeOptions,
       confidentialityOptions,
+      fieldFormatters,
     ]
   );
 
