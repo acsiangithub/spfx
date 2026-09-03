@@ -251,6 +251,8 @@ type doclib_AllProducts = {
   SubDocumentTypeSearchText: string;
   DocumentDate: Date | null;
   fileUrl: string;
+  Confidentiality: string;
+  Alerts: string;
 };
 
 type IProductLookupItem = {
@@ -528,6 +530,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
   const [lookupLoading, setLookupLoading] = React.useState(false);
   const [resultsLoading, setResultsLoading] = React.useState(false);
+  const [hasSearched, setHasSearched] = React.useState(false);
   const [taxonomyLoading, setTaxonomyLoading] = React.useState(false);
   const [isShareDialogOpen, setIsShareDialogOpen] = React.useState(false);
   const [selectedRowsData, setSelectedRowsData] = React.useState<any[]>([]);
@@ -793,6 +796,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const loadAllRecords = async (): Promise<void> => {
     try {
       setResultsLoading(true);
+      setHasSearched(true);
 
       const allProducts: any[] = [];
       const pageSize = 5000;
@@ -814,7 +818,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             "Document_x0020_Type",
             "Sub_x0020_Document_x0020_Type",
             "Document_x0020_Date",
-            "Alerts"
+            "Alerts",
+            "Confidentiality"
           )
           .expand("PIMProductCode")
           .filter(`Id gt ${lastId}`)
@@ -845,6 +850,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         DocumentDate: item.Document_x0020_Date
           ? new Date(item.Document_x0020_Date)
           : null,
+        Confidentiality: choiceToString(item.Confidentiality),
+        Alerts: item.Alerts ?? "",
       }));
 
       setItems_AllProducts(mappedData);
@@ -952,6 +959,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
     try {
       setResultsLoading(true);
+      setHasSearched(true);
 
       let queryText = buildSearchQuery();
 
@@ -985,6 +993,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             //"PIMProduct*",
             "owstaxIdPIMProductTermSet",  
             "PIMProductCodeOWSTEXT",
+            "ConfidentialityOWSCHCS",
+            "AlertsOWSMTXT"
           ],
         });
 
@@ -1037,7 +1047,9 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             "Manufacturer",
             "Document_x0020_Type",
             "Sub_x0020_Document_x0020_Type",
-            "Document_x0020_Date"
+            "Document_x0020_Date",
+            "Alerts",
+            "Confidentiality"
           )
           .expand("PIMProductCode")
           .filter(filter)();
@@ -1061,6 +1073,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         DocumentDate: item.Document_x0020_Date
           ? new Date(item.Document_x0020_Date)
           : null,
+        Confidentiality: choiceToString(item.Confidentiality),
+        Alerts: item.Alerts ?? "",
       }));
 
       setItems_AllProducts(mappedData);
@@ -1167,6 +1181,24 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       items_AllProducts.forEach((item) => {
         if (item.SubDocumentTypeSearchText) {
           item.SubDocumentTypeSearchText.split(",").forEach((val) => {
+            const trimmed = val.trim();
+            if (trimmed) unique.add(trimmed);
+          });
+        }
+      });
+      const result: string[] = [];
+      unique.forEach((val) => result.push(val));
+      return result.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+    },
+    [items_AllProducts]
+  );
+
+  const confidentialityOptions = useMemo(
+    () => {
+      const unique = new Set<string>();
+      items_AllProducts.forEach((item) => {
+        if (item.Confidentiality) {
+          item.Confidentiality.split(",").forEach((val) => {
             const trimmed = val.trim();
             if (trimmed) unique.add(trimmed);
           });
@@ -1337,6 +1369,43 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         ),
       },
       {
+        accessorKey: "Confidentiality",
+        header: "Confidentiality",
+        filterVariant: "multi-select",
+        filterSelectOptions: confidentialityOptions,
+        filterFn: multiSelectFilterFn,
+        size: 140,
+        minSize: 140,
+        Cell: ({ cell }) => (
+          <div>
+            {String(cell.getValue() || "")
+              .split(",")
+              .filter(Boolean)
+              .map((item, idx) => (
+                <div key={idx}>{item.trim()}</div>
+              ))}
+          </div>
+        ),
+      },
+      {
+        accessorKey: "Alerts",
+        header: "Alerts",
+        size: 160,
+        minSize: 140,
+        filterFn: "contains",
+        Cell: ({ cell }) => (
+          <div
+            style={{
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              lineHeight: 1.4,
+            }}
+          >
+            {String(cell.getValue() || "")}
+          </div>
+        ),
+      },
+      {
         accessorKey: "DocumentDate",
         header: "Document Date",
         size: 100,
@@ -1366,16 +1435,76 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       countryOptions,
       documentTypeOptions,
       subDocumentTypeOptions,
+      confidentialityOptions,
     ]
   );
+
+  const handleTableMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return; // Only trigger on left-click
+
+    const target = e.target as HTMLElement;
+    // Don't drag if clicking interactive controls, filter inputs, header cells, or resize handles
+    if (
+      target.closest(
+        'button, input, textarea, select, [role="button"], [role="checkbox"], .MuiInputBase-root, .MuiIconButton-root, .MuiSelect-select, thead, th, .Mui-TableHeadCell-ResizeHandle, .Mui-TableHeadCell-GrabHandle'
+      )
+    ) {
+      return;
+    }
+
+    const container = e.currentTarget;
+    const startClientX = e.clientX;
+    const initialScrollLeft = container.scrollLeft;
+    let hasDragged = false;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const dx = moveEvent.clientX - startClientX;
+      if (!hasDragged && Math.abs(dx) > 4) {
+        hasDragged = true;
+        container.style.cursor = "grabbing";
+        container.style.userSelect = "none";
+        document.body.style.cursor = "grabbing";
+        document.body.style.userSelect = "none";
+      }
+
+      if (hasDragged) {
+        container.scrollLeft = initialScrollLeft - dx;
+      }
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+
+      if (hasDragged) {
+        container.style.cursor = "";
+        container.style.removeProperty("user-select");
+        document.body.style.cursor = "";
+        document.body.style.removeProperty("user-select");
+
+        const preventClick = (clickEvent: MouseEvent) => {
+          clickEvent.stopPropagation();
+          clickEvent.preventDefault();
+        };
+        window.addEventListener("click", preventClick, {
+          capture: true,
+          once: true,
+        });
+      }
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
 
   const table = useMaterialReactTable({
     columns: columns_AllProducts,
     data: items_AllProducts,
     enableRowSelection: true,
+    enableFullScreenToggle: false,
     positionToolbarAlertBanner: "none",
     renderTopToolbarCustomActions: ({ table }) => (
-      <Box sx={{ display: "flex", gap: "8px" }}>
+      <Box sx={{ display: "flex", gap: "8px", alignItems: "center" }}>
         <IconButton
           color="primary"
           disabled={table.getSelectedRowModel().rows.length === 0}
@@ -1402,6 +1531,15 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       sx: {
         boxShadow: "none",
         border: "1px solid #e1dfdd",
+      },
+    },
+    muiTableContainerProps: {
+      onMouseDown: handleTableMouseDown,
+      sx: {
+        cursor: "grab",
+        "&:active": {
+          cursor: "grabbing",
+        },
       },
     },
     muiTableHeadCellProps: {
@@ -1442,307 +1580,322 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       <div>
         <h2>Search Clients & Products</h2>
 
-        <div
-          className="filter-row-grid"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
-            gap: "12px",
-            marginBottom: "12px",
-          }}
-        >
-          <Autocomplete
-            multiple
-            fullWidth
-            size="small"
-            loading={lookupLoading}
-            options={products}
-            value={selectedProducts}
-            ListboxComponent={ProductListbox}
-            getOptionLabel={(option: IProductLookupItem) =>
-              option
-                ? `${option.Title ?? ""} | ${option.PIMProductName ?? ""}`
-                : ""
-            }
-            isOptionEqualToValue={(option, value) => option.ID === value.ID}
-            onInputChange={handleProductInputChange}
-            onChange={handleProductSelectionChange}
-            renderOption={(props, option) => (
-              <li {...props} key={option.ID}>
-                <Box
-                  sx={{
-                    display: "grid",
-                    gridTemplateColumns: "2.2fr 1.3fr 1.2fr",
-                    gap: 0.5,
-                    alignItems: "center",
-                    minWidth: "500px",
-                    width: "100%",
-                    px: 1,
-                    py: 0.25,
-                    fontSize: "11px",
+        {/* --- 1. SEARCH FILTERS PLACEHOLDER --- */}
+        {!hasSearched && (
+          <Box sx={{ mb: 2 }}>
+            <div
+              className="filter-row-grid"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
+                gap: "12px",
+                marginBottom: "12px",
+              }}
+            >
+              <Autocomplete
+                multiple
+                fullWidth
+                size="small"
+                loading={lookupLoading}
+                options={products}
+                value={selectedProducts}
+                ListboxComponent={ProductListbox}
+                getOptionLabel={(option: IProductLookupItem) =>
+                  option
+                    ? `${option.Title ?? ""} | ${option.PIMProductName ?? ""}`
+                    : ""
+                }
+                isOptionEqualToValue={(option, value) => option.ID === value.ID}
+                onInputChange={handleProductInputChange}
+                onChange={handleProductSelectionChange}
+                renderOption={(props, option) => (
+                  <li {...props} key={option.ID}>
+                    <Box
+                      sx={{
+                        display: "grid",
+                        gridTemplateColumns: "2.2fr 1.3fr 1.2fr",
+                        gap: 0.5,
+                        alignItems: "center",
+                        minWidth: "500px",
+                        width: "100%",
+                        px: 1,
+                        py: 0.25,
+                        fontSize: "11px",
+                      }}
+                    >
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          fontSize: "10.5px",
+                          fontWeight: 600,
+                          whiteSpace: "normal",
+                          overflow: "visible",
+                          textFail: "clip",
+                          wordBreak: "break-word",
+                        }}
+                      >
+                        {`${option.Title || ""} | ${option.PIMProductName || ""}`.replace(/\|\s*$/g, "").trim() || "-"}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          fontSize: "10.5px",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {option.Manufacturer || "-"}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          fontSize: "10.5px",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {option.BusinessLine || "-"}
+                      </Typography>
+                    </Box>
+                  </li>
+                )}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    size="small"
+                    label="Product"
+                    placeholder="Search product"
+                    InputProps={{
+                      ...params.InputProps,
+                      endAdornment: (
+                        <>
+                          {lookupLoading ? (
+                            <CircularProgress color="inherit" size={20} />
+                          ) : null}
+                          {params.InputProps.endAdornment}
+                        </>
+                      ),
+                    }}
+                  />
+                )}
+              />
+
+              <Autocomplete
+                multiple
+                fullWidth
+                size="small"
+                loading={lookupLoading}
+                options={clients}
+                value={selectedClients}
+                getOptionLabel={(option: IClientLookupItem) =>
+                  option ? option.Title : ""
+                }
+                isOptionEqualToValue={(option, value) => option.ID === value.ID}
+                onInputChange={handleClientInputChange}
+                onChange={handleClientSelectionChange}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    size="small"
+                    label="Client"
+                    placeholder="Search client"
+                    InputProps={{
+                      ...params.InputProps,
+                      endAdornment: (
+                        <>
+                          {lookupLoading ? (
+                            <CircularProgress color="inherit" size={20} />
+                          ) : null}
+                          {params.InputProps.endAdornment}
+                        </>
+                      ),
+                    }}
+                  />
+                )}
+              />
+            </div>
+
+            <div
+              className="filter-row-grid"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
+                gap: "12px",
+                marginBottom: "12px",
+              }}
+            >
+              <FormControl fullWidth size="small" disabled={taxonomyLoading}>
+                <InputLabel id="document-type-select-label">Document Type</InputLabel>
+                <Select
+                  labelId="document-type-select-label"
+                  multiple
+                  value={selectedDocumentTypes}
+                  onChange={(event) => {
+                    const val = event.target.value;
+                    setSelectedDocumentTypes(
+                      typeof val === "string" ? val.split(",") : val
+                    );
                   }}
+                  input={<OutlinedInput label="Document Type" />}
+                  renderValue={(selected) => (selected as string[]).join(", ")}
+                  size="small"
                 >
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      fontSize: "10.5px",
-                      fontWeight: 600,
-                      whiteSpace: "normal",
-                      overflow: "visible",
-                      textFail: "clip",
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    {`${option.Title || ""} | ${option.PIMProductName || ""}`.replace(/\|\s*$/g, "").trim() || "-"}
-                  </Typography>
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      fontSize: "10.5px",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {option.Manufacturer || "-"}
-                  </Typography>
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      fontSize: "10.5px",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {option.BusinessLine || "-"}
-                  </Typography>
-                </Box>
-              </li>
-            )}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                size="small"
-                label="Product"
-                placeholder="Search product"
-                InputProps={{
-                  ...params.InputProps,
-                  endAdornment: (
-                    <>
-                      {lookupLoading ? (
-                        <CircularProgress color="inherit" size={20} />
-                      ) : null}
-                      {params.InputProps.endAdornment}
-                    </>
-                  ),
-                }}
-              />
-            )}
-          />
+                  {documentTypes.map((item) => (
+                    <MenuItem key={item.ID} value={item.Title}>
+                      <Checkbox
+                        size="small"
+                        checked={selectedDocumentTypes.indexOf(item.Title) > -1}
+                      />
+                      <ListItemText
+                        primary={
+                          item.ShortTitle
+                            ? `${item.Title} (${item.ShortTitle})`
+                            : item.Title
+                        }
+                      />
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
 
-          <Autocomplete
-            multiple
-            fullWidth
-            size="small"
-            loading={lookupLoading}
-            options={clients}
-            value={selectedClients}
-            getOptionLabel={(option: IClientLookupItem) =>
-              option ? option.Title : ""
+              <FormControl
+                fullWidth
+                size="small"
+                disabled={taxonomyLoading || availableSubDocumentTypes.length === 0}
+              >
+                <InputLabel id="sub-document-type-select-label">
+                  Sub Document Type
+                </InputLabel>
+                <Select
+                  labelId="sub-document-type-select-label"
+                  multiple
+                  value={selectedSubDocumentTypes}
+                  onChange={(event) => {
+                    const val = event.target.value;
+                    setSelectedSubDocumentTypes(
+                      typeof val === "string" ? val.split(",") : val
+                    );
+                  }}
+                  input={<OutlinedInput label="Sub Document Type" />}
+                  renderValue={(selected) => (selected as string[]).join(", ")}
+                  size="small"
+                >
+                  {availableSubDocumentTypes.map((item) => (
+                    <MenuItem key={item.ID} value={item.Title}>
+                      <Checkbox
+                        size="small"
+                        checked={selectedSubDocumentTypes.indexOf(item.Title) > -1}
+                      />
+                      <ListItemText primary={item.Title} />
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </div>
+
+            <LocalizationProvider dateAdapter={AdapterDayjs}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
+                  gap: "12px",
+                  marginBottom: "12px",
+                }}
+              >
+                <DatePicker
+                  label="Document Date From"
+                  format="DD/MM/YYYY"
+                  value={dateFrom}
+                  onChange={(newValue) => setDateFrom(newValue)}
+                  slotProps={{
+                    textField: { size: "small", fullWidth: true },
+                    field: { clearable: true },
+                  }}
+                />
+                <DatePicker
+                  label="Document Date To"
+                  format="DD/MM/YYYY"
+                  value={dateTo}
+                  onChange={(newValue) => setDateTo(newValue)}
+                  minDate={dateFrom ?? undefined}
+                  slotProps={{
+                    textField: { size: "small", fullWidth: true },
+                    field: { clearable: true },
+                  }}
+                />
+              </div>
+            </LocalizationProvider>
+
+            <div
+              style={{
+                marginBottom: "16px",
+                width: "100%",
+              }}
+            >
+              <TextField
+                fullWidth
+                size="small"
+                label="Additional Keyword"
+                placeholder="Optional keyword"
+                value={additionalKeyword}
+                onChange={(e) => setAdditionalKeyword(e.target.value)}
+              />
+            </div>
+
+            <style>{`
+            @media (max-width: 768px) {
+              .filter-row-grid {
+                grid-template-columns: 1fr !important;
+              }
             }
-            isOptionEqualToValue={(option, value) => option.ID === value.ID}
-            onInputChange={handleClientInputChange}
-            onChange={handleClientSelectionChange}
-            renderInput={(params) => (
-              <TextField
-                {...params}
+          `}</style>
+
+            <div style={{ marginBottom: "16px", display: "flex", gap: "12px", alignItems: "center" }}>
+              <Button
+                variant="contained"
+                color="primary"
                 size="small"
-                label="Client"
-                placeholder="Search client"
-                InputProps={{
-                  ...params.InputProps,
-                  endAdornment: (
-                    <>
-                      {lookupLoading ? (
-                        <CircularProgress color="inherit" size={20} />
-                      ) : null}
-                      {params.InputProps.endAdornment}
-                    </>
-                  ),
+                onClick={handleSearch}
+                disabled={resultsLoading}
+              >
+                {resultsLoading ? "Searching..." : "Search"}
+              </Button>
+            </div>
+          </Box>
+        )}
+
+        {/* --- 2. RESULTS TABLE PLACEHOLDER --- */}
+        {hasSearched && (
+          <Box sx={{ mt: 1 }}>
+            <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1, alignItems: "center" }}>
+              <Button
+                variant="text"
+                size="small"
+                onClick={() => setHasSearched(false)}
+                style={{ textDecoration: "underline", color: "#1976d2", textTransform: "none", fontWeight: 600 }}
+              >
+                &larr; Back to Search Filters
+              </Button>
+
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  loadAllRecords().catch(console.error);
                 }}
-              />
-            )}
-          />
-        </div>
+                style={{ textDecoration: "underline", color: "#1976d2", fontSize: "13px" }}
+              >
+                REFRESH ALL RECORDS
+              </a>
+            </Box>
 
-        <div
-          className="filter-row-grid"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
-            gap: "12px",
-            marginBottom: "12px",
-          }}
-        >
-          <FormControl fullWidth size="small" disabled={taxonomyLoading}>
-            <InputLabel id="document-type-select-label">Document Type</InputLabel>
-            <Select
-              labelId="document-type-select-label"
-              multiple
-              value={selectedDocumentTypes}
-              onChange={(event) => {
-                const val = event.target.value;
-                setSelectedDocumentTypes(
-                  typeof val === "string" ? val.split(",") : val
-                );
-              }}
-              input={<OutlinedInput label="Document Type" />}
-              renderValue={(selected) => (selected as string[]).join(", ")}
-              size="small"
-            >
-              {documentTypes.map((item) => (
-                <MenuItem key={item.ID} value={item.Title}>
-                  <Checkbox
-                    size="small"
-                    checked={selectedDocumentTypes.indexOf(item.Title) > -1}
-                  />
-                  <ListItemText
-                    primary={
-                      item.ShortTitle
-                        ? `${item.Title} (${item.ShortTitle})`
-                        : item.Title
-                    }
-                  />
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-
-          <FormControl
-            fullWidth
-            size="small"
-            disabled={taxonomyLoading || availableSubDocumentTypes.length === 0}
-          >
-            <InputLabel id="sub-document-type-select-label">
-              Sub Document Type
-            </InputLabel>
-            <Select
-              labelId="sub-document-type-select-label"
-              multiple
-              value={selectedSubDocumentTypes}
-              onChange={(event) => {
-                const val = event.target.value;
-                setSelectedSubDocumentTypes(
-                  typeof val === "string" ? val.split(",") : val
-                );
-              }}
-              input={<OutlinedInput label="Sub Document Type" />}
-              renderValue={(selected) => (selected as string[]).join(", ")}
-              size="small"
-            >
-              {availableSubDocumentTypes.map((item) => (
-                <MenuItem key={item.ID} value={item.Title}>
-                  <Checkbox
-                    size="small"
-                    checked={selectedSubDocumentTypes.indexOf(item.Title) > -1}
-                  />
-                  <ListItemText primary={item.Title} />
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </div>
-
-        <LocalizationProvider dateAdapter={AdapterDayjs}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
-              gap: "12px",
-              marginBottom: "12px",
-            }}
-          >
-            <DatePicker
-              label="Document Date From"
-              format="DD/MM/YYYY"
-              value={dateFrom}
-              onChange={(newValue) => setDateFrom(newValue)}
-              slotProps={{
-                textField: { size: "small", fullWidth: true },
-                field: { clearable: true },
-              }}
-            />
-            <DatePicker
-              label="Document Date To"
-              format="DD/MM/YYYY"
-              value={dateTo}
-              onChange={(newValue) => setDateTo(newValue)}
-              minDate={dateFrom ?? undefined}
-              slotProps={{
-                textField: { size: "small", fullWidth: true },
-                field: { clearable: true },
-              }}
-            />
-          </div>
-        </LocalizationProvider>
-
-        <div
-          style={{
-            marginBottom: "16px",
-            width: "100%",
-          }}
-        >
-          <TextField
-            fullWidth
-            size="small"
-            label="Additional Keyword"
-            placeholder="Optional keyword"
-            value={additionalKeyword}
-            onChange={(e) => setAdditionalKeyword(e.target.value)}
-          />
-        </div>
-
-        <style>{`
-        @media (max-width: 768px) {
-          .filter-row-grid {
-            grid-template-columns: 1fr !important;
-          }
-        }
-      `}</style>
-
-        <div style={{ marginBottom: "16px" }}>
-          <Button
-            variant="contained"
-            color="primary"
-            size="small"
-            onClick={() => {
-              handleSearch();
-              table.setIsFullScreen(true);
-            }}
-            disabled={resultsLoading}
-          >
-            {resultsLoading ? "Searching..." : "Search"}
-          </Button>
-        </div>
-
-        <LocalizationProvider dateAdapter={AdapterDayjs}>
-          <MaterialReactTable table={table} />
-        </LocalizationProvider>
-
-        <div style={{ marginTop: "16px" }}>
-          <a
-            href="#"
-            onClick={(e) => {
-              e.preventDefault();
-              //setAllRecordsCache([]);
-              loadAllRecords().catch(console.error);
-            }}
-            style={{ textDecoration: "underline", color: "#1976d2" }}
-          >
-            REFRESH ALL RECORDS
-          </a>
-        </div>
+            <LocalizationProvider dateAdapter={AdapterDayjs}>
+              <MaterialReactTable table={table} />
+            </LocalizationProvider>
+          </Box>
+        )}
 
         <EmailShareDialog
           open={isShareDialogOpen}

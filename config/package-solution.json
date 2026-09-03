@@ -3,7 +3,7 @@
   "solution": {
     "name": "advancesearch-client-side-solution",
     "id": "1934fc91-b238-4726-892d-8b459cdbd6bc",
-    "version": "1.0.0.0",
+    "version": "1.0.0.2",
     "includeClientSideAssets": true,
     "skipFeatureDeployment": true,
     "isDomainIsolated": false,
