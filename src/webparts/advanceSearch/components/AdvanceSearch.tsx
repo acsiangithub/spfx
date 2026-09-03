@@ -25,6 +25,9 @@ import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
 import Menu from "@mui/material/Menu";
 import Select from "@mui/material/Select";
+import Checkbox from "@mui/material/Checkbox";
+import ListItemText from "@mui/material/ListItemText";
+import OutlinedInput from "@mui/material/OutlinedInput";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import CloseIcon from "@mui/icons-material/Close";
@@ -511,13 +514,11 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     IClientLookupItem[]
   >([]);
   const [documentTypes, setDocumentTypes] = React.useState<IDocumentTypeItem[]>([]);
-  const [subDocumentTypes, setSubDocumentTypes] = React.useState<
+  const [allSubDocumentTypes, setAllSubDocumentTypes] = React.useState<
     ISubDocumentTypeItem[]
   >([]);
-  const [selectedDocumentType, setSelectedDocumentType] =
-    React.useState<string>("");
-  const [selectedSubDocumentType, setSelectedSubDocumentType] =
-    React.useState<string>("");
+  const [selectedDocumentTypes, setSelectedDocumentTypes] = React.useState<string[]>([]);
+  const [selectedSubDocumentTypes, setSelectedSubDocumentTypes] = React.useState<string[]>([]);
 
   const [productSearchText, setProductSearchText] = React.useState("");
   const [clientSearchText, setClientSearchText] = React.useState("");
@@ -527,9 +528,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
   const [lookupLoading, setLookupLoading] = React.useState(false);
   const [resultsLoading, setResultsLoading] = React.useState(false);
-  const [documentTypeLoading, setDocumentTypeLoading] = React.useState(false);
-  const [subDocumentTypeLoading, setSubDocumentTypeLoading] =
-    React.useState(false);
+  const [taxonomyLoading, setTaxonomyLoading] = React.useState(false);
   const [isShareDialogOpen, setIsShareDialogOpen] = React.useState(false);
   const [selectedRowsData, setSelectedRowsData] = React.useState<any[]>([]);
   const [sharingConfig, setSharingConfig] = React.useState<{ subject: string; message: string }>({
@@ -557,9 +556,16 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         .getByTitle("PIM Product")
         .items.select("ID", "Title", "PIMProductName", "Manufacturer", "BusinessLine","ManufacturerLookupId")
         .filter(`substringof('${escapedText}', PIMProductName)`)
+        .orderBy("PIMProductName")
         .top(5000)();
 
-      setProducts(results as IProductLookupItem[]);
+      const sorted = (results as IProductLookupItem[]).sort((a, b) => {
+        const nameA = `${a.Title || ""} ${a.PIMProductName || ""}`.trim();
+        const nameB = `${b.Title || ""} ${b.PIMProductName || ""}`.trim();
+        return nameA.localeCompare(nameB, undefined, { sensitivity: "base" });
+      });
+
+      setProducts(sorted);
     } catch (error) {
       console.error("searchProducts error:", error);
     } finally {
@@ -582,9 +588,14 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         .getByTitle("PIM Global Client")
         .items.select("ID", "Title")
         .filter(`substringof('${escapedText}', Title)`)
+        .orderBy("Title")
         .top(5000)();
 
-      setClients(results as IClientLookupItem[]);
+      const sorted = (results as IClientLookupItem[]).sort((a, b) =>
+        (a.Title || "").localeCompare(b.Title || "", undefined, { sensitivity: "base" })
+      );
+
+      setClients(sorted);
     } catch (error) {
       console.error("searchClients error:", error);
     } finally {
@@ -617,21 +628,38 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   }, [clientSearchText]);
 
   React.useEffect(() => {
-    const loadDocumentTypes = async (): Promise<void> => {
-      setDocumentTypeLoading(true);
+    const loadTaxonomy = async (): Promise<void> => {
+      setTaxonomyLoading(true);
 
       try {
-        const items = await sp.web.lists
-          .getByTitle("Document Type")
-          .items.select("ID", "Title", "ShortTitle")
-          .orderBy("Title")();
+        const [docTypes, subDocTypes] = await Promise.all([
+          sp.web.lists
+            .getByTitle("Document Type")
+            .items.select("ID", "Title", "ShortTitle")
+            .orderBy("Title")(),
+          sp.web.lists
+            .getByTitle("Sub Document Type")
+            .items.select("ID", "Title", "DocumentType/Title")
+            .expand("DocumentType")
+            .top(2000)
+            .orderBy("Title")(),
+        ]);
 
-        setDocumentTypes(items as IDocumentTypeItem[]);
+        const sortedDocTypes = (docTypes as IDocumentTypeItem[]).sort((a, b) =>
+          (a.Title || "").localeCompare(b.Title || "", undefined, { sensitivity: "base" })
+        );
+        const sortedSubDocTypes = (subDocTypes as ISubDocumentTypeItem[]).sort((a, b) =>
+          (a.Title || "").localeCompare(b.Title || "", undefined, { sensitivity: "base" })
+        );
+
+        setDocumentTypes(sortedDocTypes);
+        setAllSubDocumentTypes(sortedSubDocTypes);
       } catch (error) {
-        console.error("loadDocumentTypes error:", error);
+        console.error("loadTaxonomy error:", error);
         setDocumentTypes([]);
+        setAllSubDocumentTypes([]);
       } finally {
-        setDocumentTypeLoading(false);
+        setTaxonomyLoading(false);
       }
     };
 
@@ -655,47 +683,35 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       }
     };
 
-    void loadDocumentTypes();
+    void loadTaxonomy();
     void loadSharingConfiguration();
   }, []);
 
+  // In-memory filtered sub-document types based on selected Document Types
+  const availableSubDocumentTypes = useMemo(() => {
+    let list: ISubDocumentTypeItem[];
+    if (selectedDocumentTypes.length === 0) {
+      list = allSubDocumentTypes;
+    } else {
+      const selectedSet = new Set(selectedDocumentTypes);
+      list = allSubDocumentTypes.filter(
+        (sub) => sub.DocumentType?.Title && selectedSet.has(sub.DocumentType.Title)
+      );
+    }
+    return list.slice().sort((a, b) =>
+      (a.Title || "").localeCompare(b.Title || "", undefined, { sensitivity: "base" })
+    );
+  }, [allSubDocumentTypes, selectedDocumentTypes]);
+
+  // Prune any selected sub-document types if their parent document type was unselected
   React.useEffect(() => {
-    const loadSubDocumentTypes = async (): Promise<void> => {
-      if (!selectedDocumentType) {
-        setSubDocumentTypes([]);
-        setSelectedSubDocumentType("");
-        return;
-      }
-
-      setSubDocumentTypeLoading(true);
-
-      try {
-        const escapedValue = selectedDocumentType.replace(/'/g, "''");
-        const items = await sp.web.lists
-          .getByTitle("Sub Document Type")
-          .items.select("ID", "Title", "DocumentType/Title")
-          .expand("DocumentType")
-          .filter(`DocumentType/Title eq '${escapedValue}'`)
-          .orderBy("Title")();
-
-        setSubDocumentTypes(items as ISubDocumentTypeItem[]);
-
-        if (
-          selectedSubDocumentType &&
-          !items.some((item: any) => item.Title === selectedSubDocumentType)
-        ) {
-          setSelectedSubDocumentType("");
-        }
-      } catch (error) {
-        console.error("loadSubDocumentTypes error:", error);
-        setSubDocumentTypes([]);
-      } finally {
-        setSubDocumentTypeLoading(false);
-      }
-    };
-
-    void loadSubDocumentTypes();
-  }, [selectedDocumentType, selectedSubDocumentType]);
+    if (selectedDocumentTypes.length > 0) {
+      const validTitles = new Set(availableSubDocumentTypes.map((i) => i.Title));
+      setSelectedSubDocumentTypes((prev) =>
+        prev.filter((title) => validTitles.has(title))
+      );
+    }
+  }, [availableSubDocumentTypes, selectedDocumentTypes]);
 
   const buildSearchQuery = (): string => {
     const clauses: string[] = [];
@@ -711,13 +727,13 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       .map((item) => (item.Title || "").trim())
       .filter(Boolean);
 
-    const documentTypeValues = selectedDocumentType
-      ? [selectedDocumentType.trim()].filter(Boolean)
-      : [];
+    const documentTypeValues = selectedDocumentTypes
+      .map((item) => item.trim())
+      .filter(Boolean);
 
-    const subDocumentTypeValues = selectedSubDocumentType
-      ? [selectedSubDocumentType.trim()].filter(Boolean)
-      : [];
+    const subDocumentTypeValues = selectedSubDocumentTypes
+      .map((item) => item.trim())
+      .filter(Boolean);
 
     if (productValues.length > 0) {
       clauses.push(
@@ -924,8 +940,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     const hasAnySelection =
       selectedProductValues.length > 0 ||
       selectedClientValues.length > 0 ||
-      selectedDocumentType.trim().length > 0 ||
-      selectedSubDocumentType.trim().length > 0 ||
+      selectedDocumentTypes.length > 0 ||
+      selectedSubDocumentTypes.length > 0 ||
       dateFrom !== null ||
       dateTo !== null;
 
@@ -1068,7 +1084,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       });
       const result: string[] = [];
       unique.forEach((val) => result.push(val));
-      return result.sort();
+      return result.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
     },
     [items_AllProducts]
   );
@@ -1088,7 +1104,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       });
       const result: string[] = [];
       unique.forEach((val) => result.push(val));
-      return result.sort();
+      return result.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
     },
     [items_AllProducts]
   );
@@ -1098,12 +1114,15 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       const unique = new Set<string>();
       items_AllProducts.forEach((item) => {
         if (item.BusinessLine) {
-          item.BusinessLine.split(",").forEach((val) => unique.add(val.trim()));
+          item.BusinessLine.split(",").forEach((val) => {
+            const trimmed = val.trim();
+            if (trimmed) unique.add(trimmed);
+          });
         }
       });
       const result: string[] = [];
       unique.forEach((val) => result.push(val));
-      return result.sort();
+      return result.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
     },
     [items_AllProducts]
   );
@@ -1113,12 +1132,15 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       const unique = new Set<string>();
       items_AllProducts.forEach((item) => {
         if (item.CountrySoldTo) {
-          item.CountrySoldTo.split(",").forEach((val) => unique.add(val.trim()));
+          item.CountrySoldTo.split(",").forEach((val) => {
+            const trimmed = val.trim();
+            if (trimmed) unique.add(trimmed);
+          });
         }
       });
       const result: string[] = [];
       unique.forEach((val) => result.push(val));
-      return result.sort();
+      return result.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
     },
     [items_AllProducts]
   );
@@ -1128,12 +1150,13 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       const unique = new Set<string>();
       items_AllProducts.forEach((item) => {
         if (item.DocumentTypeSearchText) {
-          unique.add(item.DocumentTypeSearchText.trim());
+          const trimmed = item.DocumentTypeSearchText.trim();
+          if (trimmed) unique.add(trimmed);
         }
       });
       const result: string[] = [];
       unique.forEach((val) => result.push(val));
-      return result.sort();
+      return result.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
     },
     [items_AllProducts]
   );
@@ -1143,12 +1166,15 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       const unique = new Set<string>();
       items_AllProducts.forEach((item) => {
         if (item.SubDocumentTypeSearchText) {
-          item.SubDocumentTypeSearchText.split(",").forEach((val) => unique.add(val.trim()));
+          item.SubDocumentTypeSearchText.split(",").forEach((val) => {
+            const trimmed = val.trim();
+            if (trimmed) unique.add(trimmed);
+          });
         }
       });
       const result: string[] = [];
       unique.forEach((val) => result.push(val));
-      return result.sort();
+      return result.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
     },
     [items_AllProducts]
   );
@@ -1559,21 +1585,35 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             marginBottom: "12px",
           }}
         >
-          <FormControl fullWidth size="small" disabled={documentTypeLoading}>
+          <FormControl fullWidth size="small" disabled={taxonomyLoading}>
             <InputLabel id="document-type-select-label">Document Type</InputLabel>
             <Select
               labelId="document-type-select-label"
-              value={selectedDocumentType}
-              label="Document Type"
+              multiple
+              value={selectedDocumentTypes}
+              onChange={(event) => {
+                const val = event.target.value;
+                setSelectedDocumentTypes(
+                  typeof val === "string" ? val.split(",") : val
+                );
+              }}
+              input={<OutlinedInput label="Document Type" />}
+              renderValue={(selected) => (selected as string[]).join(", ")}
               size="small"
-              onChange={(event) => setSelectedDocumentType(event.target.value as string)}
             >
-              <MenuItem value="">
-                <em>All</em>
-              </MenuItem>
               {documentTypes.map((item) => (
                 <MenuItem key={item.ID} value={item.Title}>
-                  {item.ShortTitle ? `${item.Title} (${item.ShortTitle})` : item.Title}
+                  <Checkbox
+                    size="small"
+                    checked={selectedDocumentTypes.indexOf(item.Title) > -1}
+                  />
+                  <ListItemText
+                    primary={
+                      item.ShortTitle
+                        ? `${item.Title} (${item.ShortTitle})`
+                        : item.Title
+                    }
+                  />
                 </MenuItem>
               ))}
             </Select>
@@ -1582,26 +1622,32 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           <FormControl
             fullWidth
             size="small"
-            disabled={!selectedDocumentType || subDocumentTypeLoading}
+            disabled={taxonomyLoading || availableSubDocumentTypes.length === 0}
           >
             <InputLabel id="sub-document-type-select-label">
               Sub Document Type
             </InputLabel>
             <Select
               labelId="sub-document-type-select-label"
-              value={selectedSubDocumentType}
-              label="Sub Document Type"
+              multiple
+              value={selectedSubDocumentTypes}
+              onChange={(event) => {
+                const val = event.target.value;
+                setSelectedSubDocumentTypes(
+                  typeof val === "string" ? val.split(",") : val
+                );
+              }}
+              input={<OutlinedInput label="Sub Document Type" />}
+              renderValue={(selected) => (selected as string[]).join(", ")}
               size="small"
-              onChange={(event) =>
-                setSelectedSubDocumentType(event.target.value as string)
-              }
             >
-              <MenuItem value="">
-                <em>All</em>
-              </MenuItem>
-              {subDocumentTypes.map((item) => (
+              {availableSubDocumentTypes.map((item) => (
                 <MenuItem key={item.ID} value={item.Title}>
-                  {item.Title}
+                  <Checkbox
+                    size="small"
+                    checked={selectedSubDocumentTypes.indexOf(item.Title) > -1}
+                  />
+                  <ListItemText primary={item.Title} />
                 </MenuItem>
               ))}
             </Select>
