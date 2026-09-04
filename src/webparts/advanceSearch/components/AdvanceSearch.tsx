@@ -415,7 +415,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       const productName = (item.PIMProductName || "").trim();
       if (title && productName) {
         productClauses.push(
-          `("${sanitizeKqlValue(title)}" AND "${sanitizeKqlValue(productName)}")`
+          `("${sanitizeKqlValue(title)}" OR "${sanitizeKqlValue(productName)}")`
         );
       } else if (title) {
         productClauses.push(`"${sanitizeKqlValue(title)}"`);
@@ -644,7 +644,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       const unique = new Set<string>();
       items.forEach((item) => {
         if (item.ManufacturerSearchText) {
-          item.ManufacturerSearchText.split(";").forEach((val) => {
+          item.ManufacturerSearchText.split(/[;,]/).forEach((val) => {
             const trimmed = val.trim();
             if (trimmed) unique.add(trimmed);
           });
@@ -821,19 +821,21 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         Cell: ({ cell }) => (
           <>
             {String(cell.getValue() || "")
-              .split(";")
+              .split(/[;,]/)
+              .map((item) => item.trim())
               .filter(Boolean)
               .map((item, idx) => (
                 <div
                   key={idx}
                   style={{
+                    display: "block",
                     whiteSpace: "normal",
-                    wordBreak: "normal",
+                    wordBreak: "break-word",
                     overflowWrap: "break-word",
                     lineHeight: 1.4,
                   }}
                 >
-                  {item.trim()}
+                  {item}
                 </div>
               ))}
           </>
