@@ -1,10 +1,8 @@
 import * as React from "react";
+import { useMemo } from "react";
 import { IAdvanceSearchProps } from "./IAdvanceSearchProps";
 import { sp } from "../AdvanceSearchWebPart";
-import "@pnp/sp/sharing";
-import "@pnp/sp/fields/list";
-import { SharingRole } from "@pnp/sp/sharing";
-import { useMemo } from "react";
+import { spfi, SPFx, SPFI } from "@pnp/sp";
 import {
   MaterialReactTable,
   useMaterialReactTable,
@@ -21,7 +19,6 @@ import ShareIcon from "@mui/icons-material/Share";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
-import DialogActions from "@mui/material/DialogActions";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
@@ -33,397 +30,42 @@ import OutlinedInput from "@mui/material/OutlinedInput";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import CloseIcon from "@mui/icons-material/Close";
-import { ThemeProvider, createTheme } from "@mui/material/styles";
+import { ThemeProvider } from "@mui/material/styles";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import dayjs, { Dayjs } from "dayjs";
 
-// Email Share Dialog Component with isolated state
-const EmailShareDialog: React.FC<{
-  open: boolean;
-  onClose: () => void;
-  selectedItems?: any[];
-  siteUrl: string;
-  defaultSubject?: string;
-  defaultMessage?: string;
-  currentUserEmail?: string;
-}> = ({
-  open,
-  onClose,
-  selectedItems = [],
-  siteUrl,
-  defaultSubject = "",
-  defaultMessage = "",
-  currentUserEmail = "",
-}) => {
-  const [emailFields, setEmailFields] = React.useState({
-    to: "",
-    cc: currentUserEmail,
-    bcc: "",
-    subject: defaultSubject,
-    message: defaultMessage,
-  });
-  const [emailErrors, setEmailErrors] = React.useState({ to: "", cc: "", bcc: "" });
-  const [shareErrorMessage, setShareErrorMessage] = React.useState<string>("");
-  const [isSharing, setIsSharing] = React.useState(false);
-
-  React.useEffect(() => {
-    if (open) {
-      setEmailFields((prev) => ({
-        ...prev,
-        cc: prev.cc || currentUserEmail,
-        subject: defaultSubject,
-        message: defaultMessage,
-      }));
-    }
-  }, [open, defaultSubject, defaultMessage, currentUserEmail]);
-
-  const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-
-  const validateEmailField = (field: "to" | "cc" | "bcc", value: string): string => {
-    const emails = value.split(/[;,]/).map((e) => e.trim()).filter(Boolean);
-    let invalidEmail = "";
-    for (let i = 0; i < emails.length; i++) {
-      if (!validateEmail(emails[i])) {
-        invalidEmail = emails[i];
-        break;
-      }
-    }
-    return invalidEmail ? `Invalid email: ${invalidEmail}` : "";
-  };
-
-  const handleEmailChange = (field: string, value: string) => {
-    setEmailFields((prev) => ({ ...prev, [field]: value }));
-  };
-
-  const handleEmailBlur = (field: "to" | "cc" | "bcc") => {
-    const error = validateEmailField(field, emailFields[field]);
-    setEmailErrors((prev) => ({ ...prev, [field]: error }));
-  };
-
-  const handleClose = () => {
-    setEmailFields({ to: "", cc: currentUserEmail, bcc: "", subject: "", message: "" });
-    setEmailErrors({ to: "", cc: "", bcc: "" });
-    setShareErrorMessage("");
-    onClose();
-  };
-
-  const externalShareFiles = async (
-    toEmails: string[],
-    ccEmails: string[],
-    bccEmails: string[]
-  ) => {
-    const origin = window.location.origin;
-    const allRecipients = Array.from(new Set([...toEmails, ...ccEmails, ...bccEmails]));
-
-    // Format custom message (ensuring it stays within SharePoint's 500-char limit)
-    let cleanMessage = (emailFields.message || "").replace(/{}/g, "").trim();
-    if (cleanMessage.length > 490) {
-      cleanMessage = cleanMessage.substring(0, 487) + "...";
-    }
-
-    // Share each file using PnPjs shareObject with custom subject and body
-    for (let index = 0; index < selectedItems.length; index++) {
-      const item = selectedItems[index];
-      const itemUrl: string = item.fileUrl || "";
-      const fullUrl = itemUrl.startsWith("http") ? itemUrl : `${origin}${itemUrl}`;
-
-      const result = await sp.web.shareObject(
-        fullUrl,
-        allRecipients,
-        SharingRole.View,
-        {
-          subject: (emailFields.subject || "Shared document").substring(0, 200),
-          body: cleanMessage || "Please find the shared document.",
-        }
-      );
-
-      if (result && result.ErrorMessage) {
-        throw new Error(result.ErrorMessage);
-      }
-    }
-  };
-
-  const handleSend = async () => {
-    const toError = validateEmailField("to", emailFields.to);
-    const ccError = validateEmailField("cc", emailFields.cc);
-    const bbcError = validateEmailField("bcc", emailFields.bcc);
-    
-    if (!toError && !ccError && !bbcError && emailFields.to) {
-      setIsSharing(true);
-      setShareErrorMessage("");
-      try {
-        const toEmails = emailFields.to.split(/[;,]/).map((e) => e.trim()).filter(Boolean);
-        const ccEmails = emailFields.cc.split(/[;,]/).map((e) => e.trim()).filter(Boolean);
-        const bccEmails = emailFields.bcc.split(/[;,]/).map((e) => e.trim()).filter(Boolean);
-
-        await externalShareFiles(toEmails, ccEmails, bccEmails);
-        alert(`Successfully shared ${selectedItems.length} file(s)!`);
-        handleClose();
-      } catch (error: any) {
-        console.error("Error during sharing:", error);
-        setShareErrorMessage(error?.message || "Failed to share files. Please verify permissions.");
-      } finally {
-        setIsSharing(false);
-      }
-    } else {
-      setEmailErrors({ to: toError, cc: ccError, bcc: bbcError });
-    }
-  };
-
-  return (
-    <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
-      <DialogTitle>Share Selected Items</DialogTitle>
-      <DialogContent>
-        {shareErrorMessage && (
-          <Typography color="error" variant="body2" sx={{ mb: 1, p: 1, backgroundColor: "#ffebee", borderRadius: "4px" }}>
-            {shareErrorMessage}
-          </Typography>
-        )}
-        <TextField
-          fullWidth
-          label="To"
-          value={emailFields.to}
-          onChange={(e) => handleEmailChange("to", e.target.value)}
-          onBlur={() => handleEmailBlur("to")}
-          error={!!emailErrors.to}
-          helperText={emailErrors.to}
-          margin="dense"
-        />
-        <TextField
-          fullWidth
-          label="CC"
-          value={emailFields.cc}
-          onChange={(e) => handleEmailChange("cc", e.target.value)}
-          onBlur={() => handleEmailBlur("cc")}
-          error={!!emailErrors.cc}
-          helperText={emailErrors.cc}
-          margin="dense"
-        />
-        <TextField
-          fullWidth
-          label="BCC"
-          value={emailFields.bcc}
-          onChange={(e) => handleEmailChange("bcc", e.target.value)}
-          onBlur={() => handleEmailBlur("bcc")}
-          error={!!emailErrors.bcc}
-          helperText={emailErrors.bcc}
-          margin="dense"
-        />
-        <TextField
-          fullWidth
-          label="Subject"
-          value={emailFields.subject}
-          onChange={(e) => handleEmailChange("subject", e.target.value)}
-          margin="dense"
-        />
-        <TextField
-          fullWidth
-          label="Message"
-          value={emailFields.message}
-          onChange={(e) => handleEmailChange("message", e.target.value)}
-          margin="dense"
-          multiline
-          rows={4}
-        />
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={handleClose}>Cancel</Button>
-        <Button
-          onClick={handleSend}
-          disabled={!emailFields.to || !!emailErrors.to || !!emailErrors.cc || !!emailErrors.bcc || isSharing}
-        >
-          {isSharing ? "Sharing..." : "Send"}
-        </Button>
-      </DialogActions>
-    </Dialog>
-  );
-};
-
-type doclib_AllProducts = {
-  id?: number;
-  filename: string;
-  PIMProduct: IProductLookupItem[];
-  PIMProductSearchText: string;
-  BusinessLine: string;
-  CountrySoldTo: string;
-  ManufacturerSearchText: string;
-  DocumentTypeSearchText: string;
-  SubDocumentTypeSearchText: string;
-  DocumentDate: Date | null;
-  fileUrl: string;
-  Confidentiality: string;
-  Alerts: string;
-};
-
-type IProductLookupItem = {
-  ID: number;
-  Title: string;
-  PIMProductName: string;
-  Manufacturer?: string;
-  BusinessLine?: string;
-  ManufacturerLookupId?:number;
-};
-
-type IClientLookupItem = {
-  ID: number;
-  Title: string;
-};
-
-type IDocumentTypeItem = {
-  ID: number;
-  Title: string;
-  ShortTitle?: string;
-};
-
-type ISubDocumentTypeItem = {
-  ID: number;
-  Title: string;
-  DocumentType?: {
-    Title?: string;
-  } | null;
-};
-
-const choiceToString = (value: string | string[] | undefined | null): string => {
-  if (!value) return "";
-  return Array.isArray(value) ? value.join(", ") : value;
-};
-
-const sanitizeKqlValue = (value: string): string =>
-  value.replace(/"/g, '\\"').trim();
-
-// Deterministic pastel color generator for any string choice
-const getDynamicChipStyle = (str: string) => {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const h = Math.abs(hash % 360);
-  return {
-    bg: `hsl(${h}, 65%, 94%)`,
-    border: `hsl(${h}, 50%, 80%)`,
-    text: `hsl(${h}, 75%, 25%)`,
-  };
-};
-
-// SharePoint column formatting CSS class mapping
-const SP_FORMAT_CLASS_MAP: Record<string, { bg: string; border: string; text: string }> = {
-  "sp-css-backgroundcolor-warningbackground1": { bg: "#fff4ce", border: "#fde37f", text: "#795b00" },
-  "sp-css-backgroundcolor-warningbackground2": { bg: "#fff4ce", border: "#fde37f", text: "#795b00" },
-  "sp-css-backgroundcolor-warningbackground3": { bg: "#fff4ce", border: "#fde37f", text: "#795b00" },
-  "sp-css-backgroundcolor-severewarningbackground1": { bg: "#fed9cc", border: "#fca385", text: "#a4262c" },
-  "sp-css-backgroundcolor-severewarningbackground3": { bg: "#fed9cc", border: "#fca385", text: "#a4262c" },
-  "sp-css-backgroundcolor-errorbackground1": { bg: "#fde7e9", border: "#f19999", text: "#a80000" },
-  "sp-css-backgroundcolor-errorbackground3": { bg: "#fde7e9", border: "#f19999", text: "#a80000" },
-  "sp-css-backgroundcolor-successbackground1": { bg: "#dff6dd", border: "#92c353", text: "#107c10" },
-  "sp-css-backgroundcolor-successbackground3": { bg: "#dff6dd", border: "#92c353", text: "#107c10" },
-  "sp-css-backgroundcolor-neutralbackground1": { bg: "#f3f2f1", border: "#edebe9", text: "#323130" },
-};
-
-// Parse color choices from SharePoint field CustomFormatter JSON if present
-const parseSpCustomFormatter = (
-  customFormatterJson?: string
-): Record<string, { bg: string; border: string; text: string }> => {
-  const result: Record<string, { bg: string; border: string; text: string }> = {};
-  if (!customFormatterJson) return result;
-
-  try {
-    const raw = customFormatterJson;
-    const ifRegex = /@currentField\s*==\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]/gi;
-    let match: RegExpExecArray | null;
-    while ((match = ifRegex.exec(raw)) !== null) {
-      const choiceVal = match[1].trim();
-      const styleOrClass = match[2].trim().toLowerCase();
-      if (SP_FORMAT_CLASS_MAP[styleOrClass]) {
-        result[choiceVal.toLowerCase()] = SP_FORMAT_CLASS_MAP[styleOrClass];
-      } else if (styleOrClass.startsWith("#") || styleOrClass.startsWith("rgb")) {
-        result[choiceVal.toLowerCase()] = {
-          bg: styleOrClass,
-          border: styleOrClass,
-          text: "#1a1918",
-        };
-      }
-    }
-  } catch (err) {
-    console.warn("Could not parse field CustomFormatter:", err);
-  }
-
-  return result;
-};
-
-// Fallback semantic styles for confidentiality values if no SharePoint JSON formatter exists
-const getSemanticConfidentialityStyle = (val: string) => {
-  const clean = val.trim().toLowerCase();
-  if (clean.includes("strictly") || clean.includes("high") || clean.includes("secret")) {
-    return { bg: "#fde7e9", border: "#f19999", text: "#a80000" };
-  }
-  if (clean.includes("confidential") || clean.includes("restricted")) {
-    return { bg: "#fed9cc", border: "#fca385", text: "#a4262c" };
-  }
-  if (clean.includes("internal")) {
-    return { bg: "#fff4ce", border: "#fde37f", text: "#795b00" };
-  }
-  if (clean.includes("public") || clean.includes("general")) {
-    return { bg: "#dff6dd", border: "#92c353", text: "#107c10" };
-  }
-  return null;
-};
-
-const multiSelectFilterFn = (
-  row: { getValue: (columnId: string) => unknown },
-  columnId: string,
-  filterValue: unknown
-): boolean => {
-  if (!filterValue || (Array.isArray(filterValue) && filterValue.length === 0)) return true;
-  const rowValue = String(row.getValue(columnId) || "").toLowerCase();
-  const selectedValues = Array.isArray(filterValue) ? filterValue : [filterValue];
-  return selectedValues.some((val) => rowValue.includes(String(val).toLowerCase()));
-};
-
-const documentDateFilter = (
-  row: { getValue: (columnId: string) => unknown },
-  columnId: string,
-  filterValue: unknown
-): boolean => {
-  const rowValue = row.getValue(columnId);
-  if (!rowValue || !filterValue) return true;
-
-  const rowDate = dayjs(rowValue as string | Date);
-  const filterDate = dayjs(filterValue as string);
-
-  if (!rowDate.isValid() || !filterDate.isValid()) return true;
-
-  return rowDate.isSame(filterDate, "day") || rowDate.isAfter(filterDate, "day");
-};
-
-const itemMatchesFilter = (
-  item: doclib_AllProducts,
-  colId: string,
-  filterValue: unknown
-): boolean => {
-  if (filterValue === undefined || filterValue === null || filterValue === "") return true;
-  if (Array.isArray(filterValue) && filterValue.length === 0) return true;
-
-  if (colId === "filename") {
-    return (item.filename || "").toLowerCase().includes(String(filterValue).toLowerCase());
-  }
-  if (colId === "Alerts") {
-    return (item.Alerts || "").toLowerCase().includes(String(filterValue).toLowerCase());
-  }
-  if (colId === "DocumentDate") {
-    if (!item.DocumentDate) return false;
-    const rowDate = dayjs(item.DocumentDate);
-    const filterDate = dayjs(filterValue as string);
-    if (!rowDate.isValid() || !filterDate.isValid()) return true;
-    return rowDate.isSame(filterDate, "day") || rowDate.isAfter(filterDate, "day");
-  }
-
-  const rawValue = (item as Record<string, unknown>)[colId];
-  const itemVal = String(rawValue || "").toLowerCase();
-  const selectedValues = Array.isArray(filterValue) ? filterValue : [filterValue];
-  return selectedValues.some((val) => itemVal.includes(String(val).toLowerCase()));
-};
+import {
+  doclib_AllProducts,
+  IProductLookupItem,
+  IClientLookupItem,
+  IDocumentTypeItem,
+  ISubDocumentTypeItem,
+  IFieldFormatters,
+  ISharingConfig,
+} from "../types/advanceSearchTypes";
+import {
+  sanitizeKqlValue,
+  getDynamicChipStyle,
+  getSemanticConfidentialityStyle,
+} from "../utils/formatters";
+import {
+  multiSelectFilterFn,
+  documentDateFilter,
+  itemMatchesFilter,
+} from "../utils/filterHelpers";
+import { compactTheme } from "../theme/compactTheme";
+import {
+  searchProducts as searchProductsService,
+  searchClients as searchClientsService,
+  loadTaxonomy as loadTaxonomyService,
+  loadSharingConfiguration as loadSharingConfigService,
+  loadListFieldFormatting as loadFieldFormattingService,
+  loadAllRecords as loadAllRecordsService,
+  searchRecords as searchRecordsService,
+} from "../../../services/sharePointService";
+import EmailShareDialog from "./EmailShareDialog";
 
 const DocumentDateFilter: React.FC<{
   column: { getFilterValue: () => unknown; setFilterValue: (value: unknown) => void };
@@ -530,84 +172,48 @@ const MultiSelectAutocompleteFilter: React.FC<{
   );
 };
 
-const compactTheme = createTheme({
-  typography: {
-    fontFamily: '"Segoe UI", "Segoe UI Web (West European)", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", sans-serif',
-    fontSize: 14,
-  },
-  components: {
-    MuiInputBase: {
-      styleOverrides: {
-        root: {
-          fontSize: "14px",
-          minHeight: "36px",
-        },
-        input: {
-          paddingTop: "8px",
-          paddingBottom: "8px",
-        },
-      },
-    },
-    MuiOutlinedInput: {
-      styleOverrides: {
-        root: {
-          fontSize: "14px",
-          minHeight: "36px",
-        },
-        input: {
-          padding: "8px 12px",
-        },
-      },
-    },
-    MuiInputLabel: {
-      styleOverrides: {
-        root: {
-          fontSize: "14px",
-        },
-      },
-    },
-    MuiButton: {
-      styleOverrides: {
-        root: {
-          minHeight: "36px",
-          padding: "7px 14px",
-          fontSize: "14px",
-          lineHeight: 1.3,
-          textTransform: "none",
-        },
-      },
-    },
-    MuiMenuItem: {
-      styleOverrides: {
-        root: {
-          fontSize: "14px",
-          minHeight: "36px",
-        },
-      },
-    },
-    MuiAutocomplete: {
-      styleOverrides: {
-        inputRoot: {
-          minHeight: "36px",
-        },
-      },
-    },
-    MuiTableCell: {
-      styleOverrides: {
-        root: {
-          padding: "8px 10px",
-          fontSize: "13px",
-        },
-      },
-    },
-    MuiPaper: {
-      styleOverrides: {
-        root: {
-          fontSize: "14px",
-        },
-      },
-    },
-  },
+const ProductListbox = React.forwardRef<
+  HTMLUListElement,
+  React.HTMLAttributes<HTMLElement>
+>(function ProductListbox(props, ref) {
+  const { children, ...other } = props;
+
+  return (
+    <ul
+      {...other}
+      ref={ref}
+      style={{
+        padding: 0,
+        margin: 0,
+        listStyle: "none",
+        overflowX: "auto",
+      }}
+    >
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: "2.2fr 1.3fr 1.2fr",
+          gap: 0.5,
+          alignItems: "center",
+          minWidth: "500px",
+          width: "100%",
+          px: 1,
+          py: 0.5,
+          borderBottom: "1px solid",
+          borderColor: "divider",
+          backgroundColor: "rgba(0, 0, 0, 0.02)",
+          color: "text.primary",
+          fontSize: "10.5px",
+          fontWeight: 600,
+        }}
+      >
+        <span>Product</span>
+        <span>Client</span>
+        <span>Business Line</span>
+      </Box>
+      {children}
+    </ul>
+  );
 });
 
 const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
@@ -643,15 +249,15 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const [taxonomyLoading, setTaxonomyLoading] = React.useState(false);
   const [isShareDialogOpen, setIsShareDialogOpen] = React.useState(false);
   const [selectedRowsData, setSelectedRowsData] = React.useState<any[]>([]);
-  const [sharingConfig, setSharingConfig] = React.useState<{ subject: string; message: string }>({
+  const [sharingConfig, setSharingConfig] = React.useState<ISharingConfig>({
     subject: "",
     message: "",
   });
 
-  const [fieldFormatters, setFieldFormatters] = React.useState<{
-    businessLine: Record<string, { bg: string; border: string; text: string }>;
-    confidentiality: Record<string, { bg: string; border: string; text: string }>;
-  }>({ businessLine: {}, confidentiality: {} });
+  const [fieldFormatters, setFieldFormatters] = React.useState<IFieldFormatters>({
+    businessLine: {},
+    confidentiality: {},
+  });
 
   const [columnFilters, setColumnFilters] = React.useState<MRT_ColumnFiltersState>([]);
 
@@ -660,119 +266,62 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const [selectedFileForAction, setSelectedFileForAction] = React.useState<doclib_AllProducts | null>(null);
   const [editModalUrl, setEditModalUrl] = React.useState<string | null>(null);
 
-  const searchProducts = async (searchText: string) => {
-    if (searchText.trim().length < 3) {
-      setProducts([]);
-      return;
+  const activeSp: SPFI = React.useMemo(() => {
+    if (sp) return sp;
+    const initialWebUrl = props.urlSite?.trim() || props.context?.pageContext?.web?.absoluteUrl;
+    if (initialWebUrl && props.context) {
+      return spfi(initialWebUrl).using(SPFx(props.context));
     }
-
-    setLookupLoading(true);
-
-    try {
-      const escapedText = searchText.replace(/'/g, "''");
-
-      const results = await sp.web.lists
-        .getByTitle("PIM Product")
-        .items.select("ID", "Title", "PIMProductName", "Manufacturer", "BusinessLine","ManufacturerLookupId")
-        .filter(`substringof('${escapedText}', PIMProductName)`)
-        .orderBy("PIMProductName")
-        .top(5000)();
-
-      const sorted = (results as IProductLookupItem[]).sort((a, b) => {
-        const nameA = `${a.Title || ""} ${a.PIMProductName || ""}`.trim();
-        const nameB = `${b.Title || ""} ${b.PIMProductName || ""}`.trim();
-        return nameA.localeCompare(nameB, undefined, { sensitivity: "base" });
-      });
-
-      setProducts(sorted);
-    } catch (error) {
-      console.error("searchProducts error:", error);
-    } finally {
-      setLookupLoading(false);
-    }
-  };
-
-  const searchClients = async (searchText: string) => {
-    if (searchText.trim().length < 3) {
-      setClients([]);
-      return;
-    }
-
-    setLookupLoading(true);
-
-    try {
-      const escapedText = searchText.replace(/'/g, "''");
-
-      const results = await sp.web.lists
-        .getByTitle("PIM Global Client")
-        .items.select("ID", "Title")
-        .filter(`substringof('${escapedText}', Title)`)
-        .orderBy("Title")
-        .top(5000)();
-
-      const sorted = (results as IClientLookupItem[]).sort((a, b) =>
-        (a.Title || "").localeCompare(b.Title || "", undefined, { sensitivity: "base" })
-      );
-
-      setClients(sorted);
-    } catch (error) {
-      console.error("searchClients error:", error);
-    } finally {
-      setLookupLoading(false);
-    }
-  };
+    return sp;
+  }, [props.urlSite, props.context]);
 
   React.useEffect(() => {
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       if (productSearchText.trim().length >= 3) {
-        searchProducts(productSearchText.trim());
+        setLookupLoading(true);
+        try {
+          const results = await searchProductsService(activeSp, productSearchText.trim());
+          setProducts(results);
+        } catch (error) {
+          console.error("searchProducts error:", error);
+        } finally {
+          setLookupLoading(false);
+        }
       } else {
         setProducts([]);
       }
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [productSearchText]);
+  }, [productSearchText, activeSp]);
 
   React.useEffect(() => {
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       if (clientSearchText.trim().length >= 3) {
-        searchClients(clientSearchText.trim());
+        setLookupLoading(true);
+        try {
+          const results = await searchClientsService(activeSp, clientSearchText.trim());
+          setClients(results);
+        } catch (error) {
+          console.error("searchClients error:", error);
+        } finally {
+          setLookupLoading(false);
+        }
       } else {
         setClients([]);
       }
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [clientSearchText]);
+  }, [clientSearchText, activeSp]);
 
   React.useEffect(() => {
     const loadTaxonomy = async (): Promise<void> => {
       setTaxonomyLoading(true);
-
       try {
-        const [docTypes, subDocTypes] = await Promise.all([
-          sp.web.lists
-            .getByTitle("Document Type")
-            .items.select("ID", "Title", "ShortTitle")
-            .orderBy("Title")(),
-          sp.web.lists
-            .getByTitle("Sub Document Type")
-            .items.select("ID", "Title", "DocumentType/Title")
-            .expand("DocumentType")
-            .top(2000)
-            .orderBy("Title")(),
-        ]);
-
-        const sortedDocTypes = (docTypes as IDocumentTypeItem[]).sort((a, b) =>
-          (a.Title || "").localeCompare(b.Title || "", undefined, { sensitivity: "base" })
-        );
-        const sortedSubDocTypes = (subDocTypes as ISubDocumentTypeItem[]).sort((a, b) =>
-          (a.Title || "").localeCompare(b.Title || "", undefined, { sensitivity: "base" })
-        );
-
-        setDocumentTypes(sortedDocTypes);
-        setAllSubDocumentTypes(sortedSubDocTypes);
+        const taxonomy = await loadTaxonomyService(activeSp);
+        setDocumentTypes(taxonomy.docTypes);
+        setAllSubDocumentTypes(taxonomy.subDocTypes);
       } catch (error) {
         console.error("loadTaxonomy error:", error);
         setDocumentTypes([]);
@@ -782,54 +331,28 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       }
     };
 
-    const loadSharingConfiguration = async (): Promise<void> => {
+    const loadSharingConfig = async (): Promise<void> => {
       try {
-        const items = await sp.web.lists
-          .getByTitle("Configuration")
-          .items.select("Title", "Subject", "Message")
-          .filter("Title eq 'External Sharing'")
-          .top(1)();
-
-        if (items && items.length > 0) {
-          const config = items[0];
-          setSharingConfig({
-            subject: config.Subject ?? "",
-            message: config.Message ?? "",
-          });
-        }
+        const config = await loadSharingConfigService(activeSp);
+        setSharingConfig(config);
       } catch (err) {
-        console.warn("Could not load 'Configuration' list item for 'External Sharing':", err);
+        console.warn("loadSharingConfiguration error:", err);
       }
     };
 
-    const loadListFieldFormatting = async (): Promise<void> => {
+    const loadFieldFormatting = async (): Promise<void> => {
       try {
-        const fields = await sp.web.lists
-          .getByTitle("Clients & Products")
-          .fields.select("InternalName", "CustomFormatter")
-          .filter("InternalName eq 'Confidentiality' or InternalName eq 'Business_x0020_Line'")();
-
-        let blFormat: Record<string, { bg: string; border: string; text: string }> = {};
-        let confFormat: Record<string, { bg: string; border: string; text: string }> = {};
-
-        fields.forEach((f: any) => {
-          if (f.InternalName === "Business_x0020_Line") {
-            blFormat = parseSpCustomFormatter(f.CustomFormatter);
-          } else if (f.InternalName === "Confidentiality") {
-            confFormat = parseSpCustomFormatter(f.CustomFormatter);
-          }
-        });
-
-        setFieldFormatters({ businessLine: blFormat, confidentiality: confFormat });
+        const formatters = await loadFieldFormattingService(activeSp);
+        setFieldFormatters(formatters);
       } catch (err) {
-        console.warn("Could not load field CustomFormatter:", err);
+        console.warn("loadListFieldFormatting error:", err);
       }
     };
 
     void loadTaxonomy();
-    void loadSharingConfiguration();
-    void loadListFieldFormatting();
-  }, []);
+    void loadSharingConfig();
+    void loadFieldFormatting();
+  }, [activeSp]);
 
   // In-memory filtered sub-document types based on selected Document Types
   const availableSubDocumentTypes = useMemo(() => {
@@ -859,7 +382,6 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
   const buildSearchQuery = (): string => {
     const clauses: string[] = [];
-
     const searchPath = `${props.urlSite.replace(/\/$/, "")}/Products/*`;
     clauses.push(`Path:"${searchPath}"`);
 
@@ -934,120 +456,20 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     return clauses.join(" AND ");
   };
 
-  const loadAllRecords = async (): Promise<void> => {
+  const handleLoadAllRecords = async (): Promise<void> => {
     try {
       setResultsLoading(true);
       setHasSearched(true);
       setColumnFilters([]);
 
-      const allProducts: any[] = [];
-      const pageSize = 5000;
-      let lastId = 0;
-
-      while (true) {
-        const batch = await sp.web.lists
-          .getByTitle("Clients & Products")
-          .items.select(
-            "Id",
-            "Title",
-            "FileLeafRef",
-            "FileRef",
-            "Country",
-            "Business_x0020_Line",
-            "PIMProductCode/Title",
-            "PIMProductCode/PIMProductName",
-            "Manufacturer",
-            "Document_x0020_Type",
-            "Sub_x0020_Document_x0020_Type",
-            "Document_x0020_Date",
-            "Alerts",
-            "Confidentiality"
-          )
-          .expand("PIMProductCode")
-          .filter(`Id gt ${lastId}`)
-          .orderBy("Id")
-          .top(pageSize)();
-
-        if (batch.length === 0) break;
-
-        allProducts.push(...batch);
-        lastId = batch[batch.length - 1].Id;
-
-        if (batch.length < pageSize) break;
-      }
-
-      const mappedData: doclib_AllProducts[] = allProducts.map((item: any) => ({
-        id: item.Id,
-        filename: item.FileLeafRef ?? "",
-        fileUrl: item.FileRef,
-        PIMProduct: item.PIMProductCode ?? [],
-        PIMProductSearchText: (item.PIMProductCode ?? [])
-          .map((p: any) => `${p.Title} ${p.PIMProductName}`)
-          .join(" "),
-        ManufacturerSearchText: item.Manufacturer ?? "",
-        BusinessLine: choiceToString(item.Business_x0020_Line),
-        CountrySoldTo: choiceToString(item.Country),
-        DocumentTypeSearchText: item.Document_x0020_Type ?? "",
-        SubDocumentTypeSearchText: item.Sub_x0020_Document_x0020_Type ?? "",
-        DocumentDate: item.Document_x0020_Date
-          ? new Date(item.Document_x0020_Date)
-          : null,
-        Confidentiality: choiceToString(item.Confidentiality),
-        Alerts: item.Alerts ?? "",
-      }));
-
-      setItems_AllProducts(mappedData);
-      //setAllRecordsCache(mappedData);
+      const data = await loadAllRecordsService(activeSp);
+      setItems_AllProducts(data);
     } catch (error) {
-      console.error("loadAllRecords error:", error);
+      console.error("handleLoadAllRecords error:", error);
     } finally {
       setResultsLoading(false);
     }
   };
-
-  const ProductListbox = React.forwardRef<
-    HTMLUListElement,
-    React.HTMLAttributes<HTMLElement>
-  >(function ProductListbox(props, ref) {
-    const { children, ...other } = props;
-
-    return (
-      <ul
-        {...other}
-        ref={ref}
-        style={{
-          padding: 0,
-          margin: 0,
-          listStyle: "none",
-          overflowX: "auto",
-        }}
-      >
-        <Box
-          sx={{
-            display: "grid",
-            gridTemplateColumns: "2.2fr 1.3fr 1.2fr",
-            gap: 0.5,
-            alignItems: "center",
-            minWidth: "500px",
-            width: "100%",
-            px: 1,
-            py: 0.5,
-            borderBottom: "1px solid",
-            borderColor: "divider",
-            backgroundColor: "rgba(0, 0, 0, 0.02)",
-            color: "text.primary",
-            fontSize: "10.5px",
-            fontWeight: 600,
-          }}
-        >
-          <span>Product</span>
-          <span>Client</span>
-          <span>Business Line</span>
-        </Box>
-        {children}
-      </ul>
-    );
-  });
 
   const handleProductInputChange = (
     _event: React.SyntheticEvent,
@@ -1095,7 +517,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       dateTo !== null;
 
     if (!hasAnySelection) {
-      await loadAllRecords();
+      await handleLoadAllRecords();
       return;
     }
 
@@ -1104,123 +526,14 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       setHasSearched(true);
       setColumnFilters([]);
 
-      let queryText = buildSearchQuery();
-
+      const queryText = buildSearchQuery();
       if (!queryText) {
-        await loadAllRecords();
+        await handleLoadAllRecords();
         return;
       }
 
-      let allResults: any[] = [];
-      let startRow = 0;
-      const pageSize = 500;
-
-      const maxResults = 2500;
-
-      while (startRow < maxResults) {
-        const results = await sp.search({
-          Querytext: queryText,
-          RowLimit: Math.min(pageSize, maxResults - startRow),
-          StartRow: startRow,
-          SelectProperties: [
-            "Title",
-            "ListItemID",
-            "Path",
-            "DocumentDateOWSTDATE",
-            "BusinessLineOWSCHCM",
-            "CountryOWSCHCM",
-            "ManufacturerOWSTEXT",
-            "LongProductNameOWSMTXT",
-            "DocumentTypeOWSTEXT",
-            "SubDocumentTypeOWSMTXT",
-            //"PIMProduct*",
-            "owstaxIdPIMProductTermSet",  
-            "PIMProductCodeOWSTEXT",
-            "ConfidentialityOWSCHCS",
-            "AlertsOWSMTXT"
-          ],
-        });
-
-        const currentResults =
-          results?.PrimarySearchResults ?? [];
-
-        allResults.push(...currentResults);
-
-        if (
-          currentResults.length < pageSize ||
-          allResults.length >= maxResults
-        ) {
-          break;
-        }
-
-        startRow += pageSize;
-      }
-
-      const ids: number[] = [];
-
-      allResults.forEach((r: any) => {
-        const id = Number(r.ListItemID);
-        if (!isNaN(id) && ids.indexOf(id) === -1) {
-          ids.push(id);
-        }
-      });
-
-      if (ids.length === 0) {
-        setItems_AllProducts([]);
-        return;
-      }
-
-      const allProducts: any[] = [];
-
-      for (let i = 0; i < ids.length; i += 100) {
-        const currentIds = ids.slice(i, i + 100);
-        const filter = currentIds.map((id) => `Id eq ${id}`).join(" or ");
-
-        const items = await sp.web.lists
-          .getByTitle("Clients & Products")
-          .items.select(
-            "Id",
-            "Title",
-            "FileLeafRef",
-            "FileRef",
-            "Country",
-            "Business_x0020_Line",
-            "PIMProductCode/Title",
-            "PIMProductCode/PIMProductName",
-            "Manufacturer",
-            "Document_x0020_Type",
-            "Sub_x0020_Document_x0020_Type",
-            "Document_x0020_Date",
-            "Alerts",
-            "Confidentiality"
-          )
-          .expand("PIMProductCode")
-          .filter(filter)();
-
-        allProducts.push(...items);
-      }
-
-      const mappedData: doclib_AllProducts[] = allProducts.map((item: any) => ({
-        id: item.Id,
-        filename: item.FileLeafRef ?? "",
-        fileUrl: item.FileRef,
-        PIMProduct: item.PIMProductCode ?? [],
-        PIMProductSearchText: (item.PIMProductCode ?? [])
-          .map((p: any) => `${p.Title} ${p.PIMProductName}`)
-          .join(" "),
-        ManufacturerSearchText: item.Manufacturer ?? "",
-        BusinessLine: choiceToString(item.Business_x0020_Line),
-        CountrySoldTo: choiceToString(item.Country),
-        DocumentTypeSearchText: item.Document_x0020_Type ?? "",
-        SubDocumentTypeSearchText: item.Sub_x0020_Document_x0020_Type ?? "",
-        DocumentDate: item.Document_x0020_Date
-          ? new Date(item.Document_x0020_Date)
-          : null,
-        Confidentiality: choiceToString(item.Confidentiality),
-        Alerts: item.Alerts ?? "",
-      }));
-
-      setItems_AllProducts(mappedData);
+      const data = await searchRecordsService(activeSp, queryText);
+      setItems_AllProducts(data);
     } catch (error) {
       console.error("handleSearch error:", error);
     } finally {
@@ -2114,7 +1427,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                 href="#"
                 onClick={(e) => {
                   e.preventDefault();
-                  loadAllRecords().catch(console.error);
+                  handleLoadAllRecords().catch(console.error);
                 }}
                 style={{ textDecoration: "underline", color: "#1976d2", fontSize: "13px" }}
               >
