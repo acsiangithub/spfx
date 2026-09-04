@@ -289,12 +289,12 @@ export const searchRecords = async (
   let totalRows: number | undefined = undefined;
   const allOrderedItems: doclib_AllProducts[] = [];
   const seenIds = new Set<number>();
-  let hasMore = false;
+  let hitEnd = false;
 
-  while (allOrderedItems.length < pageSize) {
+  while (allOrderedItems.length < pageSize && !hitEnd) {
     const needed = pageSize - allOrderedItems.length;
-    // Fetch up to 500 at a time (SharePoint REST Search limit per request)
-    const currentLimit = Math.min(500, Math.max(needed, 500));
+    // Fetch up to 500 at a time (SharePoint REST Search limit per request) or what is needed
+    const currentLimit = Math.min(500, needed);
 
     const results = await sp.search({
       Querytext: queryText,
@@ -325,6 +325,10 @@ export const searchRecords = async (
 
     const currentResults = results?.PrimarySearchResults ?? [];
     currentRow += currentResults.length;
+
+    if (currentResults.length < currentLimit) {
+      hitEnd = true;
+    }
 
     const chunkIds: number[] = [];
     currentResults.forEach((r: any) => {
@@ -377,29 +381,12 @@ export const searchRecords = async (
       const mapped = mapSharePointItemsToProducts(orderedChunk);
       allOrderedItems.push(...mapped);
     }
-
-    // If search returned fewer results than requested, end of search results reached
-    if (currentResults.length < currentLimit) {
-      hasMore = false;
-      break;
-    }
   }
 
-  // Determine if there are more results to load
-  if (allOrderedItems.length >= pageSize) {
-    if (totalRows !== undefined) {
-      hasMore = currentRow < totalRows;
-    } else {
-      hasMore = true;
-    }
-  } else {
-    hasMore = false;
-  }
-
-  const finalItems = allOrderedItems.slice(0, pageSize);
+  const hasMore = !hitEnd && allOrderedItems.length >= pageSize;
 
   return {
-    items: finalItems,
+    items: allOrderedItems,
     nextStartRow: hasMore ? currentRow : undefined,
     hasMore,
     totalRows,

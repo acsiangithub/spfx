@@ -1230,6 +1230,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     onColumnFiltersChange: setColumnFilters,
     state: {
       isLoading: resultsLoading,
+      showProgressBars: isLoadingMore,
       showColumnFilters: true,
       columnFilters,
     },
