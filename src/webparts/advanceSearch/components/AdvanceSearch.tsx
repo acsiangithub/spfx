@@ -62,7 +62,7 @@ import {
   loadTaxonomy as loadTaxonomyService,
   loadSharingConfiguration as loadSharingConfigService,
   loadListFieldFormatting as loadFieldFormattingService,
-  loadAllRecords as loadAllRecordsService,
+  loadRecordsBatch as loadRecordsBatchService,
   searchRecords as searchRecordsService,
 } from "../../../services/sharePointService";
 import EmailShareDialog from "./EmailShareDialog";
@@ -260,6 +260,12 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   });
 
   const [columnFilters, setColumnFilters] = React.useState<MRT_ColumnFiltersState>([]);
+
+  // Batch / pagination state for loadAllRecords
+  const [nextSkipId, setNextSkipId] = React.useState<number | undefined>(undefined);
+  const [hasMoreRecords, setHasMoreRecords] = React.useState<boolean>(false);
+  const [isLoadingMore, setIsLoadingMore] = React.useState<boolean>(false);
+  const [isBrowseMode, setIsBrowseMode] = React.useState<boolean>(false);
 
   // State for File Context Menu & Edit Modal Dialog
   const [fileMenuAnchorEl, setFileMenuAnchorEl] = React.useState<null | HTMLElement>(null);
@@ -460,14 +466,33 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     try {
       setResultsLoading(true);
       setHasSearched(true);
+      setIsBrowseMode(true);
       setColumnFilters([]);
 
-      const data = await loadAllRecordsService(activeSp);
-      setItems_AllProducts(data);
+      const result = await loadRecordsBatchService(activeSp, undefined, 1000);
+      setItems_AllProducts(result.items);
+      setNextSkipId(result.nextSkipId);
+      setHasMoreRecords(result.hasMore);
     } catch (error) {
       console.error("handleLoadAllRecords error:", error);
     } finally {
       setResultsLoading(false);
+    }
+  };
+
+  const handleLoadNextBatch = async (): Promise<void> => {
+    if (!hasMoreRecords || isLoadingMore) return;
+
+    try {
+      setIsLoadingMore(true);
+      const result = await loadRecordsBatchService(activeSp, nextSkipId, 1000);
+      setItems_AllProducts((prev) => [...prev, ...result.items]);
+      setNextSkipId(result.nextSkipId);
+      setHasMoreRecords(result.hasMore);
+    } catch (error) {
+      console.error("handleLoadNextBatch error:", error);
+    } finally {
+      setIsLoadingMore(false);
     }
   };
 
@@ -524,7 +549,10 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     try {
       setResultsLoading(true);
       setHasSearched(true);
+      setIsBrowseMode(false);
       setColumnFilters([]);
+      setHasMoreRecords(false);
+      setNextSkipId(undefined);
 
       const queryText = buildSearchQuery();
       if (!queryText) {
@@ -1043,7 +1071,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     enableFullScreenToggle: false,
     positionToolbarAlertBanner: "none",
     renderTopToolbarCustomActions: ({ table }) => (
-      <Box sx={{ display: "flex", gap: "8px", alignItems: "center" }}>
+      <Box sx={{ display: "flex", gap: "12px", alignItems: "center" }}>
         <IconButton
           color="primary"
           disabled={table.getSelectedRowModel().rows.length === 0}
@@ -1056,6 +1084,56 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         >
           <ShareIcon />
         </IconButton>
+
+        {isBrowseMode && (
+          <Box sx={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <Typography variant="caption" sx={{ fontSize: "12px", color: "text.secondary" }}>
+              {items_AllProducts.length.toLocaleString()} records loaded
+            </Typography>
+
+            {hasMoreRecords && (
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={handleLoadNextBatch}
+                disabled={isLoadingMore}
+                sx={{
+                  fontSize: "12px",
+                  textTransform: "none",
+                  py: 0.25,
+                  px: 1.5,
+                  minHeight: "28px",
+                }}
+              >
+                {isLoadingMore ? (
+                  <Box sx={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <CircularProgress size={14} color="inherit" />
+                    <span>Loading next 1,000...</span>
+                  </Box>
+                ) : (
+                  "+ Load Next 1,000"
+                )}
+              </Button>
+            )}
+
+            {!hasMoreRecords && items_AllProducts.length > 0 && (
+              <Typography
+                variant="caption"
+                sx={{
+                  fontSize: "11px",
+                  color: "#2e7d32",
+                  bgcolor: "#e8f5e9",
+                  px: 1,
+                  py: 0.25,
+                  borderRadius: "10px",
+                  fontWeight: 500,
+                }}
+              >
+                All records loaded
+              </Typography>
+            )}
+          </Box>
+        )}
       </Box>
     ),
     enableGrouping: true,

@@ -182,6 +182,54 @@ export const loadListFieldFormatting = async (sp: SPFI): Promise<IFieldFormatter
   }
 };
 
+export interface IBatchLoadResult {
+  items: doclib_AllProducts[];
+  nextSkipId?: number;
+  hasMore: boolean;
+}
+
+export const loadRecordsBatch = async (
+  sp: SPFI,
+  lastId?: number,
+  pageSize: number = 1000
+): Promise<IBatchLoadResult> => {
+  let itemsQuery = sp.web.lists
+    .getByTitle("Clients & Products")
+    .items.select(
+      "Id",
+      "Title",
+      "FileLeafRef",
+      "FileRef",
+      "Country",
+      "Business_x0020_Line",
+      "PIMProductCode/Title",
+      "PIMProductCode/PIMProductName",
+      "Manufacturer",
+      "Document_x0020_Type",
+      "Sub_x0020_Document_x0020_Type",
+      "Document_x0020_Date",
+      "Alerts",
+      "Confidentiality"
+    )
+    .expand("PIMProductCode")
+    .orderBy("Id", false)
+    .top(pageSize);
+
+  if (lastId !== undefined && lastId > 0) {
+    itemsQuery = itemsQuery.filter(`Id lt ${lastId}`);
+  }
+
+  const batch = await itemsQuery();
+  const mapped = mapSharePointItemsToProducts(batch);
+  const lowestId = batch.length > 0 ? batch[batch.length - 1].Id : undefined;
+
+  return {
+    items: mapped,
+    nextSkipId: lowestId,
+    hasMore: batch.length >= pageSize,
+  };
+};
+
 export const loadAllRecords = async (
   sp: SPFI,
   pageSize: number = 5000
