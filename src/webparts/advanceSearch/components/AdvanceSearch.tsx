@@ -409,9 +409,20 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     clauses.push(`Path:"${searchPath}"`);
     clauses.push("IsDocument:1");
 
-    const productValues = selectedProducts
-      .map((item) => (item.PIMProductName || item.Title || "").trim())
-      .filter(Boolean);
+    const productClauses: string[] = [];
+    selectedProducts.forEach((item) => {
+      const title = (item.Title || "").trim();
+      const productName = (item.PIMProductName || "").trim();
+      if (title && productName) {
+        productClauses.push(
+          `("${sanitizeKqlValue(title)}" AND "${sanitizeKqlValue(productName)}")`
+        );
+      } else if (title) {
+        productClauses.push(`"${sanitizeKqlValue(title)}"`);
+      } else if (productName) {
+        productClauses.push(`"${sanitizeKqlValue(productName)}"`);
+      }
+    });
 
     const clientValues = selectedClients
       .map((item) => (item.Title || "").trim())
@@ -425,18 +436,14 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       .map((item) => item.trim())
       .filter(Boolean);
 
-    if (productValues.length > 0) {
-      clauses.push(
-        `(${productValues
-          .map((value) => `"${sanitizeKqlValue(value)}"`)
-          .join(" OR ")})`
-      );
+    if (productClauses.length > 0) {
+      clauses.push(`(${productClauses.join(" OR ")})`);
     }
 
     if (clientValues.length > 0) {
       clauses.push(
         `(${clientValues
-          .map((value) => `"${sanitizeKqlValue(value)}"`)
+          .map((value) => `ManufacturerOWSTEXT="${sanitizeKqlValue(value)}"`)
           .join(" OR ")})`
       );
     }
@@ -565,16 +572,16 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   };
 
   const handleSearch = async () => {
-    const selectedProductValues = selectedProducts
-      .map((item) => (item.PIMProductName || item.Title || "").trim())
-      .filter(Boolean);
+    const hasProductSelection = selectedProducts.some(
+      (item) => Boolean(item.Title?.trim()) || Boolean(item.PIMProductName?.trim())
+    );
 
     const selectedClientValues = selectedClients
       .map((item) => (item.Title || "").trim())
       .filter(Boolean);
 
     const hasAnySelection =
-      selectedProductValues.length > 0 ||
+      hasProductSelection ||
       selectedClientValues.length > 0 ||
       selectedDocumentTypes.length > 0 ||
       selectedSubDocumentTypes.length > 0 ||
