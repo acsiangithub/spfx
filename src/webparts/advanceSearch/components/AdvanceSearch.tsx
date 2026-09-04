@@ -244,8 +244,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const [dateTo, setDateTo] = React.useState<Dayjs | null>(null);
 
   const [lookupLoading, setLookupLoading] = React.useState(false);
-  const [resultsLoading, setResultsLoading] = React.useState(false);
-  const [hasSearched, setHasSearched] = React.useState(false);
+  const [resultsLoading, setResultsLoading] = React.useState(true);
+  const [hasSearched, setHasSearched] = React.useState(true);
   const [taxonomyLoading, setTaxonomyLoading] = React.useState(false);
   const [isShareDialogOpen, setIsShareDialogOpen] = React.useState(false);
   const [selectedRowsData, setSelectedRowsData] = React.useState<any[]>([]);
@@ -261,11 +261,13 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
   const [columnFilters, setColumnFilters] = React.useState<MRT_ColumnFiltersState>([]);
 
-  // Batch / pagination state for loadAllRecords
+  // Batch / pagination state for loadAllRecords and searchRecords
   const [nextSkipId, setNextSkipId] = React.useState<number | undefined>(undefined);
+  const [nextSearchStartRow, setNextSearchStartRow] = React.useState<number | undefined>(undefined);
+  const [currentSearchQuery, setCurrentSearchQuery] = React.useState<string>("");
   const [hasMoreRecords, setHasMoreRecords] = React.useState<boolean>(false);
   const [isLoadingMore, setIsLoadingMore] = React.useState<boolean>(false);
-  const [isBrowseMode, setIsBrowseMode] = React.useState<boolean>(false);
+  const [isBrowseMode, setIsBrowseMode] = React.useState<boolean>(true);
 
   // State for File Context Menu & Edit Modal Dialog
   const [fileMenuAnchorEl, setFileMenuAnchorEl] = React.useState<null | HTMLElement>(null);
@@ -355,9 +357,24 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       }
     };
 
+    const loadInitialRecords = async (): Promise<void> => {
+      try {
+        setResultsLoading(true);
+        const result = await loadRecordsBatchService(activeSp, undefined, 1000);
+        setItems_AllProducts(result.items);
+        setNextSkipId(result.nextSkipId);
+        setHasMoreRecords(result.hasMore);
+      } catch (error) {
+        console.error("loadInitialRecords error:", error);
+      } finally {
+        setResultsLoading(false);
+      }
+    };
+
     void loadTaxonomy();
     void loadSharingConfig();
     void loadFieldFormatting();
+    void loadInitialRecords();
   }, [activeSp]);
 
   // In-memory filtered sub-document types based on selected Document Types
@@ -390,6 +407,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     const clauses: string[] = [];
     const searchPath = `${props.urlSite.replace(/\/$/, "")}/Products/*`;
     clauses.push(`Path:"${searchPath}"`);
+    clauses.push("IsDocument:1");
 
     const productValues = selectedProducts
       .map((item) => (item.PIMProductName || item.Title || "").trim())
@@ -468,6 +486,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       setHasSearched(true);
       setIsBrowseMode(true);
       setColumnFilters([]);
+      setNextSearchStartRow(undefined);
+      setCurrentSearchQuery("");
 
       const result = await loadRecordsBatchService(activeSp, undefined, 1000);
       setItems_AllProducts(result.items);
@@ -485,10 +505,30 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
     try {
       setIsLoadingMore(true);
-      const result = await loadRecordsBatchService(activeSp, nextSkipId, 1000);
-      setItems_AllProducts((prev) => [...prev, ...result.items]);
-      setNextSkipId(result.nextSkipId);
-      setHasMoreRecords(result.hasMore);
+      if (isBrowseMode) {
+        const result = await loadRecordsBatchService(activeSp, nextSkipId, 1000);
+        setItems_AllProducts((prev) => {
+          const existingIds = new Set(prev.map((p) => p.id));
+          const newUnique = result.items.filter((item) => !existingIds.has(item.id));
+          return [...prev, ...newUnique];
+        });
+        setNextSkipId(result.nextSkipId);
+        setHasMoreRecords(result.hasMore);
+      } else {
+        const result = await searchRecordsService(
+          activeSp,
+          currentSearchQuery,
+          nextSearchStartRow ?? 0,
+          1000
+        );
+        setItems_AllProducts((prev) => {
+          const existingIds = new Set(prev.map((p) => p.id));
+          const newUnique = result.items.filter((item) => !existingIds.has(item.id));
+          return [...prev, ...newUnique];
+        });
+        setNextSearchStartRow(result.nextStartRow);
+        setHasMoreRecords(result.hasMore);
+      }
     } catch (error) {
       console.error("handleLoadNextBatch error:", error);
     } finally {
@@ -553,6 +593,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       setColumnFilters([]);
       setHasMoreRecords(false);
       setNextSkipId(undefined);
+      setNextSearchStartRow(undefined);
 
       const queryText = buildSearchQuery();
       if (!queryText) {
@@ -560,8 +601,11 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         return;
       }
 
-      const data = await searchRecordsService(activeSp, queryText);
-      setItems_AllProducts(data);
+      setCurrentSearchQuery(queryText);
+      const result = await searchRecordsService(activeSp, queryText, 0, 1000);
+      setItems_AllProducts(result.items);
+      setNextSearchStartRow(result.nextStartRow);
+      setHasMoreRecords(result.hasMore);
     } catch (error) {
       console.error("handleSearch error:", error);
     } finally {
@@ -1085,55 +1129,53 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           <ShareIcon />
         </IconButton>
 
-        {isBrowseMode && (
-          <Box sx={{ display: "flex", gap: "8px", alignItems: "center" }}>
-            <Typography variant="caption" sx={{ fontSize: "12px", color: "text.secondary" }}>
-              {items_AllProducts.length.toLocaleString()} records loaded
+        <Box sx={{ display: "flex", gap: "8px", alignItems: "center" }}>
+          <Typography variant="caption" sx={{ fontSize: "12px", color: "text.secondary" }}>
+            {items_AllProducts.length.toLocaleString()} records loaded
+          </Typography>
+
+          {hasMoreRecords && (
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={handleLoadNextBatch}
+              disabled={isLoadingMore}
+              sx={{
+                fontSize: "12px",
+                textTransform: "none",
+                py: 0.25,
+                px: 1.5,
+                minHeight: "28px",
+              }}
+            >
+              {isLoadingMore ? (
+                <Box sx={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <CircularProgress size={14} color="inherit" />
+                  <span>Loading next 1,000...</span>
+                </Box>
+              ) : (
+                "+ Load Next 1,000"
+              )}
+            </Button>
+          )}
+
+          {!hasMoreRecords && items_AllProducts.length > 0 && (
+            <Typography
+              variant="caption"
+              sx={{
+                fontSize: "11px",
+                color: "#2e7d32",
+                bgcolor: "#e8f5e9",
+                px: 1,
+                py: 0.25,
+                borderRadius: "10px",
+                fontWeight: 500,
+              }}
+            >
+              All records loaded
             </Typography>
-
-            {hasMoreRecords && (
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={handleLoadNextBatch}
-                disabled={isLoadingMore}
-                sx={{
-                  fontSize: "12px",
-                  textTransform: "none",
-                  py: 0.25,
-                  px: 1.5,
-                  minHeight: "28px",
-                }}
-              >
-                {isLoadingMore ? (
-                  <Box sx={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <CircularProgress size={14} color="inherit" />
-                    <span>Loading next 1,000...</span>
-                  </Box>
-                ) : (
-                  "+ Load Next 1,000"
-                )}
-              </Button>
-            )}
-
-            {!hasMoreRecords && items_AllProducts.length > 0 && (
-              <Typography
-                variant="caption"
-                sx={{
-                  fontSize: "11px",
-                  color: "#2e7d32",
-                  bgcolor: "#e8f5e9",
-                  px: 1,
-                  py: 0.25,
-                  borderRadius: "10px",
-                  fontWeight: 500,
-                }}
-              >
-                All records loaded
-              </Typography>
-            )}
-          </Box>
-        )}
+          )}
+        </Box>
       </Box>
     ),
     enableGrouping: true,
@@ -1488,29 +1530,21 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         {/* --- 2. RESULTS TABLE PLACEHOLDER --- */}
         {hasSearched && (
           <Box sx={{ mt: 1 }}>
-            <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1, alignItems: "center" }}>
+            <Box sx={{ mb: 1 }}>
               <Button
-                variant="text"
+                variant="contained"
+                color="primary"
                 size="small"
+                disabled={resultsLoading || isLoadingMore}
                 onClick={() => {
                   setHasSearched(false);
                   setColumnFilters([]);
+                  setNextSearchStartRow(undefined);
+                  setCurrentSearchQuery("");
                 }}
-                style={{ textDecoration: "underline", color: "#1976d2", textTransform: "none", fontWeight: 600 }}
               >
-                &larr; Back to Search Filters
+                New Search
               </Button>
-
-              <a
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault();
-                  handleLoadAllRecords().catch(console.error);
-                }}
-                style={{ textDecoration: "underline", color: "#1976d2", fontSize: "13px" }}
-              >
-                REFRESH ALL RECORDS
-              </a>
             </Box>
 
             <LocalizationProvider dateAdapter={AdapterDayjs}>

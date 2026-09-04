@@ -188,6 +188,13 @@ export interface IBatchLoadResult {
   hasMore: boolean;
 }
 
+export interface ISearchBatchResult {
+  items: doclib_AllProducts[];
+  nextStartRow?: number;
+  hasMore: boolean;
+  totalRows?: number;
+}
+
 export const loadRecordsBatch = async (
   sp: SPFI,
   lastId?: number,
@@ -275,17 +282,25 @@ export const loadAllRecords = async (
 export const searchRecords = async (
   sp: SPFI,
   queryText: string,
-  maxResults: number = 2500
-): Promise<doclib_AllProducts[]> => {
-  let allResults: any[] = [];
-  let startRow = 0;
-  const pageSize = 500;
+  startRow: number = 0,
+  pageSize: number = 1000
+): Promise<ISearchBatchResult> => {
+  let currentRow = startRow;
+  let totalRows: number | undefined = undefined;
+  const allOrderedItems: doclib_AllProducts[] = [];
+  const seenIds = new Set<number>();
+  let hasMore = false;
 
-  while (startRow < maxResults) {
+  while (allOrderedItems.length < pageSize) {
+    const needed = pageSize - allOrderedItems.length;
+    // Fetch up to 500 at a time (SharePoint REST Search limit per request)
+    const currentLimit = Math.min(500, Math.max(needed, 500));
+
     const results = await sp.search({
       Querytext: queryText,
-      RowLimit: Math.min(pageSize, maxResults - startRow),
-      StartRow: startRow,
+      RowLimit: currentLimit,
+      StartRow: currentRow,
+      TrimDuplicates: false,
       SelectProperties: [
         "Title",
         "ListItemID",
@@ -304,58 +319,91 @@ export const searchRecords = async (
       ],
     });
 
-    const currentResults = results?.PrimarySearchResults ?? [];
-    allResults.push(...currentResults);
+    if (results && typeof results.TotalRows === "number") {
+      totalRows = results.TotalRows;
+    }
 
-    if (currentResults.length < pageSize || allResults.length >= maxResults) {
+    const currentResults = results?.PrimarySearchResults ?? [];
+    currentRow += currentResults.length;
+
+    const chunkIds: number[] = [];
+    currentResults.forEach((r: any) => {
+      const id = Number(r.ListItemID);
+      if (!isNaN(id) && id > 0 && !seenIds.has(id)) {
+        seenIds.add(id);
+        chunkIds.push(id);
+      }
+    });
+
+    if (chunkIds.length > 0) {
+      const chunkItems: any[] = [];
+      for (let i = 0; i < chunkIds.length; i += 100) {
+        const slice = chunkIds.slice(i, i + 100);
+        const filter = slice.map((id) => `Id eq ${id}`).join(" or ");
+
+        const items = await sp.web.lists
+          .getByTitle("Clients & Products")
+          .items.select(
+            "Id",
+            "Title",
+            "FileLeafRef",
+            "FileRef",
+            "Country",
+            "Business_x0020_Line",
+            "PIMProductCode/Title",
+            "PIMProductCode/PIMProductName",
+            "Manufacturer",
+            "Document_x0020_Type",
+            "Sub_x0020_Document_x0020_Type",
+            "Document_x0020_Date",
+            "Alerts",
+            "Confidentiality"
+          )
+          .expand("PIMProductCode")
+          .filter(filter)();
+
+        chunkItems.push(...items);
+      }
+
+      const itemMap = new Map<number, any>();
+      chunkItems.forEach((item) => itemMap.set(item.Id, item));
+
+      const orderedChunk: any[] = [];
+      chunkIds.forEach((id) => {
+        const item = itemMap.get(id);
+        if (item) orderedChunk.push(item);
+      });
+
+      const mapped = mapSharePointItemsToProducts(orderedChunk);
+      allOrderedItems.push(...mapped);
+    }
+
+    // If search returned fewer results than requested, end of search results reached
+    if (currentResults.length < currentLimit) {
+      hasMore = false;
       break;
     }
-
-    startRow += pageSize;
   }
 
-  const ids: number[] = [];
-  allResults.forEach((r: any) => {
-    const id = Number(r.ListItemID);
-    if (!isNaN(id) && ids.indexOf(id) === -1) {
-      ids.push(id);
+  // Determine if there are more results to load
+  if (allOrderedItems.length >= pageSize) {
+    if (totalRows !== undefined) {
+      hasMore = currentRow < totalRows;
+    } else {
+      hasMore = true;
     }
-  });
-
-  if (ids.length === 0) {
-    return [];
+  } else {
+    hasMore = false;
   }
 
-  const allProducts: any[] = [];
-  for (let i = 0; i < ids.length; i += 100) {
-    const currentIds = ids.slice(i, i + 100);
-    const filter = currentIds.map((id) => `Id eq ${id}`).join(" or ");
+  const finalItems = allOrderedItems.slice(0, pageSize);
 
-    const items = await sp.web.lists
-      .getByTitle("Clients & Products")
-      .items.select(
-        "Id",
-        "Title",
-        "FileLeafRef",
-        "FileRef",
-        "Country",
-        "Business_x0020_Line",
-        "PIMProductCode/Title",
-        "PIMProductCode/PIMProductName",
-        "Manufacturer",
-        "Document_x0020_Type",
-        "Sub_x0020_Document_x0020_Type",
-        "Document_x0020_Date",
-        "Alerts",
-        "Confidentiality"
-      )
-      .expand("PIMProductCode")
-      .filter(filter)();
-
-    allProducts.push(...items);
-  }
-
-  return mapSharePointItemsToProducts(allProducts);
+  return {
+    items: finalItems,
+    nextStartRow: hasMore ? currentRow : undefined,
+    hasMore,
+    totalRows,
+  };
 };
 
 export const shareFilesByEmail = async (
