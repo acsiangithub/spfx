@@ -644,7 +644,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       const unique = new Set<string>();
       items.forEach((item) => {
         if (item.ManufacturerSearchText) {
-          item.ManufacturerSearchText.split(/[;,]/).forEach((val) => {
+          item.ManufacturerSearchText.split(/[\r\n;,]+/).forEach((val) => {
             const trimmed = val.trim();
             if (trimmed) unique.add(trimmed);
           });
@@ -821,12 +821,12 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             placeholder="Select/type client..."
           />
         ),
-        size: 160,
-        minSize: 160,
+        size: 220,
+        minSize: 180,
         Cell: ({ cell }) => (
-          <>
+          <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
             {String(cell.getValue() || "")
-              .split(/[;,]/)
+              .split(/[\r\n;,]+/)
               .map((item) => item.trim())
               .filter(Boolean)
               .map((item, idx) => (
@@ -835,15 +835,15 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                   style={{
                     display: "block",
                     whiteSpace: "normal",
-                    wordBreak: "break-word",
-                    overflowWrap: "break-word",
-                    lineHeight: 1.4,
+                    wordBreak: "normal",
+                    overflowWrap: "normal",
+                    lineHeight: 1.3,
                   }}
                 >
                   {item}
                 </div>
               ))}
-          </>
+          </div>
         ),
       },
       {
