@@ -813,9 +813,14 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       {
         accessorKey: "ManufacturerSearchText",
         header: "Clients",
-        filterVariant: "multi-select",
-        filterSelectOptions: clientOptions,
         filterFn: multiSelectFilterFn,
+        Filter: ({ column }) => (
+          <MultiSelectAutocompleteFilter
+            column={column}
+            options={clientOptions}
+            placeholder="Select/type client..."
+          />
+        ),
         size: 160,
         minSize: 160,
         Cell: ({ cell }) => (
@@ -876,9 +881,14 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       {
         accessorKey: "SubDocumentTypeSearchText",
         header: "Sub Document Type",
-        filterVariant: "multi-select",
-        filterSelectOptions: subDocumentTypeOptions,
         filterFn: multiSelectFilterFn,
+        Filter: ({ column }) => (
+          <MultiSelectAutocompleteFilter
+            column={column}
+            options={subDocumentTypeOptions}
+            placeholder="Select/type sub doc type..."
+          />
+        ),
         size: 175,
         minSize: 175,
         Cell: ({ cell }) => (
