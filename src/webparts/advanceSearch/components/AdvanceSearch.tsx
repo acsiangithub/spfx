@@ -443,7 +443,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     if (clientValues.length > 0) {
       clauses.push(
         `(${clientValues
-          .map((value) => `ManufacturerOWSTEXT="${sanitizeKqlValue(value)}"`)
+          .map((value) => `ManufacturerOWSTEXT:"${sanitizeKqlValue(value)}"`)
           .join(" OR ")})`
       );
     }
