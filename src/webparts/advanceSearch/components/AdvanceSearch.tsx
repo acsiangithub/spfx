@@ -19,6 +19,7 @@ import ShareIcon from "@mui/icons-material/Share";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
+import DialogActions from "@mui/material/DialogActions";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
@@ -245,7 +246,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
   const [lookupLoading, setLookupLoading] = React.useState(false);
   const [resultsLoading, setResultsLoading] = React.useState(true);
-  const [hasSearched, setHasSearched] = React.useState(true);
+  const [isSearchDialogOpen, setIsSearchDialogOpen] = React.useState(false);
   const [taxonomyLoading, setTaxonomyLoading] = React.useState(false);
   const [isShareDialogOpen, setIsShareDialogOpen] = React.useState(false);
   const [selectedRowsData, setSelectedRowsData] = React.useState<any[]>([]);
@@ -490,7 +491,6 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const handleLoadAllRecords = async (): Promise<void> => {
     try {
       setResultsLoading(true);
-      setHasSearched(true);
       setIsBrowseMode(true);
       setColumnFilters([]);
       setNextSearchStartRow(undefined);
@@ -571,31 +571,33 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     setSelectedClients(newValue);
   };
 
-  const handleSearch = async () => {
-    const hasProductSelection = selectedProducts.some(
+  const isSearchFormValid = React.useMemo(() => {
+    const hasProduct = selectedProducts.some(
       (item) => Boolean(item.Title?.trim()) || Boolean(item.PIMProductName?.trim())
     );
+    const hasClient = selectedClients.some((item) => Boolean(item.Title?.trim()));
+    const hasDocType = selectedDocumentTypes.length > 0;
+    const hasSubDocType = selectedSubDocumentTypes.length > 0;
+    const hasDate = dateFrom !== null || dateTo !== null;
+    const hasKeyword = Boolean(additionalKeyword.trim());
 
-    const selectedClientValues = selectedClients
-      .map((item) => (item.Title || "").trim())
-      .filter(Boolean);
+    return hasProduct || hasClient || hasDocType || hasSubDocType || hasDate || hasKeyword;
+  }, [
+    selectedProducts,
+    selectedClients,
+    selectedDocumentTypes,
+    selectedSubDocumentTypes,
+    dateFrom,
+    dateTo,
+    additionalKeyword,
+  ]);
 
-    const hasAnySelection =
-      hasProductSelection ||
-      selectedClientValues.length > 0 ||
-      selectedDocumentTypes.length > 0 ||
-      selectedSubDocumentTypes.length > 0 ||
-      dateFrom !== null ||
-      dateTo !== null;
-
-    if (!hasAnySelection) {
-      await handleLoadAllRecords();
-      return;
-    }
+  const handleSearch = async () => {
+    if (!isSearchFormValid) return;
 
     try {
       setResultsLoading(true);
-      setHasSearched(true);
+      setIsSearchDialogOpen(false);
       setIsBrowseMode(false);
       setColumnFilters([]);
       setHasMoreRecords(false);
@@ -1261,9 +1263,31 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       <div>
         <h2>Search Clients & Products</h2>
 
-        {/* --- 1. SEARCH FILTERS PLACEHOLDER --- */}
-        {!hasSearched && (
-          <Box sx={{ mb: 2 }}>
+        {/* --- 1. SEARCH FILTERS DIALOG POPUP --- */}
+        <Dialog
+          open={isSearchDialogOpen}
+          onClose={() => setIsSearchDialogOpen(false)}
+          fullWidth
+          maxWidth="md"
+        >
+          <DialogTitle
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              py: 1.5,
+              px: 2,
+              borderBottom: "1px solid #e0e0e0",
+            }}
+          >
+            <Typography variant="h6" sx={{ fontSize: "16px", fontWeight: 600 }}>
+              Search Filters
+            </Typography>
+            <IconButton size="small" onClick={() => setIsSearchDialogOpen(false)}>
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </DialogTitle>
+          <DialogContent sx={{ p: 2.5, pt: 2.5, mt: 1 }}>
             <div
               className="filter-row-grid"
               style={{
@@ -1511,7 +1535,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
             <div
               style={{
-                marginBottom: "16px",
+                marginBottom: "8px",
                 width: "100%",
               }}
             >
@@ -1532,46 +1556,43 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
               }
             }
           `}</style>
+          </DialogContent>
+          <DialogActions sx={{ px: 2.5, pb: 2, pt: 1, borderTop: "1px solid #e0e0e0" }}>
+            <Button onClick={() => setIsSearchDialogOpen(false)} size="small">
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              color="primary"
+              size="small"
+              onClick={handleSearch}
+              disabled={!isSearchFormValid || resultsLoading}
+            >
+              {resultsLoading ? "Searching..." : "Search"}
+            </Button>
+          </DialogActions>
+        </Dialog>
 
-            <div style={{ marginBottom: "16px", display: "flex", gap: "12px", alignItems: "center" }}>
-              <Button
-                variant="contained"
-                color="primary"
-                size="small"
-                onClick={handleSearch}
-                disabled={resultsLoading}
-              >
-                {resultsLoading ? "Searching..." : "Search"}
-              </Button>
-            </div>
+        {/* --- 2. RESULTS TABLE --- */}
+        <Box sx={{ mt: 1 }}>
+          <Box sx={{ mb: 1 }}>
+            <Button
+              variant="contained"
+              color="primary"
+              size="small"
+              disabled={resultsLoading || isLoadingMore}
+              onClick={() => {
+                setIsSearchDialogOpen(true);
+              }}
+            >
+              New Search
+            </Button>
           </Box>
-        )}
 
-        {/* --- 2. RESULTS TABLE PLACEHOLDER --- */}
-        {hasSearched && (
-          <Box sx={{ mt: 1 }}>
-            <Box sx={{ mb: 1 }}>
-              <Button
-                variant="contained"
-                color="primary"
-                size="small"
-                disabled={resultsLoading || isLoadingMore}
-                onClick={() => {
-                  setHasSearched(false);
-                  setColumnFilters([]);
-                  setNextSearchStartRow(undefined);
-                  setCurrentSearchQuery("");
-                }}
-              >
-                New Search
-              </Button>
-            </Box>
-
-            <LocalizationProvider dateAdapter={AdapterDayjs}>
-              <MaterialReactTable table={table} />
-            </LocalizationProvider>
-          </Box>
-        )}
+          <LocalizationProvider dateAdapter={AdapterDayjs}>
+            <MaterialReactTable table={table} />
+          </LocalizationProvider>
+        </Box>
 
         <EmailShareDialog
           open={isShareDialogOpen}
