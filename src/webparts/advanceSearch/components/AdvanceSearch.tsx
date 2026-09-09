@@ -12,6 +12,7 @@ import {
 
 import Autocomplete from "@mui/material/Autocomplete";
 import TextField from "@mui/material/TextField";
+import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
@@ -241,7 +242,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
   const [productSearchText, setProductSearchText] = React.useState("");
   const [clientSearchText, setClientSearchText] = React.useState("");
-  const [additionalKeyword, setAdditionalKeyword] = React.useState("");
+  const [additionalKeywords, setAdditionalKeywords] = React.useState<string[]>([]);
+  const [keywordInput, setKeywordInput] = React.useState<string>("");
   const [dateFrom, setDateFrom] = React.useState<Dayjs | null>(null);
   const [dateTo, setDateTo] = React.useState<Dayjs | null>(null);
 
@@ -513,19 +515,23 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       );
     }
 
-    if (additionalKeyword.trim()) {
-      const keywords = additionalKeyword
+    const allKeywords = [...additionalKeywords];
+    if (keywordInput.trim()) {
+      keywordInput
         .split(",")
         .map((k) => k.trim())
-        .filter(Boolean);
+        .filter(Boolean)
+        .forEach((k) => {
+          if (!allKeywords.includes(k)) allKeywords.push(k);
+        });
+    }
 
-      if (keywords.length === 1) {
-        clauses.push(`"${sanitizeKqlValue(keywords[0])}"`);
-      } else if (keywords.length > 1) {
-        clauses.push(
-          `(${keywords.map((k) => `"${sanitizeKqlValue(k)}"`).join(" OR ")})`
-        );
-      }
+    if (allKeywords.length === 1) {
+      clauses.push(`"${sanitizeKqlValue(allKeywords[0])}"`);
+    } else if (allKeywords.length > 1) {
+      clauses.push(
+        `(${allKeywords.map((k) => `"${sanitizeKqlValue(k)}"`).join(" OR ")})`
+      );
     }
 
     if (dateFrom && dateTo) {
@@ -668,7 +674,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     const hasDocType = selectedDocumentTypes.length > 0;
     const hasSubDocType = selectedSubDocumentTypes.length > 0;
     const hasDate = dateFrom !== null || dateTo !== null;
-    const hasKeyword = Boolean(additionalKeyword.trim());
+    const hasKeyword = additionalKeywords.length > 0 || Boolean(keywordInput.trim());
     const hasBusinessLine = selectedBusinessLines.length > 0;
     const hasCountry = selectedCountries.length > 0;
     const hasConfidentiality = selectedConfidentialities.length > 0;
@@ -691,7 +697,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     selectedSubDocumentTypes,
     dateFrom,
     dateTo,
-    additionalKeyword,
+    additionalKeywords,
+    keywordInput,
     selectedBusinessLines,
     selectedCountries,
     selectedConfidentialities,
@@ -1400,7 +1407,85 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     },
   });
 
-  
+  const renderKeywordInput = () => (
+    <Autocomplete
+      multiple
+      freeSolo
+      size="small"
+      options={[]}
+      value={additionalKeywords}
+      inputValue={keywordInput}
+      onInputChange={(_event, newInputValue, reason) => {
+        if (reason === "input") {
+          if (newInputValue.includes(",")) {
+            const parts = newInputValue
+              .split(",")
+              .map((p) => p.trim())
+              .filter(Boolean);
+            setAdditionalKeywords((prev) =>
+              Array.from(new Set([...prev, ...parts]))
+            );
+            setKeywordInput("");
+          } else {
+            setKeywordInput(newInputValue);
+          }
+        } else if (reason === "reset" || reason === "clear") {
+          setKeywordInput("");
+        }
+      }}
+      onChange={(_event, newValue) => {
+        const cleaned: string[] = [];
+        (newValue as (string | any)[]).forEach((val) => {
+          if (typeof val === "string") {
+            val.split(",").forEach((item) => {
+              const trimmed = item.trim();
+              if (trimmed && cleaned.indexOf(trimmed) === -1) {
+                cleaned.push(trimmed);
+              }
+            });
+          }
+        });
+        setAdditionalKeywords(cleaned);
+        setKeywordInput("");
+      }}
+      renderTags={(value: readonly string[], getTagProps) =>
+        value.map((option: string, index: number) => (
+          <Chip
+            {...getTagProps({ index })}
+            key={index}
+            label={option}
+            size="small"
+            sx={{
+              height: "24px",
+              fontSize: "12px",
+              margin: "2px",
+            }}
+          />
+        ))
+      }
+      renderInput={(params) => (
+        <TextField
+          {...params}
+          size="small"
+          label="Additional Keywords"
+          placeholder={
+            additionalKeywords.length === 0
+              ? "Type keyword & press comma or Enter"
+              : ""
+          }
+        />
+      )}
+      sx={{
+        width: "100%",
+        "& .MuiInputBase-root": {
+          minHeight: "40px",
+          alignItems: "center",
+          flexWrap: "wrap",
+        },
+      }}
+    />
+  );
+
   return (
     <ThemeProvider theme={compactTheme}>
       <div>
@@ -1678,14 +1763,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                   alignItems: "center",
                 }}
               >
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Additional Keywords"
-                  placeholder="Optional keywords (comma-separated)"
-                  value={additionalKeyword}
-                  onChange={(e) => setAdditionalKeyword(e.target.value)}
-                />
+                {renderKeywordInput()}
                 <Button
                   variant="outlined"
                   fullWidth
@@ -1709,14 +1787,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                     width: "100%",
                   }}
                 >
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label="Additional Keywords"
-                    placeholder="Optional keywords (comma-separated)"
-                    value={additionalKeyword}
-                    onChange={(e) => setAdditionalKeyword(e.target.value)}
-                  />
+                  {renderKeywordInput()}
                 </div>
 
                 <div
