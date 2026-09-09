@@ -30,7 +30,9 @@ import ListItemText from "@mui/material/ListItemText";
 import OutlinedInput from "@mui/material/OutlinedInput";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
+import Link from "@mui/material/Link";
 import CloseIcon from "@mui/icons-material/Close";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import { ThemeProvider } from "@mui/material/styles";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -62,9 +64,10 @@ import {
   searchClients as searchClientsService,
   loadTaxonomy as loadTaxonomyService,
   loadSharingConfiguration as loadSharingConfigService,
-  loadListFieldFormatting as loadFieldFormattingService,
+  loadListFieldMetadata as loadListFieldMetadataService,
   loadRecordsBatch as loadRecordsBatchService,
   searchRecords as searchRecordsService,
+  ILibraryColumnChoices,
 } from "../../../services/sharePointService";
 import EmailShareDialog from "./EmailShareDialog";
 
@@ -244,6 +247,16 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const [dateFrom, setDateFrom] = React.useState<Dayjs | null>(null);
   const [dateTo, setDateTo] = React.useState<Dayjs | null>(null);
 
+  const [showMoreFilters, setShowMoreFilters] = React.useState<boolean>(false);
+  const [selectedBusinessLines, setSelectedBusinessLines] = React.useState<string[]>([]);
+  const [selectedCountries, setSelectedCountries] = React.useState<string[]>([]);
+  const [selectedConfidentialities, setSelectedConfidentialities] = React.useState<string[]>([]);
+  const [libraryChoices, setLibraryChoices] = React.useState<ILibraryColumnChoices>({
+    businessLine: [],
+    country: [],
+    confidentiality: [],
+  });
+
   const [lookupLoading, setLookupLoading] = React.useState(false);
   const [resultsLoading, setResultsLoading] = React.useState(true);
   const [isSearchDialogOpen, setIsSearchDialogOpen] = React.useState(false);
@@ -349,12 +362,13 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       }
     };
 
-    const loadFieldFormatting = async (): Promise<void> => {
+    const loadFieldMetadata = async (): Promise<void> => {
       try {
-        const formatters = await loadFieldFormattingService(activeSp);
+        const { formatters, choices } = await loadListFieldMetadataService(activeSp);
         setFieldFormatters(formatters);
+        setLibraryChoices(choices);
       } catch (err) {
-        console.warn("loadListFieldFormatting error:", err);
+        console.warn("loadListFieldMetadata error:", err);
       }
     };
 
@@ -374,7 +388,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
     void loadTaxonomy();
     void loadSharingConfig();
-    void loadFieldFormatting();
+    void loadFieldMetadata();
     void loadInitialRecords();
   }, [activeSp]);
 
@@ -465,6 +479,42 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       );
     }
 
+    const businessLineValues = selectedBusinessLines
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    const countryValues = selectedCountries
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    const confidentialityValues = selectedConfidentialities
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    if (businessLineValues.length > 0) {
+      clauses.push(
+        `(${businessLineValues
+          .map((value) => `BusinessLineOWSCHCM:"${sanitizeKqlValue(value)}"`)
+          .join(" OR ")})`
+      );
+    }
+
+    if (countryValues.length > 0) {
+      clauses.push(
+        `(${countryValues
+          .map((value) => `CountryOWSCHM:"${sanitizeKqlValue(value)}"`)
+          .join(" OR ")})`
+      );
+    }
+
+    if (confidentialityValues.length > 0) {
+      clauses.push(
+        `(${confidentialityValues
+          .map((value) => `ConfidentialityOWSCHCS:"${sanitizeKqlValue(value)}"`)
+          .join(" OR ")})`
+      );
+    }
+
     if (additionalKeyword.trim()) {
       clauses.push(`"${sanitizeKqlValue(additionalKeyword)}"`);
     }
@@ -502,6 +552,34 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       setHasMoreRecords(result.hasMore);
     } catch (error) {
       console.error("handleLoadAllRecords error:", error);
+    } finally {
+      setResultsLoading(false);
+    }
+  };
+
+  const handleRefresh = async (): Promise<void> => {
+    try {
+      setResultsLoading(true);
+      setIsBrowseMode(true);
+      setColumnFilters([]);
+      setNextSearchStartRow(undefined);
+      setCurrentSearchQuery("");
+
+      const [recordsResult] = await Promise.all([
+        loadRecordsBatchService(activeSp, undefined, 1000),
+        loadListFieldMetadataService(activeSp)
+          .then(({ formatters, choices }) => {
+            setFieldFormatters(formatters);
+            setLibraryChoices(choices);
+          })
+          .catch((err) => console.warn("handleRefresh metadata error:", err)),
+      ]);
+
+      setItems_AllProducts(recordsResult.items);
+      setNextSkipId(recordsResult.nextSkipId);
+      setHasMoreRecords(recordsResult.hasMore);
+    } catch (error) {
+      console.error("handleRefresh error:", error);
     } finally {
       setResultsLoading(false);
     }
@@ -580,8 +658,21 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     const hasSubDocType = selectedSubDocumentTypes.length > 0;
     const hasDate = dateFrom !== null || dateTo !== null;
     const hasKeyword = Boolean(additionalKeyword.trim());
+    const hasBusinessLine = selectedBusinessLines.length > 0;
+    const hasCountry = selectedCountries.length > 0;
+    const hasConfidentiality = selectedConfidentialities.length > 0;
 
-    return hasProduct || hasClient || hasDocType || hasSubDocType || hasDate || hasKeyword;
+    return (
+      hasProduct ||
+      hasClient ||
+      hasDocType ||
+      hasSubDocType ||
+      hasDate ||
+      hasKeyword ||
+      hasBusinessLine ||
+      hasCountry ||
+      hasConfidentiality
+    );
   }, [
     selectedProducts,
     selectedClients,
@@ -590,6 +681,9 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     dateFrom,
     dateTo,
     additionalKeyword,
+    selectedBusinessLines,
+    selectedCountries,
+    selectedConfidentialities,
   ]);
 
   const handleSearch = async () => {
@@ -772,6 +866,27 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     },
     [getItemsFilteredExcluding]
   );
+
+  const availableBusinessLines = useMemo(() => {
+    const set = new Set([...libraryChoices.businessLine, ...businessLineOptions]);
+    return Array.from(set)
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  }, [libraryChoices.businessLine, businessLineOptions]);
+
+  const availableCountries = useMemo(() => {
+    const set = new Set([...libraryChoices.country, ...countryOptions]);
+    return Array.from(set)
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  }, [libraryChoices.country, countryOptions]);
+
+  const availableConfidentialities = useMemo(() => {
+    const set = new Set([...libraryChoices.confidentiality, ...confidentialityOptions]);
+    return Array.from(set)
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  }, [libraryChoices.confidentiality, confidentialityOptions]);
 
   const columns_AllProducts = useMemo<MRT_ColumnDef<doclib_AllProducts>[]>(
     () => [
@@ -1492,6 +1607,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
             <LocalizationProvider dateAdapter={AdapterDayjs}>
               <div
+                className="filter-row-grid"
                 style={{
                   display: "grid",
                   gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
@@ -1524,9 +1640,13 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             </LocalizationProvider>
 
             <div
+              className="filter-row-grid"
               style={{
-                marginBottom: "8px",
-                width: "100%",
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
+                gap: "12px",
+                marginBottom: "12px",
+                alignItems: "center",
               }}
             >
               <TextField
@@ -1537,7 +1657,117 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                 value={additionalKeyword}
                 onChange={(e) => setAdditionalKeyword(e.target.value)}
               />
+              <Button
+                variant="outlined"
+                fullWidth
+                size="small"
+                onClick={() => setShowMoreFilters((prev) => !prev)}
+                sx={{
+                  height: "40px",
+                  textTransform: "none",
+                  fontWeight: 600,
+                  fontSize: "13px",
+                }}
+              >
+                {showMoreFilters ? "Less Filters" : "More Filters"}
+              </Button>
             </div>
+
+            {showMoreFilters && (
+              <div
+                className="filter-row-grid"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
+                  gap: "12px",
+                  marginBottom: "12px",
+                }}
+              >
+                <FormControl fullWidth size="small">
+                  <InputLabel id="business-line-filter-label">Business Line</InputLabel>
+                  <Select
+                    labelId="business-line-filter-label"
+                    multiple
+                    value={selectedBusinessLines}
+                    onChange={(event) => {
+                      const val = event.target.value;
+                      setSelectedBusinessLines(
+                        typeof val === "string" ? val.split(",") : val
+                      );
+                    }}
+                    input={<OutlinedInput label="Business Line" />}
+                    renderValue={(selected) => (selected as string[]).join(", ")}
+                    size="small"
+                  >
+                    {availableBusinessLines.map((opt) => (
+                      <MenuItem key={opt} value={opt}>
+                        <Checkbox
+                          size="small"
+                          checked={selectedBusinessLines.indexOf(opt) > -1}
+                        />
+                        <ListItemText primary={opt} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                <FormControl fullWidth size="small">
+                  <InputLabel id="country-sold-to-filter-label">Country Sold To</InputLabel>
+                  <Select
+                    labelId="country-sold-to-filter-label"
+                    multiple
+                    value={selectedCountries}
+                    onChange={(event) => {
+                      const val = event.target.value;
+                      setSelectedCountries(
+                        typeof val === "string" ? val.split(",") : val
+                      );
+                    }}
+                    input={<OutlinedInput label="Country Sold To" />}
+                    renderValue={(selected) => (selected as string[]).join(", ")}
+                    size="small"
+                  >
+                    {availableCountries.map((opt) => (
+                      <MenuItem key={opt} value={opt}>
+                        <Checkbox
+                          size="small"
+                          checked={selectedCountries.indexOf(opt) > -1}
+                        />
+                        <ListItemText primary={opt} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                <FormControl fullWidth size="small">
+                  <InputLabel id="confidentiality-filter-label">Confidentiality</InputLabel>
+                  <Select
+                    labelId="confidentiality-filter-label"
+                    multiple
+                    value={selectedConfidentialities}
+                    onChange={(event) => {
+                      const val = event.target.value;
+                      setSelectedConfidentialities(
+                        typeof val === "string" ? val.split(",") : val
+                      );
+                    }}
+                    input={<OutlinedInput label="Confidentiality" />}
+                    renderValue={(selected) => (selected as string[]).join(", ")}
+                    size="small"
+                  >
+                    {availableConfidentialities.map((opt) => (
+                      <MenuItem key={opt} value={opt}>
+                        <Checkbox
+                          size="small"
+                          checked={selectedConfidentialities.indexOf(opt) > -1}
+                        />
+                        <ListItemText primary={opt} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </div>
+            )}
 
             <style>{`
             @media (max-width: 768px) {
@@ -1565,7 +1795,14 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
         {/* --- 2. RESULTS TABLE --- */}
         <Box sx={{ mt: 1 }}>
-          <Box sx={{ mb: 1 }}>
+          <Box
+            sx={{
+              mb: 1,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
             <Button
               variant="contained"
               color="primary"
@@ -1577,6 +1814,28 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             >
               New Search
             </Button>
+
+            <Link
+              component="button"
+              variant="body2"
+              onClick={handleRefresh}
+              disabled={resultsLoading || isLoadingMore}
+              sx={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+                fontSize: "13px",
+                textDecoration: "none",
+                cursor: resultsLoading || isLoadingMore ? "not-allowed" : "pointer",
+                color: resultsLoading || isLoadingMore ? "text.disabled" : "primary.main",
+                "&:hover": {
+                  textDecoration: resultsLoading || isLoadingMore ? "none" : "underline",
+                },
+              }}
+            >
+              <RefreshIcon fontSize="small" sx={{ fontSize: "16px" }} />
+              Refresh
+            </Link>
           </Box>
 
           <LocalizationProvider dateAdapter={AdapterDayjs}>

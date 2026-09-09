@@ -156,29 +156,73 @@ export const loadSharingConfiguration = async (sp: SPFI): Promise<ISharingConfig
   return { subject: "", message: "" };
 };
 
-export const loadListFieldFormatting = async (sp: SPFI): Promise<IFieldFormatters> => {
-  if (!sp) return { businessLine: {}, confidentiality: {} };
+export interface ILibraryColumnChoices {
+  businessLine: string[];
+  country: string[];
+  confidentiality: string[];
+}
+
+export interface IListFieldMetadata {
+  formatters: IFieldFormatters;
+  choices: ILibraryColumnChoices;
+}
+
+export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadata> => {
+  const defaultResult: IListFieldMetadata = {
+    formatters: { businessLine: {}, confidentiality: {} },
+    choices: { businessLine: [], country: [], confidentiality: [] },
+  };
+
+  if (!sp) return defaultResult;
+
   try {
     const fields = await sp.web.lists
       .getByTitle("Clients & Products")
-      .fields.select("InternalName", "CustomFormatter")
-      .filter("InternalName eq 'Confidentiality' or InternalName eq 'Business_x0020_Line'")();
+      .fields.select("InternalName", "CustomFormatter", "Choices")
+      .filter(
+        "InternalName eq 'Business_x0020_Line' or InternalName eq 'Country' or InternalName eq 'Confidentiality'"
+      )();
 
     let blFormat: Record<string, IChipStyle> = {};
     let confFormat: Record<string, IChipStyle> = {};
+    let businessLineChoices: string[] = [];
+    let countryChoices: string[] = [];
+    let confidentialityChoices: string[] = [];
 
     fields.forEach((f: any) => {
+      const choices: string[] = Array.isArray(f.Choices) ? f.Choices : [];
       if (f.InternalName === "Business_x0020_Line") {
-        blFormat = parseSpCustomFormatter(f.CustomFormatter);
+        if (f.CustomFormatter) {
+          blFormat = parseSpCustomFormatter(f.CustomFormatter);
+        }
+        businessLineChoices = choices;
+      } else if (f.InternalName === "Country") {
+        countryChoices = choices;
       } else if (f.InternalName === "Confidentiality") {
-        confFormat = parseSpCustomFormatter(f.CustomFormatter);
+        if (f.CustomFormatter) {
+          confFormat = parseSpCustomFormatter(f.CustomFormatter);
+        }
+        confidentialityChoices = choices;
       }
     });
 
-    return { businessLine: blFormat, confidentiality: confFormat };
+    return {
+      formatters: { businessLine: blFormat, confidentiality: confFormat },
+      choices: {
+        businessLine: businessLineChoices.sort((a, b) =>
+          a.localeCompare(b, undefined, { sensitivity: "base" })
+        ),
+        country: countryChoices.sort((a, b) =>
+          a.localeCompare(b, undefined, { sensitivity: "base" })
+        ),
+        confidentiality: confidentialityChoices.sort((a, b) =>
+          a.localeCompare(b, undefined, { sensitivity: "base" })
+        ),
+      },
+    };
   } catch (err) {
-    console.warn("Could not load field CustomFormatter:", err);
-    return { businessLine: {}, confidentiality: {} };
+    console.warn("Could not load field metadata from Clients & Products:", err);
+    return defaultResult;
   }
 };
 
@@ -308,6 +352,7 @@ export const searchRecords = async (
         "DocumentDateOWSTDATE",
         "BusinessLineOWSCHCM",
         "CountryOWSCHCM",
+        "CountryOWSCHM",
         "ManufacturerOWSTEXT",  //Client
         "LongProductNameOWSMTXT",
         "DocumentTypeOWSTEXT",
@@ -315,8 +360,7 @@ export const searchRecords = async (
         "PIMProductCodeOWSTEXT",
         "ConfidentialityOWSCHCS",
         "AlertsOWSMTXT",
-         "RefinableString100",
-         "RefinableString00",
+         
 
         
       ],
