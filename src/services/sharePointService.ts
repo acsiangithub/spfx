@@ -308,14 +308,17 @@ export const searchRecords = async (
         "DocumentDateOWSTDATE",
         "BusinessLineOWSCHCM",
         "CountryOWSCHCM",
-        "ManufacturerOWSTEXT",
+        "ManufacturerOWSTEXT",  //Client
         "LongProductNameOWSMTXT",
         "DocumentTypeOWSTEXT",
-        "SubDocumentTypeOWSMTXT",
-        "owstaxIdPIMProductTermSet",
+        "SubDocumentTypeOWSMTXT",        
         "PIMProductCodeOWSTEXT",
         "ConfidentialityOWSCHCS",
         "AlertsOWSMTXT",
+         "RefinableString100",
+         "RefinableString00",
+
+        
       ],
     });
 
@@ -361,7 +364,8 @@ export const searchRecords = async (
             "Sub_x0020_Document_x0020_Type",
             "Document_x0020_Date",
             "Alerts",
-            "Confidentiality"
+            "Confidentiality",
+            //"PIMProductTermSet"
           )
           .expand("PIMProductCode")
           .filter(filter)();

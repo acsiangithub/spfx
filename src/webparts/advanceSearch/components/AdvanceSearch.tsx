@@ -1465,39 +1465,29 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                 </Select>
               </FormControl>
 
-              <FormControl
+              <Autocomplete
+                multiple
                 fullWidth
                 size="small"
                 disabled={taxonomyLoading || availableSubDocumentTypes.length === 0}
-              >
-                <InputLabel id="sub-document-type-select-label">
-                  Sub Document Type
-                </InputLabel>
-                <Select
-                  labelId="sub-document-type-select-label"
-                  multiple
-                  value={selectedSubDocumentTypes}
-                  onChange={(event) => {
-                    const val = event.target.value;
-                    setSelectedSubDocumentTypes(
-                      typeof val === "string" ? val.split(",") : val
-                    );
-                  }}
-                  input={<OutlinedInput label="Sub Document Type" />}
-                  renderValue={(selected) => (selected as string[]).join(", ")}
-                  size="small"
-                >
-                  {availableSubDocumentTypes.map((item) => (
-                    <MenuItem key={item.ID} value={item.Title}>
-                      <Checkbox
-                        size="small"
-                        checked={selectedSubDocumentTypes.indexOf(item.Title) > -1}
-                      />
-                      <ListItemText primary={item.Title} />
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+                options={availableSubDocumentTypes.map((item) => item.Title)}
+                value={selectedSubDocumentTypes}
+                onChange={(_e, newValue) => {
+                  setSelectedSubDocumentTypes(newValue);
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    size="small"
+                    label="Sub Document Type"
+                    placeholder={
+                      selectedSubDocumentTypes.length === 0
+                        ? "Select/type sub document type..."
+                        : ""
+                    }
+                  />
+                )}
+              />
             </div>
 
             <LocalizationProvider dateAdapter={AdapterDayjs}>
