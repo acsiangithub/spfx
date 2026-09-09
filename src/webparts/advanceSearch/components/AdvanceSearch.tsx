@@ -514,7 +514,18 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     }
 
     if (additionalKeyword.trim()) {
-      clauses.push(`"${sanitizeKqlValue(additionalKeyword)}"`);
+      const keywords = additionalKeyword
+        .split(",")
+        .map((k) => k.trim())
+        .filter(Boolean);
+
+      if (keywords.length === 1) {
+        clauses.push(`"${sanitizeKqlValue(keywords[0])}"`);
+      } else if (keywords.length > 1) {
+        clauses.push(
+          `(${keywords.map((k) => `"${sanitizeKqlValue(k)}"`).join(" OR ")})`
+        );
+      }
     }
 
     if (dateFrom && dateTo) {
@@ -1670,8 +1681,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                 <TextField
                   fullWidth
                   size="small"
-                  label="Additional Keyword"
-                  placeholder="Optional keyword"
+                  label="Additional Keywords"
+                  placeholder="Optional keywords (comma-separated)"
                   value={additionalKeyword}
                   onChange={(e) => setAdditionalKeyword(e.target.value)}
                 />
@@ -1701,8 +1712,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                   <TextField
                     fullWidth
                     size="small"
-                    label="Additional Keyword"
-                    placeholder="Optional keyword"
+                    label="Additional Keywords"
+                    placeholder="Optional keywords (comma-separated)"
                     value={additionalKeyword}
                     onChange={(e) => setAdditionalKeyword(e.target.value)}
                   />

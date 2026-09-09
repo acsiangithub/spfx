@@ -346,8 +346,8 @@ export const searchRecords = async (
 
     if (chunkIds.length > 0) {
       const chunkPromises: Promise<any[]>[] = [];
-      for (let i = 0; i < chunkIds.length; i += 150) {
-        const slice = chunkIds.slice(i, i + 150);
+      for (let i = 0; i < chunkIds.length; i += 100) {
+        const slice = chunkIds.slice(i, i + 100);
         const filter = slice.map((id) => `Id eq ${id}`).join(" or ");
 
         chunkPromises.push(
