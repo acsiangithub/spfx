@@ -223,8 +223,6 @@ const ProductListbox = React.forwardRef<
 const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const [items_AllProducts, setItems_AllProducts] =
     React.useState<doclib_AllProducts[]>([]);
-  //const [allRecordsCache, setAllRecordsCache] =
-  React.useState<doclib_AllProducts[]>([]);
 
   const [products, setProducts] = React.useState<IProductLookupItem[]>([]);
   const [clients, setClients] = React.useState<IClientLookupItem[]>([]);
@@ -502,7 +500,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     if (countryValues.length > 0) {
       clauses.push(
         `(${countryValues
-          .map((value) => `CountryOWSCHM:"${sanitizeKqlValue(value)}"`)
+          .map((value) => `CountryOWSCHCM:"${sanitizeKqlValue(value)}"`)
           .join(" OR ")})`
       );
     }
@@ -541,6 +539,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const handleLoadAllRecords = async (): Promise<void> => {
     try {
       setResultsLoading(true);
+      setItems_AllProducts([]);
       setIsBrowseMode(true);
       setColumnFilters([]);
       setNextSearchStartRow(undefined);
@@ -560,6 +559,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const handleRefresh = async (): Promise<void> => {
     try {
       setResultsLoading(true);
+      setItems_AllProducts([]);
       setIsBrowseMode(true);
       setColumnFilters([]);
       setNextSearchStartRow(undefined);
@@ -691,6 +691,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
     try {
       setResultsLoading(true);
+      setItems_AllProducts([]);
       setIsSearchDialogOpen(false);
       setIsBrowseMode(false);
       setColumnFilters([]);
@@ -1190,10 +1191,17 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     if (e.button !== 0) return; // Only trigger on left-click
 
     const target = e.target as HTMLElement;
-    // Don't drag if clicking interactive controls, filter inputs, header cells, or resize handles
+
+    // Only allow drag-to-scroll if the click originates from the table header (thead)
+    // This allows users to freely select and copy text in the table body cells
+    if (!target.closest("thead")) {
+      return;
+    }
+
+    // Don't drag if clicking interactive controls, filter inputs, sort labels, resize handles, or grab handles
     if (
       target.closest(
-        'button, input, textarea, select, [role="button"], [role="checkbox"], .MuiInputBase-root, .MuiIconButton-root, .MuiSelect-select, thead, th, .Mui-TableHeadCell-ResizeHandle, .Mui-TableHeadCell-GrabHandle'
+        'button, input, textarea, select, [role="button"], [role="checkbox"], .MuiInputBase-root, .MuiIconButton-root, .MuiSelect-select, .MuiTableSortLabel-root, .Mui-TableHeadCell-ResizeHandle, .Mui-TableHeadCell-GrabHandle'
       )
     ) {
       return;
@@ -1203,6 +1211,12 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     const startClientX = e.clientX;
     const initialScrollLeft = container.scrollLeft;
     let hasDragged = false;
+
+    // Prevent HTML5 native drag on the header cell so our smooth horizontal scroll works
+    const preventDragStart = (dragEvent: DragEvent) => {
+      dragEvent.preventDefault();
+    };
+    window.addEventListener("dragstart", preventDragStart, { once: true });
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const dx = moveEvent.clientX - startClientX;
@@ -1222,6 +1236,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     const handleMouseUp = () => {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener("dragstart", preventDragStart);
 
       if (hasDragged) {
         container.style.cursor = "";
@@ -1266,9 +1281,11 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         </IconButton>
 
         <Box sx={{ display: "flex", gap: "8px", alignItems: "center" }}>
-          <Typography variant="caption" sx={{ fontSize: "12px", color: "text.secondary" }}>
-            {items_AllProducts.length.toLocaleString()} records loaded
-          </Typography>
+          {!resultsLoading && items_AllProducts.length > 0 && (
+            <Typography variant="caption" sx={{ fontSize: "12px", color: "text.secondary" }}>
+              {items_AllProducts.length.toLocaleString()} records loaded
+            </Typography>
+          )}
 
           {hasMoreRecords && (
             <Button
@@ -1295,7 +1312,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             </Button>
           )}
 
-          {!hasMoreRecords && items_AllProducts.length > 0 && (
+          {!hasMoreRecords && !resultsLoading && items_AllProducts.length > 0 && (
             <Typography
               variant="caption"
               sx={{
@@ -1330,12 +1347,6 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     },
     muiTableContainerProps: {
       onMouseDown: handleTableMouseDown,
-      sx: {
-        cursor: "grab",
-        "&:active": {
-          cursor: "grabbing",
-        },
-      },
     },
     muiTableHeadCellProps: {
       sx: {
@@ -1344,6 +1355,10 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         lineHeight: 1.2,
         whiteSpace: "normal",
         wordBreak: "break-word",
+        cursor: "grab",
+        "&:active": {
+          cursor: "grabbing",
+        },
       },
     },
     muiTableBodyCellProps: {
@@ -1353,6 +1368,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         whiteSpace: "normal",
         wordBreak: "normal",
         overflowWrap: "break-word",
+        userSelect: "text",
+        cursor: "default",
       },
     },
     muiPaginationProps: {
@@ -1639,41 +1656,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
               </div>
             </LocalizationProvider>
 
-            <div
-              className="filter-row-grid"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
-                gap: "12px",
-                marginBottom: "12px",
-                alignItems: "center",
-              }}
-            >
-              <TextField
-                fullWidth
-                size="small"
-                label="Additional Keyword"
-                placeholder="Optional keyword"
-                value={additionalKeyword}
-                onChange={(e) => setAdditionalKeyword(e.target.value)}
-              />
-              <Button
-                variant="outlined"
-                fullWidth
-                size="small"
-                onClick={() => setShowMoreFilters((prev) => !prev)}
-                sx={{
-                  height: "40px",
-                  textTransform: "none",
-                  fontWeight: 600,
-                  fontSize: "13px",
-                }}
-              >
-                {showMoreFilters ? "Less Filters" : "More Filters"}
-              </Button>
-            </div>
-
-            {showMoreFilters && (
+            {!showMoreFilters ? (
               <div
                 className="filter-row-grid"
                 style={{
@@ -1681,92 +1664,160 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                   gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
                   gap: "12px",
                   marginBottom: "12px",
+                  alignItems: "center",
                 }}
               >
-                <FormControl fullWidth size="small">
-                  <InputLabel id="business-line-filter-label">Business Line</InputLabel>
-                  <Select
-                    labelId="business-line-filter-label"
-                    multiple
-                    value={selectedBusinessLines}
-                    onChange={(event) => {
-                      const val = event.target.value;
-                      setSelectedBusinessLines(
-                        typeof val === "string" ? val.split(",") : val
-                      );
-                    }}
-                    input={<OutlinedInput label="Business Line" />}
-                    renderValue={(selected) => (selected as string[]).join(", ")}
-                    size="small"
-                  >
-                    {availableBusinessLines.map((opt) => (
-                      <MenuItem key={opt} value={opt}>
-                        <Checkbox
-                          size="small"
-                          checked={selectedBusinessLines.indexOf(opt) > -1}
-                        />
-                        <ListItemText primary={opt} />
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-
-                <FormControl fullWidth size="small">
-                  <InputLabel id="country-sold-to-filter-label">Country Sold To</InputLabel>
-                  <Select
-                    labelId="country-sold-to-filter-label"
-                    multiple
-                    value={selectedCountries}
-                    onChange={(event) => {
-                      const val = event.target.value;
-                      setSelectedCountries(
-                        typeof val === "string" ? val.split(",") : val
-                      );
-                    }}
-                    input={<OutlinedInput label="Country Sold To" />}
-                    renderValue={(selected) => (selected as string[]).join(", ")}
-                    size="small"
-                  >
-                    {availableCountries.map((opt) => (
-                      <MenuItem key={opt} value={opt}>
-                        <Checkbox
-                          size="small"
-                          checked={selectedCountries.indexOf(opt) > -1}
-                        />
-                        <ListItemText primary={opt} />
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-
-                <FormControl fullWidth size="small">
-                  <InputLabel id="confidentiality-filter-label">Confidentiality</InputLabel>
-                  <Select
-                    labelId="confidentiality-filter-label"
-                    multiple
-                    value={selectedConfidentialities}
-                    onChange={(event) => {
-                      const val = event.target.value;
-                      setSelectedConfidentialities(
-                        typeof val === "string" ? val.split(",") : val
-                      );
-                    }}
-                    input={<OutlinedInput label="Confidentiality" />}
-                    renderValue={(selected) => (selected as string[]).join(", ")}
-                    size="small"
-                  >
-                    {availableConfidentialities.map((opt) => (
-                      <MenuItem key={opt} value={opt}>
-                        <Checkbox
-                          size="small"
-                          checked={selectedConfidentialities.indexOf(opt) > -1}
-                        />
-                        <ListItemText primary={opt} />
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Additional Keyword"
+                  placeholder="Optional keyword"
+                  value={additionalKeyword}
+                  onChange={(e) => setAdditionalKeyword(e.target.value)}
+                />
+                <Button
+                  variant="outlined"
+                  fullWidth
+                  size="small"
+                  onClick={() => setShowMoreFilters(true)}
+                  sx={{
+                    height: "40px",
+                    textTransform: "none",
+                    fontWeight: 600,
+                    fontSize: "13px",
+                  }}
+                >
+                  More Filters
+                </Button>
               </div>
+            ) : (
+              <>
+                <div
+                  style={{
+                    marginBottom: "12px",
+                    width: "100%",
+                  }}
+                >
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Additional Keyword"
+                    placeholder="Optional keyword"
+                    value={additionalKeyword}
+                    onChange={(e) => setAdditionalKeyword(e.target.value)}
+                  />
+                </div>
+
+                <div
+                  className="filter-row-grid"
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
+                    gap: "12px",
+                    marginBottom: "12px",
+                    alignItems: "center",
+                  }}
+                >
+                  <FormControl fullWidth size="small">
+                    <InputLabel id="business-line-filter-label">Business Line</InputLabel>
+                    <Select
+                      labelId="business-line-filter-label"
+                      multiple
+                      value={selectedBusinessLines}
+                      onChange={(event) => {
+                        const val = event.target.value;
+                        setSelectedBusinessLines(
+                          typeof val === "string" ? val.split(",") : val
+                        );
+                      }}
+                      input={<OutlinedInput label="Business Line" />}
+                      renderValue={(selected) => (selected as string[]).join(", ")}
+                      size="small"
+                    >
+                      {availableBusinessLines.map((opt) => (
+                        <MenuItem key={opt} value={opt}>
+                          <Checkbox
+                            size="small"
+                            checked={selectedBusinessLines.indexOf(opt) > -1}
+                          />
+                          <ListItemText primary={opt} />
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  <FormControl fullWidth size="small">
+                    <InputLabel id="country-sold-to-filter-label">Country Sold To</InputLabel>
+                    <Select
+                      labelId="country-sold-to-filter-label"
+                      multiple
+                      value={selectedCountries}
+                      onChange={(event) => {
+                        const val = event.target.value;
+                        setSelectedCountries(
+                          typeof val === "string" ? val.split(",") : val
+                        );
+                      }}
+                      input={<OutlinedInput label="Country Sold To" />}
+                      renderValue={(selected) => (selected as string[]).join(", ")}
+                      size="small"
+                    >
+                      {availableCountries.map((opt) => (
+                        <MenuItem key={opt} value={opt}>
+                          <Checkbox
+                            size="small"
+                            checked={selectedCountries.indexOf(opt) > -1}
+                          />
+                          <ListItemText primary={opt} />
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  <FormControl fullWidth size="small">
+                    <InputLabel id="confidentiality-filter-label">Confidentiality</InputLabel>
+                    <Select
+                      labelId="confidentiality-filter-label"
+                      multiple
+                      value={selectedConfidentialities}
+                      onChange={(event) => {
+                        const val = event.target.value;
+                        setSelectedConfidentialities(
+                          typeof val === "string" ? val.split(",") : val
+                        );
+                      }}
+                      input={<OutlinedInput label="Confidentiality" />}
+                      renderValue={(selected) => (selected as string[]).join(", ")}
+                      size="small"
+                    >
+                      {availableConfidentialities.map((opt) => (
+                        <MenuItem key={opt} value={opt}>
+                          <Checkbox
+                            size="small"
+                            checked={selectedConfidentialities.indexOf(opt) > -1}
+                          />
+                          <ListItemText primary={opt} />
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  <Button
+                    variant="outlined"
+                    fullWidth
+                    size="small"
+                    onClick={() => setShowMoreFilters(false)}
+                    sx={{
+                      height: "40px",
+                      textTransform: "none",
+                      fontWeight: 600,
+                      fontSize: "13px",
+                    }}
+                  >
+                    Less Filters
+                  </Button>
+                </div>
+              </>
             )}
 
             <style>{`

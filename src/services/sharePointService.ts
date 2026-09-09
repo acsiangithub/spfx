@@ -281,48 +281,6 @@ export const loadRecordsBatch = async (
   };
 };
 
-export const loadAllRecords = async (
-  sp: SPFI,
-  pageSize: number = 5000
-): Promise<doclib_AllProducts[]> => {
-  const allProducts: any[] = [];
-  let lastId = 0;
-
-  while (true) {
-    const batch = await sp.web.lists
-      .getByTitle("Clients & Products")
-      .items.select(
-        "Id",
-        "Title",
-        "FileLeafRef",
-        "FileRef",
-        "Country",
-        "Business_x0020_Line",
-        "PIMProductCode/Title",
-        "PIMProductCode/PIMProductName",
-        "Manufacturer",
-        "Document_x0020_Type",
-        "Sub_x0020_Document_x0020_Type",
-        "Document_x0020_Date",
-        "Alerts",
-        "Confidentiality"
-      )
-      .expand("PIMProductCode")
-      .filter(`Id gt ${lastId}`)
-      .orderBy("Id")
-      .top(pageSize)();
-
-    if (batch.length === 0) break;
-
-    allProducts.push(...batch);
-    lastId = batch[batch.length - 1].Id;
-
-    if (batch.length < pageSize) break;
-  }
-
-  return mapSharePointItemsToProducts(allProducts);
-};
-
 export const searchRecords = async (
   sp: SPFI,
   queryText: string,
@@ -352,7 +310,7 @@ export const searchRecords = async (
         "DocumentDateOWSTDATE",
         "BusinessLineOWSCHCM",
         "CountryOWSCHCM",
-        "CountryOWSCHM",
+        //"CountryOWSCHM",
         "ManufacturerOWSTEXT",  //Client
         "LongProductNameOWSMTXT",
         "DocumentTypeOWSTEXT",
@@ -387,35 +345,40 @@ export const searchRecords = async (
     });
 
     if (chunkIds.length > 0) {
-      const chunkItems: any[] = [];
-      for (let i = 0; i < chunkIds.length; i += 100) {
-        const slice = chunkIds.slice(i, i + 100);
+      const chunkPromises: Promise<any[]>[] = [];
+      for (let i = 0; i < chunkIds.length; i += 150) {
+        const slice = chunkIds.slice(i, i + 150);
         const filter = slice.map((id) => `Id eq ${id}`).join(" or ");
 
-        const items = await sp.web.lists
-          .getByTitle("Clients & Products")
-          .items.select(
-            "Id",
-            "Title",
-            "FileLeafRef",
-            "FileRef",
-            "Country",
-            "Business_x0020_Line",
-            "PIMProductCode/Title",
-            "PIMProductCode/PIMProductName",
-            "Manufacturer",
-            "Document_x0020_Type",
-            "Sub_x0020_Document_x0020_Type",
-            "Document_x0020_Date",
-            "Alerts",
-            "Confidentiality",
-            //"PIMProductTermSet"
-          )
-          .expand("PIMProductCode")
-          .filter(filter)();
-
-        chunkItems.push(...items);
+        chunkPromises.push(
+          sp.web.lists
+            .getByTitle("Clients & Products")
+            .items.select(
+              "Id",
+              "Title",
+              "FileLeafRef",
+              "FileRef",
+              "Country",
+              "Business_x0020_Line",
+              "PIMProductCode/Title",
+              "PIMProductCode/PIMProductName",
+              "Manufacturer",
+              "Document_x0020_Type",
+              "Sub_x0020_Document_x0020_Type",
+              "Document_x0020_Date",
+              "Alerts",
+              "Confidentiality"
+            )
+            .expand("PIMProductCode")
+            .filter(filter)()
+        );
       }
+
+      const chunkResults = await Promise.all(chunkPromises);
+      const chunkItems: any[] = [];
+      chunkResults.forEach((items) => {
+        chunkItems.push(...items);
+      });
 
       const itemMap = new Map<number, any>();
       chunkItems.forEach((item) => itemMap.set(item.Id, item));
