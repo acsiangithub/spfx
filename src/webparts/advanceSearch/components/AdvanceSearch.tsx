@@ -189,6 +189,101 @@ const MultiSelectAutocompleteFilter: React.FC<{
   );
 };
 
+interface ICollapsibleItemListProps {
+  items: string[];
+  filterValues?: unknown;
+  renderItem?: (item: string, idx: number) => React.ReactNode;
+}
+
+const CollapsibleItemList: React.FC<ICollapsibleItemListProps> = ({
+  items,
+  filterValues,
+  renderItem,
+}) => {
+  const [expanded, setExpanded] = React.useState(false);
+
+  if (!items || items.length === 0) return <span>-</span>;
+  if (items.length === 1) {
+    return <>{renderItem ? renderItem(items[0], 0) : <span>{items[0]}</span>}</>;
+  }
+
+  const rawFilters = Array.isArray(filterValues)
+    ? filterValues
+    : filterValues !== undefined && filterValues !== null && filterValues !== ""
+    ? [filterValues]
+    : [];
+
+  const activeFilters = rawFilters
+    .map((f) => String(f).trim().toLowerCase())
+    .filter((f) => f && f !== "(empty)");
+
+  let visibleItems: string[];
+  let hiddenItems: string[];
+
+  if (activeFilters.length > 0) {
+    const matching = items.filter((item) => {
+      const lower = item.toLowerCase();
+      return activeFilters.some((f) => lower.includes(f) || f.includes(lower));
+    });
+    const nonMatching = items.filter((item) => !matching.includes(item));
+
+    visibleItems = matching.length > 0 ? matching : [items[0]];
+    hiddenItems = nonMatching;
+  } else {
+    visibleItems = [items[0]];
+    hiddenItems = items.slice(1);
+  }
+
+  const itemsToDisplay = expanded ? items : visibleItems;
+  const hasHidden = hiddenItems.length > 0;
+
+  return (
+    <div style={{ display: "inline-flex", flexWrap: "wrap", alignItems: "center", gap: "4px" }}>
+      {itemsToDisplay.map((item, idx) =>
+        renderItem ? (
+          <React.Fragment key={idx}>{renderItem(item, idx)}</React.Fragment>
+        ) : (
+          <span key={idx}>
+            {item}
+            {idx < itemsToDisplay.length - 1 ? "," : ""}
+          </span>
+        )
+      )}
+
+      {hasHidden && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded(!expanded);
+          }}
+          title={
+            expanded
+              ? "Show less"
+              : `Show ${hiddenItems.length} more:\n${hiddenItems.join(", ")}`
+          }
+          style={{
+            cursor: "pointer",
+            border: "1px solid #c0c0c0",
+            backgroundColor: expanded ? "#e3f2fd" : "#f5f5f5",
+            color: "#1976d2",
+            borderRadius: "10px",
+            padding: "0 6px",
+            fontSize: "10px",
+            fontWeight: 700,
+            lineHeight: "16px",
+            height: "16px",
+            display: "inline-flex",
+            alignItems: "center",
+          }}
+        >
+          {expanded ? "▴ less" : `... +${hiddenItems.length}`}
+        </button>
+      )}
+    </div>
+  );
+};
+
 const ProductListbox = React.forwardRef<
   HTMLUListElement,
   React.HTMLAttributes<HTMLElement>
@@ -1036,14 +1131,19 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         ),
         size: 220,
         minSize: 180,
-        Cell: ({ cell }) => {
+        Cell: ({ cell, column }) => {
           const raw = String(cell.getValue() || "").trim();
           if (!raw || raw === "-") return "-";
           const items = raw
             .split(/[\r\n;,]+/)
             .map((item) => item.trim())
             .filter(Boolean);
-          return <span>{items.join(", ") || "-"}</span>;
+          return (
+            <CollapsibleItemList
+              items={items}
+              filterValues={column.getFilterValue()}
+            />
+          );
         },
       },
       {
@@ -1059,12 +1159,17 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         ),
         size: 180,
         minSize: 180,
-        Cell: ({ row }) => {
+        Cell: ({ row, column }) => {
           const items = (row.original.PIMProduct || [])
             .map((p: IProductLookupItem) => `${p.Title || ""} ${p.PIMProductName || ""}`.trim())
             .filter(Boolean);
           if (items.length === 0) return "-";
-          return <span>{items.join(", ")}</span>;
+          return (
+            <CollapsibleItemList
+              items={items}
+              filterValues={column.getFilterValue()}
+            />
+          );
         },
       },
       {
@@ -1093,14 +1198,19 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         ),
         size: 175,
         minSize: 175,
-        Cell: ({ cell }) => {
+        Cell: ({ cell, column }) => {
           const raw = String(cell.getValue() || "").trim();
           if (!raw || raw === "-") return "-";
           const items = raw
             .split(",")
             .map((item) => item.trim())
             .filter(Boolean);
-          return <span>{items.join(", ") || "-"}</span>;
+          return (
+            <CollapsibleItemList
+              items={items}
+              filterValues={column.getFilterValue()}
+            />
+          );
         },
       },
       {
@@ -1111,42 +1221,44 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         filterFn: multiSelectFilterFn,
         size: 155,
         minSize: 140,
-        Cell: ({ cell }) => {
+        Cell: ({ cell, column }) => {
           const raw = String(cell.getValue() || "").trim();
           if (!raw || raw === "-") return "-";
+          const items = raw
+            .split(",")
+            .map((v) => v.trim())
+            .filter(Boolean);
 
           return (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-              {raw
-                .split(",")
-                .map((v) => v.trim())
-                .filter(Boolean)
-                .map((item, idx) => {
-                  const style =
-                    fieldFormatters.businessLine[item.toLowerCase()] ||
-                    getDynamicChipStyle(item);
+            <CollapsibleItemList
+              items={items}
+              filterValues={column.getFilterValue()}
+              renderItem={(item, idx) => {
+                const style =
+                  fieldFormatters.businessLine[item.toLowerCase()] ||
+                  getDynamicChipStyle(item);
 
-                  return (
-                    <span
-                      key={idx}
-                      style={{
-                        backgroundColor: style.bg,
-                        color: style.text,
-                        border: `1px solid ${style.border}`,
-                        borderRadius: "12px",
-                        padding: "1px 8px",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                        lineHeight: "18px",
-                        display: "inline-block",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {item}
-                    </span>
-                  );
-                })}
-            </div>
+                return (
+                  <span
+                    key={idx}
+                    style={{
+                      backgroundColor: style.bg,
+                      color: style.text,
+                      border: `1px solid ${style.border}`,
+                      borderRadius: "12px",
+                      padding: "1px 8px",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      lineHeight: "18px",
+                      display: "inline-block",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {item}
+                  </span>
+                );
+              }}
+            />
           );
         },
       },
@@ -1158,14 +1270,19 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         filterFn: multiSelectFilterFn,
         size: 165,
         minSize: 165,
-        Cell: ({ cell }) => {
+        Cell: ({ cell, column }) => {
           const raw = String(cell.getValue() || "").trim();
           if (!raw || raw === "-") return "-";
           const items = raw
             .split(",")
             .map((item) => item.trim())
             .filter(Boolean);
-          return <span>{items.join(", ") || "-"}</span>;
+          return (
+            <CollapsibleItemList
+              items={items}
+              filterValues={column.getFilterValue()}
+            />
+          );
         },
       },
       {
@@ -1176,43 +1293,45 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         filterFn: multiSelectFilterFn,
         size: 150,
         minSize: 140,
-        Cell: ({ cell }) => {
+        Cell: ({ cell, column }) => {
           const raw = String(cell.getValue() || "").trim();
           if (!raw || raw === "-") return "-";
+          const items = raw
+            .split(",")
+            .map((v) => v.trim())
+            .filter(Boolean);
 
           return (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-              {raw
-                .split(",")
-                .map((v) => v.trim())
-                .filter(Boolean)
-                .map((item, idx) => {
-                  const style =
-                    fieldFormatters.confidentiality[item.toLowerCase()] ||
-                    getSemanticConfidentialityStyle(item) ||
-                    getDynamicChipStyle(item);
+            <CollapsibleItemList
+              items={items}
+              filterValues={column.getFilterValue()}
+              renderItem={(item, idx) => {
+                const style =
+                  fieldFormatters.confidentiality[item.toLowerCase()] ||
+                  getSemanticConfidentialityStyle(item) ||
+                  getDynamicChipStyle(item);
 
-                  return (
-                    <span
-                      key={idx}
-                      style={{
-                        backgroundColor: style.bg,
-                        color: style.text,
-                        border: `1px solid ${style.border}`,
-                        borderRadius: "12px",
-                        padding: "1px 8px",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                        lineHeight: "18px",
-                        display: "inline-block",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {item}
-                    </span>
-                  );
-                })}
-            </div>
+                return (
+                  <span
+                    key={idx}
+                    style={{
+                      backgroundColor: style.bg,
+                      color: style.text,
+                      border: `1px solid ${style.border}`,
+                      borderRadius: "12px",
+                      padding: "1px 8px",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      lineHeight: "18px",
+                      display: "inline-block",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {item}
+                  </span>
+                );
+              }}
+            />
           );
         },
       },
