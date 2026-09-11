@@ -26,7 +26,14 @@ export const mapSharePointItemsToProducts = (items: any[]): doclib_AllProducts[]
     id: item.Id,
     filename: item.FileLeafRef ?? "",
     fileUrl: item.FileRef,
-    PIMProduct: item.PIMProductCode ?? [],
+    PIMProduct: (item.PIMProductCode ?? []).map((p: any) => ({
+      ID: p.ID ?? p.Id ?? 0,
+      Title: p.Title ?? "",
+      PIMProductName: p.PIMProductName ?? "",
+      Manufacturer: p.Manufacturer ?? "",
+      BusinessLine: p.BusinessLine ?? "",
+      ManufacturerLookupId: p.ManufacturerLookupId,
+    })),
     PIMProductSearchText: (item.PIMProductCode ?? [])
       .map((p: any) => `${p.Title} ${p.PIMProductName}`)
       .join(" "),
@@ -253,6 +260,7 @@ export const loadRecordsBatch = async (
       "FileRef",
       "Country",
       "Business_x0020_Line",
+      "PIMProductCode/Id",
       "PIMProductCode/Title",
       "PIMProductCode/PIMProductName",
       "Manufacturer",

@@ -802,26 +802,82 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         .filter((v) => v && v.toLowerCase() !== "(empty)" && v !== "-");
 
       if (vals.length > 0) {
+        // Collect all distinct product objects across loaded items
+        const allKnownProducts: IProductLookupItem[] = [];
+        const seenProductKeys = new Set<string>();
+
+        const registerProduct = (item: IProductLookupItem) => {
+          const key = `${item.Title || ""} ${item.PIMProductName || ""}`.trim().toLowerCase();
+          if (key && !seenProductKeys.has(key)) {
+            seenProductKeys.add(key);
+            allKnownProducts.push(item);
+          }
+        };
+
+        // 1. From loaded records in the grid
+        items_AllProducts.forEach((rec) => {
+          if (Array.isArray(rec.PIMProduct)) {
+            rec.PIMProduct.forEach(registerProduct);
+          }
+        });
+
+        // 2. From searchProducts lookup cache
+        products.forEach(registerProduct);
+
         setSelectedProducts((prev) => {
           const existingKeys = new Set(
             prev.map((p) => `${p.Title || ""} ${p.PIMProductName || ""}`.trim().toLowerCase())
           );
           const newItems: IProductLookupItem[] = [];
+
           vals.forEach((v) => {
-            if (!existingKeys.has(v.toLowerCase())) {
-              const fromLoaded = products.find(
-                (p) => `${p.Title || ""} ${p.PIMProductName || ""}`.trim().toLowerCase() === v.toLowerCase()
+            const vLower = v.toLowerCase();
+
+            // Match against known product items from grid or lookup
+            const matched = allKnownProducts.find((p) => {
+              const fullKey = `${p.Title || ""} ${p.PIMProductName || ""}`.trim().toLowerCase();
+              return (
+                fullKey === vLower ||
+                (p.Title && p.Title.toLowerCase() === vLower) ||
+                (p.PIMProductName && p.PIMProductName.toLowerCase() === vLower)
               );
-              newItems.push(
-                fromLoaded || {
-                  ID: -Math.floor(Math.random() * 100000),
-                  Title: v,
-                  PIMProductName: "",
+            });
+
+            if (matched) {
+              const matchedKey = `${matched.Title || ""} ${matched.PIMProductName || ""}`.trim().toLowerCase();
+              if (!existingKeys.has(matchedKey)) {
+                newItems.push(matched);
+                existingKeys.add(matchedKey);
+              }
+            } else {
+              // If not found in known products, parse "Title | ProductName" or "Code ProductName"
+              let parsedTitle = v;
+              let parsedName = "";
+
+              if (v.includes("|")) {
+                const parts = v.split("|").map((p) => p.trim());
+                parsedTitle = parts[0] || "";
+                parsedName = parts.slice(1).join(" ");
+              } else {
+                const spaceIdx = v.indexOf(" ");
+                if (spaceIdx > 0) {
+                  parsedTitle = v.substring(0, spaceIdx).trim();
+                  parsedName = v.substring(spaceIdx + 1).trim();
                 }
-              );
-              existingKeys.add(v.toLowerCase());
+              }
+
+              const itemKey = `${parsedTitle} ${parsedName}`.trim().toLowerCase();
+              if (!existingKeys.has(itemKey)) {
+                newItems.push({
+                  ID: -Math.floor(Math.random() * 100000),
+                  Title: parsedTitle,
+                  PIMProductName: parsedName,
+                });
+                existingKeys.add(itemKey);
+              }
             }
           });
+
           return newItems.length > 0 ? [...prev, ...newItems] : prev;
         });
       }
