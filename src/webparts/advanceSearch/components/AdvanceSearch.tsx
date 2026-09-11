@@ -18,6 +18,7 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import ShareIcon from "@mui/icons-material/Share";
+import FilterListOffIcon from "@mui/icons-material/FilterListOff";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -982,6 +983,22 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     selectedConfidentialities,
   ]);
 
+  const handleClearDialogFilters = (): void => {
+    setSelectedProducts([]);
+    setProductSearchText("");
+    setSelectedClients([]);
+    setClientSearchText("");
+    setSelectedDocumentTypes([]);
+    setSelectedSubDocumentTypes([]);
+    setDateFrom(null);
+    setDateTo(null);
+    setAdditionalKeywords([]);
+    setKeywordInput("");
+    setSelectedBusinessLines([]);
+    setSelectedCountries([]);
+    setSelectedConfidentialities([]);
+  };
+
   const handleSearch = async () => {
     if (!isSearchFormValid) return;
 
@@ -1705,6 +1722,28 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
               All records loaded
             </Typography>
           )}
+
+          <Button
+            variant="outlined"
+            size="small"
+            color="primary"
+            disabled={columnFilters.length === 0}
+            onClick={() => {
+              setColumnFilters([]);
+              table.resetColumnFilters();
+            }}
+            startIcon={<FilterListOffIcon fontSize="small" />}
+            sx={{
+              fontSize: "12px",
+              textTransform: "none",
+              py: 0.25,
+              px: 1.5,
+              minHeight: "28px",
+            }}
+            title="Clear all column filters"
+          >
+            Clear Filters{columnFilters.length > 0 ? ` (${columnFilters.length})` : ""}
+          </Button>
         </Box>
       </Box>
     ),
@@ -1868,6 +1907,40 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
   return (
     <ThemeProvider theme={compactTheme}>
+      <style>{`
+        .CanvasZoneContainer,
+        [data-automation-id="CanvasZoneContainer"],
+        .CanvasZoneContainer--read,
+        .CanvasZone,
+        [data-automation-id="CanvasZone"],
+        .CanvasSection,
+        [data-automation-id="CanvasSection"],
+        .CanvasSection-col,
+        [class*="CanvasSection-col"],
+        [class*="CanvasSection-xl"],
+        .ControlZone,
+        .ControlZone--clean,
+        [data-automation-id="CanvasControl"],
+        [data-automation-id="CanvasLayout"] {
+          max-width: none !important;
+          width: 100% !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+          padding-left: 0 !important;
+          padding-right: 0 !important;
+          box-sizing: border-box !important;
+        }
+        #spPageCanvasContent,
+        [data-automation-id="Canvas"] {
+          max-width: none !important;
+          width: 100% !important;
+        }
+        @media (max-width: 768px) {
+          .filter-row-grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
       <Box
         sx={{
           width: "100%",
@@ -1957,9 +2030,22 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             <Typography variant="h6" sx={{ fontSize: "16px", fontWeight: 600 }}>
               Search Filters
             </Typography>
-            <IconButton size="small" onClick={() => setIsSearchDialogOpen(false)}>
-              <CloseIcon fontSize="small" />
-            </IconButton>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              {isSearchFormValid && (
+                <Button
+                  size="small"
+                  color="inherit"
+                  onClick={handleClearDialogFilters}
+                  startIcon={<FilterListOffIcon fontSize="small" />}
+                  sx={{ textTransform: "none", fontSize: "12px", color: "text.secondary" }}
+                >
+                  Clear Filters
+                </Button>
+              )}
+              <IconButton size="small" onClick={() => setIsSearchDialogOpen(false)}>
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </Box>
           </DialogTitle>
           <DialogContent sx={{ p: 2.5, pt: 2.5, mt: 1 }}>
             <div
@@ -2347,24 +2433,25 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                 </div>
               </>
             )}
-
-            <style>{`
-            .CanvasZone,
-            [data-automation-id="CanvasZone"],
-            .CanvasSection,
-            .ControlZone,
-            [data-automation-id="CanvasControl"] {
-              max-width: none !important;
-            }
-            @media (max-width: 768px) {
-              .filter-row-grid {
-                grid-template-columns: 1fr !important;
-              }
-            }
-          `}</style>
           </DialogContent>
           <DialogActions sx={{ px: 2.5, pb: 2, pt: 1, borderTop: "1px solid #e0e0e0" }}>
-            <Button onClick={() => setIsSearchDialogOpen(false)} size="small">
+            <Button
+              onClick={handleClearDialogFilters}
+              size="small"
+              color="inherit"
+              disabled={!isSearchFormValid}
+              startIcon={<FilterListOffIcon fontSize="small" />}
+              sx={{
+                mr: "auto",
+                textTransform: "none",
+                fontWeight: 500,
+                fontSize: "13px",
+                color: isSearchFormValid ? "text.secondary" : "text.disabled",
+              }}
+            >
+              Clear Filters
+            </Button>
+            <Button onClick={() => setIsSearchDialogOpen(false)} size="small" sx={{ textTransform: "none" }}>
               Cancel
             </Button>
             <Button
@@ -2373,6 +2460,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
               size="small"
               onClick={handleSearch}
               disabled={!isSearchFormValid || resultsLoading}
+              sx={{ textTransform: "none", fontWeight: 600 }}
             >
               {resultsLoading ? "Searching..." : "Search"}
             </Button>

@@ -26,32 +26,102 @@ export default class AdvanceSearchWebPart extends BaseClientSideWebPart<IAdvance
 
   private _isDarkTheme: boolean = false;
   private _environmentMessage: string = '';
-  public render(): void {
-    // Force web part container and SharePoint canvas elements to full bleed
-    this.domElement.style.width = '100%';
-    this.domElement.style.maxWidth = '100%';
-    this.domElement.style.padding = '0';
-    this.domElement.style.margin = '0';
+  private _resizeObserver: ResizeObserver | null = null;
+  private _resizeHandler: (() => void) | null = null;
+  private _rafId: number | null = null;
+
+  private _scheduleFullBleed(): void {
+    if (this._rafId !== null) {
+      cancelAnimationFrame(this._rafId);
+    }
+    this._rafId = requestAnimationFrame(() => {
+      this._applyFullBleed();
+      this._rafId = null;
+    });
+  }
+
+  private _applyFullBleed(): void {
+    if (!this.domElement) {
+      return;
+    }
+
+    this._ensureFullBleedStyleTag();
+
+    this.domElement.classList.add('spfx-full-bleed-webpart');
+    this.domElement.style.setProperty('width', '100%', 'important');
+    this.domElement.style.setProperty('max-width', 'none', 'important');
+    this.domElement.style.setProperty('padding', '0', 'important');
+    this.domElement.style.setProperty('margin', '0', 'important');
 
     let el: HTMLElement | null = this.domElement.parentElement;
     while (el && el !== document.body) {
-      if (el.classList.contains('ControlZone') || el.getAttribute('data-automation-id') === 'CanvasControl') {
-        el.style.maxWidth = 'none';
-        el.style.padding = '0';
-        el.style.margin = '0';
-        el.style.width = '100%';
-      }
-      if (
-        el.classList.contains('CanvasSection') ||
-        el.classList.contains('CanvasZone') ||
-        el.getAttribute('data-automation-id') === 'CanvasZone'
-      ) {
-        el.style.maxWidth = 'none';
-        el.style.paddingLeft = '0';
-        el.style.paddingRight = '0';
-        el.style.width = '100%';
+      el.classList.add('spfx-full-bleed-ancestor');
+      el.style.setProperty('max-width', 'none', 'important');
+      el.style.setProperty('width', '100%', 'important');
+      el.style.setProperty('padding-left', '0', 'important');
+      el.style.setProperty('padding-right', '0', 'important');
+      el.style.setProperty('margin-left', '0', 'important');
+      el.style.setProperty('margin-right', '0', 'important');
+
+      if (el.id === 'spPageCanvasContent' || el.getAttribute('data-automation-id') === 'Canvas') {
+        break;
       }
       el = el.parentElement;
+    }
+  }
+
+  private _ensureFullBleedStyleTag(): void {
+    const styleId = 'spfx-advancesearch-team-site-fullbleed';
+    if (!document.getElementById(styleId)) {
+      const styleEl = document.createElement('style');
+      styleEl.id = styleId;
+      styleEl.textContent = `
+        .spfx-full-bleed-ancestor,
+        .CanvasZoneContainer:has(.spfx-full-bleed-webpart),
+        .CanvasZone:has(.spfx-full-bleed-webpart),
+        .CanvasSection:has(.spfx-full-bleed-webpart),
+        .CanvasSection-col:has(.spfx-full-bleed-webpart),
+        [class*="CanvasSection-col"]:has(.spfx-full-bleed-webpart),
+        [class*="CanvasSection-xl"]:has(.spfx-full-bleed-webpart),
+        .ControlZone:has(.spfx-full-bleed-webpart),
+        [data-automation-id="CanvasControl"]:has(.spfx-full-bleed-webpart),
+        .CanvasZoneContainer,
+        [data-automation-id="CanvasZoneContainer"],
+        .CanvasZoneContainer--read {
+          max-width: none !important;
+          width: 100% !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+          padding-left: 0 !important;
+          padding-right: 0 !important;
+          box-sizing: border-box !important;
+        }
+        #spPageCanvasContent,
+        [data-automation-id="Canvas"],
+        [data-automation-id="CanvasLayout"] {
+          max-width: none !important;
+          width: 100% !important;
+        }
+      `;
+      document.head.appendChild(styleEl);
+    }
+  }
+
+  public render(): void {
+    // Force web part container and SharePoint canvas elements to full bleed on Team Sites and Communication Sites
+    this._applyFullBleed();
+
+    if (!this._resizeHandler) {
+      this._resizeHandler = () => this._scheduleFullBleed();
+      window.addEventListener('resize', this._resizeHandler);
+    }
+
+    if (!this._resizeObserver && typeof ResizeObserver !== 'undefined') {
+      const target = document.getElementById('spPageCanvasContent') || document.body;
+      this._resizeObserver = new ResizeObserver(() => {
+        this._scheduleFullBleed();
+      });
+      this._resizeObserver.observe(target);
     }
 
     const element: React.ReactElement<IAdvanceSearchProps> = React.createElement(
@@ -132,6 +202,22 @@ export default class AdvanceSearchWebPart extends BaseClientSideWebPart<IAdvance
   }
 
   protected onDispose(): void {
+    if (this._rafId !== null) {
+      cancelAnimationFrame(this._rafId);
+      this._rafId = null;
+    }
+    if (this._resizeObserver) {
+      this._resizeObserver.disconnect();
+      this._resizeObserver = null;
+    }
+    if (this._resizeHandler) {
+      window.removeEventListener('resize', this._resizeHandler);
+      this._resizeHandler = null;
+    }
+    const styleEl = document.getElementById('spfx-advancesearch-team-site-fullbleed');
+    if (styleEl && styleEl.parentNode) {
+      styleEl.parentNode.removeChild(styleEl);
+    }
     ReactDom.unmountComponentAtNode(this.domElement);
   }
 
