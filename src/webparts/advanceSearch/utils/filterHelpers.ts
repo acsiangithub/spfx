@@ -1,15 +1,58 @@
 import dayjs from "dayjs";
 import { doclib_AllProducts } from "../types/advanceSearchTypes";
 
+export const isValueEmpty = (value: unknown): boolean => {
+  if (value === null || value === undefined) return true;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return true;
+    return value.every((v) => isValueEmpty(v));
+  }
+  const str = String(value).trim();
+  return str === "";
+};
+
 export const multiSelectFilterFn = (
   row: { getValue: (columnId: string) => unknown },
   columnId: string,
   filterValue: unknown
 ): boolean => {
-  if (!filterValue || (Array.isArray(filterValue) && filterValue.length === 0)) return true;
-  const rowValue = String(row.getValue(columnId) || "").toLowerCase();
-  const selectedValues = Array.isArray(filterValue) ? filterValue : [filterValue];
-  return selectedValues.some((val) => rowValue.includes(String(val).toLowerCase()));
+  if (filterValue === undefined || filterValue === null || filterValue === "") return true;
+  if (Array.isArray(filterValue) && filterValue.length === 0) return true;
+
+  const selectedValues = (Array.isArray(filterValue) ? filterValue : [filterValue])
+    .map((v) => String(v).trim())
+    .filter((v) => v !== "");
+
+  if (selectedValues.length === 0) return true;
+
+  const raw = row.getValue(columnId);
+  const empty = isValueEmpty(raw);
+
+  const matchEmpty = selectedValues.some((v) => v.toLowerCase() === "(empty)");
+  const regularSelections = selectedValues.filter((v) => v.toLowerCase() !== "(empty)");
+
+  if (empty) {
+    return matchEmpty;
+  }
+
+  if (regularSelections.length === 0) {
+    return false;
+  }
+
+  const rowStr = String(raw).trim();
+  const tokens = rowStr
+    .split(/[\r\n;,]+/)
+    .map((t) => t.trim().toLowerCase())
+    .filter(Boolean);
+
+  return regularSelections.some((sel) => {
+    const selLower = sel.toLowerCase();
+    if (tokens.includes(selLower)) return true;
+    if (columnId === "PIMProductSearchText") {
+      return rowStr.toLowerCase().includes(selLower);
+    }
+    return false;
+  });
 };
 
 export const documentDateFilter = (
@@ -50,8 +93,38 @@ export const itemMatchesFilter = (
     return rowDate.isSame(filterDate, "day") || rowDate.isAfter(filterDate, "day");
   }
 
-  const rawValue = (item as Record<string, unknown>)[colId];
-  const itemVal = String(rawValue || "").toLowerCase();
-  const selectedValues = Array.isArray(filterValue) ? filterValue : [filterValue];
-  return selectedValues.some((val) => itemVal.includes(String(val).toLowerCase()));
+  const selectedValues = (Array.isArray(filterValue) ? filterValue : [filterValue])
+    .map((v) => String(v).trim())
+    .filter((v) => v !== "");
+
+  if (selectedValues.length === 0) return true;
+
+  const raw = (item as Record<string, unknown>)[colId];
+  const empty = isValueEmpty(raw);
+
+  const matchEmpty = selectedValues.some((v) => v.toLowerCase() === "(empty)");
+  const regularSelections = selectedValues.filter((v) => v.toLowerCase() !== "(empty)");
+
+  if (empty) {
+    return matchEmpty;
+  }
+
+  if (regularSelections.length === 0) {
+    return false;
+  }
+
+  const rowStr = String(raw).trim();
+  const tokens = rowStr
+    .split(/[\r\n;,]+/)
+    .map((t) => t.trim().toLowerCase())
+    .filter(Boolean);
+
+  return regularSelections.some((sel) => {
+    const selLower = sel.toLowerCase();
+    if (tokens.includes(selLower)) return true;
+    if (colId === "PIMProductSearchText") {
+      return rowStr.toLowerCase().includes(selLower);
+    }
+    return false;
+  });
 };

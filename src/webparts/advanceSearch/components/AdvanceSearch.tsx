@@ -145,6 +145,18 @@ const MultiSelectAutocompleteFilter: React.FC<{
           : [];
         column.setFilterValue(values.length > 0 ? values : undefined);
       }}
+      renderOption={(props, option) => (
+        <li
+          {...props}
+          style={
+            option === "(Empty)"
+              ? { fontStyle: "italic", color: "#666" }
+              : undefined
+          }
+        >
+          {option}
+        </li>
+      )}
       renderInput={(params) => (
         <TextField
           {...params}
@@ -741,7 +753,12 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         return items_AllProducts;
       }
       const activeFilters = columnFilters.filter(
-        (f) => f.id !== excludedColId && f.value !== undefined && f.value !== null && f.value !== ""
+        (f) =>
+          f.id !== excludedColId &&
+          f.value !== undefined &&
+          f.value !== null &&
+          f.value !== "" &&
+          !(Array.isArray(f.value) && f.value.length === 0)
       );
       if (activeFilters.length === 0) {
         return items_AllProducts;
@@ -757,17 +774,25 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     () => {
       const items = getItemsFilteredExcluding("ManufacturerSearchText");
       const unique = new Set<string>();
+      let hasEmpty = false;
       items.forEach((item) => {
-        if (item.ManufacturerSearchText) {
-          item.ManufacturerSearchText.split(/[\r\n;,]+/).forEach((val) => {
+        const raw = item.ManufacturerSearchText;
+        if (!raw || raw.trim() === "") {
+          hasEmpty = true;
+        } else {
+          raw.split(/[\r\n;,]+/).forEach((val) => {
             const trimmed = val.trim();
             if (trimmed) unique.add(trimmed);
           });
         }
       });
-      const result: string[] = [];
-      unique.forEach((val) => result.push(val));
-      return result.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+      const result: string[] = Array.from(unique).sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: "base" })
+      );
+      if (hasEmpty) {
+        result.unshift("(Empty)");
+      }
+      return result;
     },
     [getItemsFilteredExcluding]
   );
@@ -776,19 +801,31 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     () => {
       const items = getItemsFilteredExcluding("PIMProductSearchText");
       const unique = new Set<string>();
+      let hasEmpty = false;
       items.forEach((item) => {
-        if (item.PIMProduct && Array.isArray(item.PIMProduct)) {
+        if (!item.PIMProduct || !Array.isArray(item.PIMProduct) || item.PIMProduct.length === 0) {
+          hasEmpty = true;
+        } else {
+          let hasValid = false;
           item.PIMProduct.forEach((p) => {
             const name = `${p.Title || ""} ${p.PIMProductName || ""}`.trim();
             if (name) {
               unique.add(name);
+              hasValid = true;
             }
           });
+          if (!hasValid) {
+            hasEmpty = true;
+          }
         }
       });
-      const result: string[] = [];
-      unique.forEach((val) => result.push(val));
-      return result.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+      const result: string[] = Array.from(unique).sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: "base" })
+      );
+      if (hasEmpty) {
+        result.unshift("(Empty)");
+      }
+      return result;
     },
     [getItemsFilteredExcluding]
   );
@@ -797,17 +834,25 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     () => {
       const items = getItemsFilteredExcluding("BusinessLine");
       const unique = new Set<string>();
+      let hasEmpty = false;
       items.forEach((item) => {
-        if (item.BusinessLine) {
-          item.BusinessLine.split(",").forEach((val) => {
+        const raw = item.BusinessLine;
+        if (!raw || raw.trim() === "") {
+          hasEmpty = true;
+        } else {
+          raw.split(",").forEach((val) => {
             const trimmed = val.trim();
             if (trimmed) unique.add(trimmed);
           });
         }
       });
-      const result: string[] = [];
-      unique.forEach((val) => result.push(val));
-      return result.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+      const result: string[] = Array.from(unique).sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: "base" })
+      );
+      if (hasEmpty) {
+        result.unshift("(Empty)");
+      }
+      return result;
     },
     [getItemsFilteredExcluding]
   );
@@ -816,17 +861,25 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     () => {
       const items = getItemsFilteredExcluding("CountrySoldTo");
       const unique = new Set<string>();
+      let hasEmpty = false;
       items.forEach((item) => {
-        if (item.CountrySoldTo) {
-          item.CountrySoldTo.split(",").forEach((val) => {
+        const raw = item.CountrySoldTo;
+        if (!raw || raw.trim() === "") {
+          hasEmpty = true;
+        } else {
+          raw.split(",").forEach((val) => {
             const trimmed = val.trim();
             if (trimmed) unique.add(trimmed);
           });
         }
       });
-      const result: string[] = [];
-      unique.forEach((val) => result.push(val));
-      return result.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+      const result: string[] = Array.from(unique).sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: "base" })
+      );
+      if (hasEmpty) {
+        result.unshift("(Empty)");
+      }
+      return result;
     },
     [getItemsFilteredExcluding]
   );
@@ -835,15 +888,23 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     () => {
       const items = getItemsFilteredExcluding("DocumentTypeSearchText");
       const unique = new Set<string>();
+      let hasEmpty = false;
       items.forEach((item) => {
-        if (item.DocumentTypeSearchText) {
-          const trimmed = item.DocumentTypeSearchText.trim();
+        const raw = item.DocumentTypeSearchText;
+        if (!raw || raw.trim() === "") {
+          hasEmpty = true;
+        } else {
+          const trimmed = raw.trim();
           if (trimmed) unique.add(trimmed);
         }
       });
-      const result: string[] = [];
-      unique.forEach((val) => result.push(val));
-      return result.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+      const result: string[] = Array.from(unique).sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: "base" })
+      );
+      if (hasEmpty) {
+        result.unshift("(Empty)");
+      }
+      return result;
     },
     [getItemsFilteredExcluding]
   );
@@ -852,17 +913,25 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     () => {
       const items = getItemsFilteredExcluding("SubDocumentTypeSearchText");
       const unique = new Set<string>();
+      let hasEmpty = false;
       items.forEach((item) => {
-        if (item.SubDocumentTypeSearchText) {
-          item.SubDocumentTypeSearchText.split(",").forEach((val) => {
+        const raw = item.SubDocumentTypeSearchText;
+        if (!raw || raw.trim() === "") {
+          hasEmpty = true;
+        } else {
+          raw.split(",").forEach((val) => {
             const trimmed = val.trim();
             if (trimmed) unique.add(trimmed);
           });
         }
       });
-      const result: string[] = [];
-      unique.forEach((val) => result.push(val));
-      return result.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+      const result: string[] = Array.from(unique).sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: "base" })
+      );
+      if (hasEmpty) {
+        result.unshift("(Empty)");
+      }
+      return result;
     },
     [getItemsFilteredExcluding]
   );
@@ -871,37 +940,45 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     () => {
       const items = getItemsFilteredExcluding("Confidentiality");
       const unique = new Set<string>();
+      let hasEmpty = false;
       items.forEach((item) => {
-        if (item.Confidentiality) {
-          item.Confidentiality.split(",").forEach((val) => {
+        const raw = item.Confidentiality;
+        if (!raw || raw.trim() === "") {
+          hasEmpty = true;
+        } else {
+          raw.split(",").forEach((val) => {
             const trimmed = val.trim();
             if (trimmed) unique.add(trimmed);
           });
         }
       });
-      const result: string[] = [];
-      unique.forEach((val) => result.push(val));
-      return result.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+      const result: string[] = Array.from(unique).sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: "base" })
+      );
+      if (hasEmpty) {
+        result.unshift("(Empty)");
+      }
+      return result;
     },
     [getItemsFilteredExcluding]
   );
 
   const availableBusinessLines = useMemo(() => {
-    const set = new Set([...libraryChoices.businessLine, ...businessLineOptions]);
+    const set = new Set([...libraryChoices.businessLine, ...businessLineOptions.filter((o) => o !== "(Empty)")]);
     return Array.from(set)
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
   }, [libraryChoices.businessLine, businessLineOptions]);
 
   const availableCountries = useMemo(() => {
-    const set = new Set([...libraryChoices.country, ...countryOptions]);
+    const set = new Set([...libraryChoices.country, ...countryOptions.filter((o) => o !== "(Empty)")]);
     return Array.from(set)
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
   }, [libraryChoices.country, countryOptions]);
 
   const availableConfidentialities = useMemo(() => {
-    const set = new Set([...libraryChoices.confidentiality, ...confidentialityOptions]);
+    const set = new Set([...libraryChoices.confidentiality, ...confidentialityOptions.filter((o) => o !== "(Empty)")]);
     return Array.from(set)
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
@@ -959,28 +1036,15 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         ),
         size: 220,
         minSize: 180,
-        Cell: ({ cell }) => (
-          <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
-            {String(cell.getValue() || "")
-              .split(/[\r\n;,]+/)
-              .map((item) => item.trim())
-              .filter(Boolean)
-              .map((item, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    display: "block",
-                    whiteSpace: "normal",
-                    wordBreak: "normal",
-                    overflowWrap: "normal",
-                    lineHeight: 1.3,
-                  }}
-                >
-                  {item}
-                </div>
-              ))}
-          </div>
-        ),
+        Cell: ({ cell }) => {
+          const raw = String(cell.getValue() || "").trim();
+          if (!raw || raw === "-") return "-";
+          const items = raw
+            .split(/[\r\n;,]+/)
+            .map((item) => item.trim())
+            .filter(Boolean);
+          return <span>{items.join(", ") || "-"}</span>;
+        },
       },
       {
         accessorKey: "PIMProductSearchText",
@@ -995,15 +1059,13 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         ),
         size: 180,
         minSize: 180,
-        Cell: ({ row }) => (
-          <div>
-            {row.original.PIMProduct.map((p: IProductLookupItem, idx) => (
-              <div key={idx}>
-                {p.Title} {p.PIMProductName}
-              </div>
-            ))}
-          </div>
-        ),
+        Cell: ({ row }) => {
+          const items = (row.original.PIMProduct || [])
+            .map((p: IProductLookupItem) => `${p.Title || ""} ${p.PIMProductName || ""}`.trim())
+            .filter(Boolean);
+          if (items.length === 0) return "-";
+          return <span>{items.join(", ")}</span>;
+        },
       },
       {
         accessorKey: "DocumentTypeSearchText",
@@ -1013,6 +1075,10 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         filterFn: multiSelectFilterFn,
         size: 150,
         minSize: 150,
+        Cell: ({ cell }) => {
+          const raw = String(cell.getValue() || "").trim();
+          return <span>{raw || "-"}</span>;
+        },
       },
       {
         accessorKey: "SubDocumentTypeSearchText",
@@ -1027,16 +1093,15 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         ),
         size: 175,
         minSize: 175,
-        Cell: ({ cell }) => (
-          <div>
-            {String(cell.getValue() || "")
-              .split(",")
-              .filter(Boolean)
-              .map((item, idx) => (
-                <div key={idx}>{item.trim()}</div>
-              ))}
-          </div>
-        ),
+        Cell: ({ cell }) => {
+          const raw = String(cell.getValue() || "").trim();
+          if (!raw || raw === "-") return "-";
+          const items = raw
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean);
+          return <span>{items.join(", ") || "-"}</span>;
+        },
       },
       {
         accessorKey: "BusinessLine",
@@ -1047,8 +1112,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         size: 155,
         minSize: 140,
         Cell: ({ cell }) => {
-          const raw = String(cell.getValue() || "");
-          if (!raw) return "-";
+          const raw = String(cell.getValue() || "").trim();
+          if (!raw || raw === "-") return "-";
 
           return (
             <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
@@ -1093,16 +1158,15 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         filterFn: multiSelectFilterFn,
         size: 165,
         minSize: 165,
-        Cell: ({ cell }) => (
-          <div>
-            {String(cell.getValue() || "")
-              .split(",")
-              .filter(Boolean)
-              .map((item, idx) => (
-                <div key={idx}>{item.trim()}</div>
-              ))}
-          </div>
-        ),
+        Cell: ({ cell }) => {
+          const raw = String(cell.getValue() || "").trim();
+          if (!raw || raw === "-") return "-";
+          const items = raw
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean);
+          return <span>{items.join(", ") || "-"}</span>;
+        },
       },
       {
         accessorKey: "Confidentiality",
@@ -1113,8 +1177,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         size: 150,
         minSize: 140,
         Cell: ({ cell }) => {
-          const raw = String(cell.getValue() || "");
-          if (!raw) return "-";
+          const raw = String(cell.getValue() || "").trim();
+          if (!raw || raw === "-") return "-";
 
           return (
             <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
@@ -1158,17 +1222,21 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         size: 160,
         minSize: 140,
         filterFn: "contains",
-        Cell: ({ cell }) => (
-          <div
-            style={{
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              lineHeight: 1.4,
-            }}
-          >
-            {String(cell.getValue() || "")}
-          </div>
-        ),
+        Cell: ({ cell }) => {
+          const raw = String(cell.getValue() || "").trim();
+          if (!raw) return "-";
+          return (
+            <div
+              style={{
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                lineHeight: 1.4,
+              }}
+            >
+              {raw}
+            </div>
+          );
+        },
       },
       {
         accessorKey: "DocumentDate",
