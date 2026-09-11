@@ -27,6 +27,33 @@ export default class AdvanceSearchWebPart extends BaseClientSideWebPart<IAdvance
   private _isDarkTheme: boolean = false;
   private _environmentMessage: string = '';
   public render(): void {
+    // Force web part container and SharePoint canvas elements to full bleed
+    this.domElement.style.width = '100%';
+    this.domElement.style.maxWidth = '100%';
+    this.domElement.style.padding = '0';
+    this.domElement.style.margin = '0';
+
+    let el: HTMLElement | null = this.domElement.parentElement;
+    while (el && el !== document.body) {
+      if (el.classList.contains('ControlZone') || el.getAttribute('data-automation-id') === 'CanvasControl') {
+        el.style.maxWidth = 'none';
+        el.style.padding = '0';
+        el.style.margin = '0';
+        el.style.width = '100%';
+      }
+      if (
+        el.classList.contains('CanvasSection') ||
+        el.classList.contains('CanvasZone') ||
+        el.getAttribute('data-automation-id') === 'CanvasZone'
+      ) {
+        el.style.maxWidth = 'none';
+        el.style.paddingLeft = '0';
+        el.style.paddingRight = '0';
+        el.style.width = '100%';
+      }
+      el = el.parentElement;
+    }
+
     const element: React.ReactElement<IAdvanceSearchProps> = React.createElement(
       AdvanceSearch,
       {

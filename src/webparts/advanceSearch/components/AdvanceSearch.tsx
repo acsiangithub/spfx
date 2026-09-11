@@ -397,6 +397,30 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const [selectedFileForAction, setSelectedFileForAction] = React.useState<doclib_AllProducts | null>(null);
   const [editModalUrl, setEditModalUrl] = React.useState<string | null>(null);
 
+  // Dynamic table container height to prevent double vertical scrollbars
+  const [tableMaxHeight, setTableMaxHeight] = React.useState<string>("calc(100vh - 210px)");
+  const tableContainerRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    const updateHeight = (): void => {
+      if (tableContainerRef.current) {
+        const rect = tableContainerRef.current.getBoundingClientRect();
+        // Reserve space for MRT bottom pagination toolbar (~52px) and bottom padding (~16px)
+        const availableHeight = window.innerHeight - rect.top - 68;
+        setTableMaxHeight(`${Math.max(300, Math.floor(availableHeight))}px`);
+      }
+    };
+
+    updateHeight();
+    window.addEventListener("resize", updateHeight);
+    const timer = setTimeout(updateHeight, 300);
+
+    return () => {
+      window.removeEventListener("resize", updateHeight);
+      clearTimeout(timer);
+    };
+  }, []);
+
   const activeSp: SPFI = React.useMemo(() => {
     if (sp) return sp;
     const initialWebUrl = props.urlSite?.trim() || props.context?.pageContext?.web?.absoluteUrl;
@@ -639,7 +663,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       clauses.push(`"${sanitizeKqlValue(allKeywords[0])}"`);
     } else if (allKeywords.length > 1) {
       clauses.push(
-        `(${allKeywords.map((k) => `"${sanitizeKqlValue(k)}"`).join(" OR ")})`
+        `(${allKeywords.map((k) => `"${sanitizeKqlValue(k)}"`).join(" AND ")})`
       );
     }
 
@@ -1559,6 +1583,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     columns: columns_AllProducts,
     data: items_AllProducts,
     enableRowSelection: true,
+    enableStickyHeader: true,
     enableFullScreenToggle: false,
     positionToolbarAlertBanner: "none",
     renderTopToolbarCustomActions: ({ table }) => (
@@ -1639,10 +1664,29 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       sx: {
         boxShadow: "none",
         border: "1px solid #e1dfdd",
+        width: "100%",
+        maxWidth: "100%",
       },
     },
     muiTableContainerProps: {
+      ref: tableContainerRef,
       onMouseDown: handleTableMouseDown,
+      sx: {
+        maxHeight: tableMaxHeight,
+        width: "100%",
+        maxWidth: "100%",
+      },
+    },
+    muiTableProps: {
+      sx: {
+        minWidth: "100%",
+        width: "100%",
+      },
+    },
+    muiTableHeadProps: {
+      sx: {
+        opacity: 1,
+      },
     },
     muiTableHeadCellProps: {
       sx: {
@@ -1768,8 +1812,74 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
   return (
     <ThemeProvider theme={compactTheme}>
-      <div>
-        <h2>Search Clients & Products</h2>
+      <Box
+        sx={{
+          width: "100%",
+          maxWidth: "100%",
+          boxSizing: "border-box",
+          px: { xs: 0.5, sm: 1 },
+          py: 0.5,
+        }}
+      >
+        {/* Compact, full-width Header & Search Controls Bar */}
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            width: "100%",
+            mb: 1,
+            px: 0.5,
+          }}
+        >
+          <Typography
+            variant="h6"
+            component="h2"
+            sx={{
+              fontSize: "18px",
+              fontWeight: 600,
+              color: "text.primary",
+              m: 0,
+            }}
+          >
+            Search Clients & Products
+          </Typography>
+
+          <Box sx={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <Button
+              variant="contained"
+              color="primary"
+              size="small"
+              disabled={resultsLoading || isLoadingMore}
+              onClick={handleOpenSearchDialog}
+              sx={{ textTransform: "none", fontWeight: 600, fontSize: "13px", px: 2, height: "32px" }}
+            >
+              New Search
+            </Button>
+
+            <Link
+              component="button"
+              variant="body2"
+              onClick={handleRefresh}
+              disabled={resultsLoading || isLoadingMore}
+              sx={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+                fontSize: "13px",
+                textDecoration: "none",
+                cursor: resultsLoading || isLoadingMore ? "not-allowed" : "pointer",
+                color: resultsLoading || isLoadingMore ? "text.disabled" : "primary.main",
+                "&:hover": {
+                  textDecoration: resultsLoading || isLoadingMore ? "none" : "underline",
+                },
+              }}
+            >
+              <RefreshIcon fontSize="small" sx={{ fontSize: "16px" }} />
+              Refresh
+            </Link>
+          </Box>
+        </Box>
 
         {/* --- 1. SEARCH FILTERS DIALOG POPUP --- */}
         <Dialog
@@ -1815,7 +1925,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                 ListboxComponent={ProductListbox}
                 getOptionLabel={(option: IProductLookupItem) =>
                   option
-                    ? `${option.Title ?? ""} | ${option.PIMProductName ?? ""}`
+                    ? `${option.Title ?? ""} ${option.PIMProductName ?? ""}`
                     : ""
                 }
                 isOptionEqualToValue={(option, value) => option.ID === value.ID}
@@ -1847,7 +1957,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                           wordBreak: "break-word",
                         }}
                       >
-                        {`${option.Title || ""} | ${option.PIMProductName || ""}`.replace(/\|\s*$/g, "").trim() || "-"}
+                        {`${option.Title || ""} ${option.PIMProductName || ""}`.replace(/\|\s*$/g, "").trim() || "-"}
                       </Typography>
                       <Typography
                         variant="caption"
@@ -2183,6 +2293,13 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             )}
 
             <style>{`
+            .CanvasZone,
+            [data-automation-id="CanvasZone"],
+            .CanvasSection,
+            .ControlZone,
+            [data-automation-id="CanvasControl"] {
+              max-width: none !important;
+            }
             @media (max-width: 768px) {
               .filter-row-grid {
                 grid-template-columns: 1fr !important;
@@ -2207,48 +2324,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         </Dialog>
 
         {/* --- 2. RESULTS TABLE --- */}
-        <Box sx={{ mt: 1 }}>
-          <Box
-            sx={{
-              mb: 1,
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <Button
-              variant="contained"
-              color="primary"
-              size="small"
-              disabled={resultsLoading || isLoadingMore}
-              onClick={handleOpenSearchDialog}
-            >
-              New Search
-            </Button>
-
-            <Link
-              component="button"
-              variant="body2"
-              onClick={handleRefresh}
-              disabled={resultsLoading || isLoadingMore}
-              sx={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-                fontSize: "13px",
-                textDecoration: "none",
-                cursor: resultsLoading || isLoadingMore ? "not-allowed" : "pointer",
-                color: resultsLoading || isLoadingMore ? "text.disabled" : "primary.main",
-                "&:hover": {
-                  textDecoration: resultsLoading || isLoadingMore ? "none" : "underline",
-                },
-              }}
-            >
-              <RefreshIcon fontSize="small" sx={{ fontSize: "16px" }} />
-              Refresh
-            </Link>
-          </Box>
-
+        <Box sx={{ width: "100%", maxWidth: "100%" }}>
           <LocalizationProvider dateAdapter={AdapterDayjs}>
             <MaterialReactTable table={table} />
           </LocalizationProvider>
@@ -2356,7 +2432,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             )}
           </DialogContent>
         </Dialog>
-      </div>
+      </Box>
     </ThemeProvider>
   );
 };
