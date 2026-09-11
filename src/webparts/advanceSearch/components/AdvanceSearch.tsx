@@ -24,6 +24,8 @@ import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
 import FormControl from "@mui/material/FormControl";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import Switch from "@mui/material/Switch";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
 import Menu from "@mui/material/Menu";
@@ -383,6 +385,22 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   });
 
   const [columnFilters, setColumnFilters] = React.useState<MRT_ColumnFiltersState>([]);
+  const [applyColumnFilters, setApplyColumnFilters] = React.useState<boolean>(false);
+  const savedDialogValuesRef = React.useRef<{
+    selectedProducts: IProductLookupItem[];
+    productSearchText: string;
+    selectedClients: IClientLookupItem[];
+    clientSearchText: string;
+    selectedDocumentTypes: string[];
+    selectedSubDocumentTypes: string[];
+    dateFrom: Dayjs | null;
+    dateTo: Dayjs | null;
+    additionalKeywords: string[];
+    keywordInput: string;
+    selectedBusinessLines: string[];
+    selectedCountries: string[];
+    selectedConfidentialities: string[];
+  } | null>(null);
   const [grouping, setGrouping] = React.useState<MRT_GroupingState>([]);
 
   // Batch / pagination state for loadAllRecords and searchRecords
@@ -772,8 +790,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     }
   };
 
-  const handleOpenSearchDialog = (): void => {
-    // Populate search dialog controls with active column filter values if dialog controls are currently empty
+  const applyColumnFiltersToDialog = (): void => {
+    // 1. Clients
     const clientColFilter = columnFilters.find((f) => f.id === "ManufacturerSearchText")?.value;
     if (clientColFilter) {
       const vals = (Array.isArray(clientColFilter) ? clientColFilter : [clientColFilter])
@@ -796,6 +814,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       }
     }
 
+    // 2. Products
     const productColFilter = columnFilters.find((f) => f.id === "PIMProductSearchText")?.value;
     if (productColFilter) {
       const vals = (Array.isArray(productColFilter) ? productColFilter : [productColFilter])
@@ -803,7 +822,6 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         .filter((v) => v && v.toLowerCase() !== "(empty)" && v !== "-");
 
       if (vals.length > 0) {
-        // Collect all distinct product objects across loaded items
         const allKnownProducts: IProductLookupItem[] = [];
         const seenProductKeys = new Set<string>();
 
@@ -815,14 +833,12 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           }
         };
 
-        // 1. From loaded records in the grid
         items_AllProducts.forEach((rec) => {
           if (Array.isArray(rec.PIMProduct)) {
             rec.PIMProduct.forEach(registerProduct);
           }
         });
 
-        // 2. From searchProducts lookup cache
         products.forEach(registerProduct);
 
         setSelectedProducts((prev) => {
@@ -834,7 +850,6 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           vals.forEach((v) => {
             const vLower = v.toLowerCase();
 
-            // Match against known product items from grid or lookup
             const matched = allKnownProducts.find((p) => {
               const fullKey = `${p.Title || ""} ${p.PIMProductName || ""}`.trim().toLowerCase();
               return (
@@ -851,7 +866,6 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                 existingKeys.add(matchedKey);
               }
             } else {
-              // If not found in known products, parse "Title | ProductName" or "Code ProductName"
               let parsedTitle = v;
               let parsedName = "";
 
@@ -884,6 +898,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       }
     }
 
+    // 3. Document Types
     const docTypeColFilter = columnFilters.find((f) => f.id === "DocumentTypeSearchText")?.value;
     if (docTypeColFilter) {
       const vals = (Array.isArray(docTypeColFilter) ? docTypeColFilter : [docTypeColFilter])
@@ -895,6 +910,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       }
     }
 
+    // 4. Sub Document Types
     const subDocTypeColFilter = columnFilters.find((f) => f.id === "SubDocumentTypeSearchText")?.value;
     if (subDocTypeColFilter) {
       const vals = (Array.isArray(subDocTypeColFilter) ? subDocTypeColFilter : [subDocTypeColFilter])
@@ -906,6 +922,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       }
     }
 
+    // 5. Document Date
     const docDateColFilter = columnFilters.find((f) => f.id === "DocumentDate")?.value;
     if (docDateColFilter) {
       const parsedDate = dayjs(docDateColFilter as string | Date);
@@ -914,7 +931,96 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       }
     }
 
+    // 6. Business Line
+    const blFilter = columnFilters.find((f) => f.id === "BusinessLine")?.value;
+    if (blFilter) {
+      const vals = (Array.isArray(blFilter) ? blFilter : [blFilter])
+        .map((v) => String(v).trim())
+        .filter((v) => v && v.toLowerCase() !== "(empty)" && v !== "-");
+      if (vals.length > 0) {
+        setSelectedBusinessLines((prev) => Array.from(new Set([...prev, ...vals])));
+        setShowMoreFilters(true);
+      }
+    }
+
+    // 7. Country Sold To
+    const countryFilter = columnFilters.find((f) => f.id === "CountrySoldTo")?.value;
+    if (countryFilter) {
+      const vals = (Array.isArray(countryFilter) ? countryFilter : [countryFilter])
+        .map((v) => String(v).trim())
+        .filter((v) => v && v.toLowerCase() !== "(empty)" && v !== "-");
+      if (vals.length > 0) {
+        setSelectedCountries((prev) => Array.from(new Set([...prev, ...vals])));
+        setShowMoreFilters(true);
+      }
+    }
+
+    // 8. Confidentiality
+    const confFilter = columnFilters.find((f) => f.id === "Confidentiality")?.value;
+    if (confFilter) {
+      const vals = (Array.isArray(confFilter) ? confFilter : [confFilter])
+        .map((v) => String(v).trim())
+        .filter((v) => v && v.toLowerCase() !== "(empty)" && v !== "-");
+      if (vals.length > 0) {
+        setSelectedConfidentialities((prev) => Array.from(new Set([...prev, ...vals])));
+        setShowMoreFilters(true);
+      }
+    }
+
+    // 9. Keyword / File Name
+    const filenameFilter = columnFilters.find((f) => f.id === "filename")?.value;
+    if (filenameFilter && typeof filenameFilter === "string" && filenameFilter.trim()) {
+      setKeywordInput(filenameFilter.trim());
+    }
+  };
+
+  const handleOpenSearchDialog = (): void => {
+    // Only apply column filters into dialog if the toggle is ON; otherwise retain previous dialog values
+    if (applyColumnFilters) {
+      applyColumnFiltersToDialog();
+    }
     setIsSearchDialogOpen(true);
+  };
+
+  const handleToggleApplyColumnFilters = (enabled: boolean): void => {
+    setApplyColumnFilters(enabled);
+    if (enabled) {
+      // Snapshot current dialog control values so they can be restored if user unchecks
+      savedDialogValuesRef.current = {
+        selectedProducts,
+        productSearchText,
+        selectedClients,
+        clientSearchText,
+        selectedDocumentTypes,
+        selectedSubDocumentTypes,
+        dateFrom,
+        dateTo,
+        additionalKeywords,
+        keywordInput,
+        selectedBusinessLines,
+        selectedCountries,
+        selectedConfidentialities,
+      };
+      applyColumnFiltersToDialog();
+    } else {
+      // Restore previous dialog values if available
+      if (savedDialogValuesRef.current) {
+        const prev = savedDialogValuesRef.current;
+        setSelectedProducts(prev.selectedProducts);
+        setProductSearchText(prev.productSearchText);
+        setSelectedClients(prev.selectedClients);
+        setClientSearchText(prev.clientSearchText);
+        setSelectedDocumentTypes(prev.selectedDocumentTypes);
+        setSelectedSubDocumentTypes(prev.selectedSubDocumentTypes);
+        setDateFrom(prev.dateFrom);
+        setDateTo(prev.dateTo);
+        setAdditionalKeywords(prev.additionalKeywords);
+        setKeywordInput(prev.keywordInput);
+        setSelectedBusinessLines(prev.selectedBusinessLines);
+        setSelectedCountries(prev.selectedCountries);
+        setSelectedConfidentialities(prev.selectedConfidentialities);
+      }
+    }
   };
 
   const handleProductInputChange = (
@@ -997,6 +1103,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     setSelectedBusinessLines([]);
     setSelectedCountries([]);
     setSelectedConfidentialities([]);
+    setApplyColumnFilters(false);
+    savedDialogValuesRef.current = null;
   };
 
   const handleSearch = async () => {
@@ -2048,6 +2156,47 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             </Box>
           </DialogTitle>
           <DialogContent sx={{ p: 2.5, pt: 2.5, mt: 1 }}>
+            {/* Toggle: Apply Column Filters */}
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                mb: 1.5,
+                pb: 1,
+                borderBottom: "1px solid #f0f0f0",
+              }}
+            >
+              <FormControlLabel
+                control={
+                  <Switch
+                    size="small"
+                    checked={applyColumnFilters}
+                    onChange={(e) => handleToggleApplyColumnFilters(e.target.checked)}
+                    color="primary"
+                  />
+                }
+                label={
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      fontSize: "13px",
+                      fontWeight: 500,
+                      color: "text.primary",
+                      userSelect: "none",
+                    }}
+                  >
+                    Apply Column filters
+                  </Typography>
+                }
+              />
+              {columnFilters.length > 0 && (
+                <Typography variant="caption" sx={{ fontSize: "11px", color: "text.secondary" }}>
+                  {columnFilters.length} column filter{columnFilters.length > 1 ? "s" : ""} active in grid
+                </Typography>
+              )}
+            </Box>
+
             <div
               className="filter-row-grid"
               style={{
