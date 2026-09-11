@@ -8,6 +8,7 @@ import {
   useMaterialReactTable,
   type MRT_ColumnDef,
   type MRT_ColumnFiltersState,
+  type MRT_GroupingState,
 } from "material-react-table";
 
 import Autocomplete from "@mui/material/Autocomplete";
@@ -381,6 +382,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   });
 
   const [columnFilters, setColumnFilters] = React.useState<MRT_ColumnFiltersState>([]);
+  const [grouping, setGrouping] = React.useState<MRT_GroupingState>([]);
 
   // Batch / pagination state for loadAllRecords and searchRecords
   const [nextSkipId, setNextSkipId] = React.useState<number | undefined>(undefined);
@@ -745,6 +747,95 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     }
   };
 
+  const handleOpenSearchDialog = (): void => {
+    // Populate search dialog controls with active column filter values if dialog controls are currently empty
+    const clientColFilter = columnFilters.find((f) => f.id === "ManufacturerSearchText")?.value;
+    if (clientColFilter) {
+      const vals = (Array.isArray(clientColFilter) ? clientColFilter : [clientColFilter])
+        .map((v) => String(v).trim())
+        .filter((v) => v && v.toLowerCase() !== "(empty)" && v !== "-");
+
+      if (vals.length > 0) {
+        setSelectedClients((prev) => {
+          const existingTitles = new Set(prev.map((c) => (c.Title || "").toLowerCase()));
+          const newItems: IClientLookupItem[] = [];
+          vals.forEach((v) => {
+            if (!existingTitles.has(v.toLowerCase())) {
+              const fromLoaded = clients.find((c) => (c.Title || "").toLowerCase() === v.toLowerCase());
+              newItems.push(fromLoaded || { ID: -Math.floor(Math.random() * 100000), Title: v });
+              existingTitles.add(v.toLowerCase());
+            }
+          });
+          return newItems.length > 0 ? [...prev, ...newItems] : prev;
+        });
+      }
+    }
+
+    const productColFilter = columnFilters.find((f) => f.id === "PIMProductSearchText")?.value;
+    if (productColFilter) {
+      const vals = (Array.isArray(productColFilter) ? productColFilter : [productColFilter])
+        .map((v) => String(v).trim())
+        .filter((v) => v && v.toLowerCase() !== "(empty)" && v !== "-");
+
+      if (vals.length > 0) {
+        setSelectedProducts((prev) => {
+          const existingKeys = new Set(
+            prev.map((p) => `${p.Title || ""} ${p.PIMProductName || ""}`.trim().toLowerCase())
+          );
+          const newItems: IProductLookupItem[] = [];
+          vals.forEach((v) => {
+            if (!existingKeys.has(v.toLowerCase())) {
+              const fromLoaded = products.find(
+                (p) => `${p.Title || ""} ${p.PIMProductName || ""}`.trim().toLowerCase() === v.toLowerCase()
+              );
+              newItems.push(
+                fromLoaded || {
+                  ID: -Math.floor(Math.random() * 100000),
+                  Title: v,
+                  PIMProductName: "",
+                }
+              );
+              existingKeys.add(v.toLowerCase());
+            }
+          });
+          return newItems.length > 0 ? [...prev, ...newItems] : prev;
+        });
+      }
+    }
+
+    const docTypeColFilter = columnFilters.find((f) => f.id === "DocumentTypeSearchText")?.value;
+    if (docTypeColFilter) {
+      const vals = (Array.isArray(docTypeColFilter) ? docTypeColFilter : [docTypeColFilter])
+        .map((v) => String(v).trim())
+        .filter((v) => v && v.toLowerCase() !== "(empty)" && v !== "-");
+
+      if (vals.length > 0) {
+        setSelectedDocumentTypes((prev) => Array.from(new Set([...prev, ...vals])));
+      }
+    }
+
+    const subDocTypeColFilter = columnFilters.find((f) => f.id === "SubDocumentTypeSearchText")?.value;
+    if (subDocTypeColFilter) {
+      const vals = (Array.isArray(subDocTypeColFilter) ? subDocTypeColFilter : [subDocTypeColFilter])
+        .map((v) => String(v).trim())
+        .filter((v) => v && v.toLowerCase() !== "(empty)" && v !== "-");
+
+      if (vals.length > 0) {
+        setSelectedSubDocumentTypes((prev) => Array.from(new Set([...prev, ...vals])));
+      }
+    }
+
+    const docDateColFilter = columnFilters.find((f) => f.id === "DocumentDate")?.value;
+    if (docDateColFilter) {
+      const parsedDate = dayjs(docDateColFilter as string | Date);
+      if (parsedDate.isValid()) {
+        setDateFrom(parsedDate);
+      }
+    }
+
+    setIsSearchDialogOpen(true);
+  };
+
   const handleProductInputChange = (
     _event: React.SyntheticEvent,
     newInputValue: string
@@ -819,7 +910,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       setItems_AllProducts([]);
       setIsSearchDialogOpen(false);
       setIsBrowseMode(false);
-      setColumnFilters([]);
+      // Retain columnFilters and grouping across searches
       setHasMoreRecords(false);
       setNextSkipId(undefined);
       setNextSearchStartRow(undefined);
@@ -1586,11 +1677,13 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       },
     },
     onColumnFiltersChange: setColumnFilters,
+    onGroupingChange: setGrouping,
     state: {
       isLoading: resultsLoading,
       showProgressBars: isLoadingMore,
       showColumnFilters: true,
       columnFilters,
+      grouping,
     },
   });
 
@@ -2128,9 +2221,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
               color="primary"
               size="small"
               disabled={resultsLoading || isLoadingMore}
-              onClick={() => {
-                setIsSearchDialogOpen(true);
-              }}
+              onClick={handleOpenSearchDialog}
             >
               New Search
             </Button>
