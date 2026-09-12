@@ -9,6 +9,8 @@ import {
   type MRT_ColumnDef,
   type MRT_ColumnFiltersState,
   type MRT_GroupingState,
+  type MRT_VisibilityState,
+  type MRT_SortingState,
 } from "material-react-table";
 
 import Autocomplete from "@mui/material/Autocomplete";
@@ -19,6 +21,8 @@ import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import ShareIcon from "@mui/icons-material/Share";
 import FilterListOffIcon from "@mui/icons-material/FilterListOff";
+import BookmarkBorderIcon from "@mui/icons-material/BookmarkBorder";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -332,6 +336,62 @@ const ProductListbox = React.forwardRef<
   );
 });
 
+interface ITableViewPreset {
+  id: string;
+  name: string;
+  isBuiltIn?: boolean;
+  grouping?: MRT_GroupingState;
+  sorting?: MRT_SortingState;
+  columnVisibility?: MRT_VisibilityState;
+  columnOrder?: string[];
+  columnFilters?: MRT_ColumnFiltersState;
+}
+
+const STORAGE_KEY_CUSTOM_VIEWS = "advanceSearch_user_views";
+
+const BUILT_IN_VIEWS: ITableViewPreset[] = [
+  {
+    id: "default",
+    name: "All Documents",
+    isBuiltIn: true,
+    grouping: [],
+    sorting: [{ id: "DocumentDate", desc: true }],
+    columnVisibility: {},
+    columnFilters: [],
+  },
+  {
+    id: "byClient",
+    name: "Grouped by Client",
+    isBuiltIn: true,
+    grouping: ["ManufacturerSearchText"],
+    sorting: [{ id: "ManufacturerSearchText", desc: false }],
+    columnVisibility: {},
+    columnFilters: [],
+  },
+  {
+    id: "byDocType",
+    name: "Grouped by Document Type",
+    isBuiltIn: true,
+    grouping: ["DocumentTypeSearchText"],
+    sorting: [{ id: "DocumentTypeSearchText", desc: false }],
+    columnVisibility: {},
+    columnFilters: [],
+  },
+  {
+    id: "summary",
+    name: "Summary (Compact)",
+    isBuiltIn: true,
+    grouping: [],
+    sorting: [{ id: "DocumentDate", desc: true }],
+    columnVisibility: {
+      Alerts: false,
+      CountrySoldTo: false,
+      Confidentiality: false,
+    },
+    columnFilters: [],
+  },
+];
+
 const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const [items_AllProducts, setItems_AllProducts] =
     React.useState<doclib_AllProducts[]>([]);
@@ -402,6 +462,89 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     selectedConfidentialities: string[];
   } | null>(null);
   const [grouping, setGrouping] = React.useState<MRT_GroupingState>([]);
+
+  // --- View Management State ---
+  const [selectedViewId, setSelectedViewId] = React.useState<string>("default");
+  const [customViews, setCustomViews] = React.useState<ITableViewPreset[]>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY_CUSTOM_VIEWS);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [sorting, setSorting] = React.useState<MRT_SortingState>([
+    { id: "DocumentDate", desc: true },
+  ]);
+  const [columnVisibility, setColumnVisibility] = React.useState<MRT_VisibilityState>({});
+  const [columnOrder, setColumnOrder] = React.useState<string[]>([]);
+
+  // Dialog state for "Save Current View"
+  const [isSaveViewDialogOpen, setIsSaveViewDialogOpen] = React.useState(false);
+  const [newViewName, setNewViewName] = React.useState("");
+
+  const allAvailableViews = React.useMemo(() => {
+    return [...BUILT_IN_VIEWS, ...customViews];
+  }, [customViews]);
+
+  const handleApplyView = (viewId: string): void => {
+    setSelectedViewId(viewId);
+    const view = allAvailableViews.find((v) => v.id === viewId);
+    if (!view) return;
+
+    setGrouping(view.grouping ?? []);
+    setSorting(view.sorting ?? []);
+    setColumnVisibility(view.columnVisibility ?? {});
+    if (view.columnOrder && view.columnOrder.length > 0) {
+      setColumnOrder(view.columnOrder);
+    }
+    if (view.columnFilters !== undefined) {
+      setColumnFilters(view.columnFilters);
+    }
+  };
+
+  const handleSaveCurrentView = (): void => {
+    const trimmed = newViewName.trim();
+    if (!trimmed) return;
+
+    const newView: ITableViewPreset = {
+      id: `custom_${Date.now()}`,
+      name: trimmed,
+      isBuiltIn: false,
+      grouping,
+      sorting,
+      columnVisibility,
+      columnOrder,
+      columnFilters,
+    };
+
+    const updated = [...customViews.filter((v) => v.name.toLowerCase() !== trimmed.toLowerCase()), newView];
+    setCustomViews(updated);
+    try {
+      localStorage.setItem(STORAGE_KEY_CUSTOM_VIEWS, JSON.stringify(updated));
+    } catch (e) {
+      console.warn("Could not save view to localStorage", e);
+    }
+
+    setSelectedViewId(newView.id);
+    setIsSaveViewDialogOpen(false);
+    setNewViewName("");
+  };
+
+  const handleDeleteView = (viewId: string, e: React.MouseEvent): void => {
+    e.stopPropagation();
+    const updated = customViews.filter((v) => v.id !== viewId);
+    setCustomViews(updated);
+    try {
+      localStorage.setItem(STORAGE_KEY_CUSTOM_VIEWS, JSON.stringify(updated));
+    } catch (e) {
+      console.warn("Could not update localStorage", e);
+    }
+    if (selectedViewId === viewId) {
+      handleApplyView("default");
+    }
+  };
 
   // Batch / pagination state for loadAllRecords and searchRecords
   const [nextSkipId, setNextSkipId] = React.useState<number | undefined>(undefined);
@@ -1768,7 +1911,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     enableFullScreenToggle: false,
     positionToolbarAlertBanner: "none",
     renderTopToolbarCustomActions: ({ table }) => (
-      <Box sx={{ display: "flex", gap: "12px", alignItems: "center" }}>
+      <Box sx={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
         <IconButton
           color="primary"
           disabled={table.getSelectedRowModel().rows.length === 0}
@@ -1781,6 +1924,78 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         >
           <ShareIcon />
         </IconButton>
+
+        {/* --- View Preset Selector --- */}
+        <Box sx={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <FormControl size="small" sx={{ minWidth: 160 }}>
+            <Select
+              size="small"
+              value={selectedViewId}
+              onChange={(e) => handleApplyView(e.target.value as string)}
+              displayEmpty
+              sx={{
+                height: "28px",
+                fontSize: "12px",
+                "& .MuiSelect-select": { py: "3px", px: "8px" },
+              }}
+            >
+              <MenuItem disabled sx={{ fontSize: "11px", fontWeight: 700, color: "text.secondary" }}>
+                Standard Views
+              </MenuItem>
+              {BUILT_IN_VIEWS.map((v) => (
+                <MenuItem key={v.id} value={v.id} sx={{ fontSize: "12px" }}>
+                  {v.name}
+                </MenuItem>
+              ))}
+
+              {customViews.length > 0 && [
+                <MenuItem key="custom-divider" disabled sx={{ fontSize: "11px", fontWeight: 700, color: "text.secondary" }}>
+                  Saved Views
+                </MenuItem>,
+                ...customViews.map((v) => (
+                  <MenuItem
+                    key={v.id}
+                    value={v.id}
+                    sx={{
+                      fontSize: "12px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <span>{v.name}</span>
+                    <IconButton
+                      size="small"
+                      onClick={(e) => handleDeleteView(v.id, e)}
+                      sx={{ ml: 1, p: 0.25 }}
+                      title="Delete view"
+                    >
+                      <DeleteOutlineIcon sx={{ fontSize: 15 }} />
+                    </IconButton>
+                  </MenuItem>
+                )),
+              ]}
+            </Select>
+          </FormControl>
+
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<BookmarkBorderIcon sx={{ fontSize: 16 }} />}
+            onClick={() => setIsSaveViewDialogOpen(true)}
+            sx={{
+              fontSize: "12px",
+              textTransform: "none",
+              py: 0.25,
+              px: 1,
+              minHeight: "28px",
+              height: "28px",
+            }}
+            title="Save current columns, grouping, and sort as a view"
+          >
+            Save View
+          </Button>
+        </Box>
 
         <Box sx={{ display: "flex", gap: "8px", alignItems: "center" }}>
           {!resultsLoading && items_AllProducts.length > 0 && (
@@ -1857,6 +2072,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     ),
     enableGrouping: true,
     enableColumnDragging: true,
+    enableColumnOrdering: true,
     enableColumnResizing: true,
     columnResizeMode: "onChange",
     layoutMode: "grid-no-grow",
@@ -1925,12 +2141,18 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     },
     onColumnFiltersChange: setColumnFilters,
     onGroupingChange: setGrouping,
+    onSortingChange: setSorting,
+    onColumnVisibilityChange: setColumnVisibility,
+    onColumnOrderChange: setColumnOrder,
     state: {
       isLoading: resultsLoading,
       showProgressBars: isLoadingMore,
       showColumnFilters: true,
       columnFilters,
       grouping,
+      sorting,
+      columnVisibility,
+      ...(columnOrder.length > 0 ? { columnOrder } : {}),
     },
   });
 
@@ -2724,6 +2946,55 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
               />
             )}
           </DialogContent>
+        </Dialog>
+
+        {/* Modal Dialog to Name & Save Custom View */}
+        <Dialog
+          open={isSaveViewDialogOpen}
+          onClose={() => setIsSaveViewDialogOpen(false)}
+          maxWidth="xs"
+          fullWidth
+        >
+          <DialogTitle sx={{ fontSize: "15px", fontWeight: 600, py: 1.5, px: 2 }}>
+            Save Current View
+          </DialogTitle>
+          <DialogContent sx={{ px: 2, pt: 1 }}>
+            <Typography variant="body2" sx={{ fontSize: "12px", color: "text.secondary", mb: 1.5 }}>
+              Saves the current column order, visibility, grouping, and sorting.
+            </Typography>
+            <TextField
+              autoFocus
+              fullWidth
+              size="small"
+              label="View Name"
+              placeholder="e.g. My Custom View"
+              value={newViewName}
+              onChange={(e) => setNewViewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newViewName.trim()) {
+                  handleSaveCurrentView();
+                }
+              }}
+            />
+          </DialogContent>
+          <DialogActions sx={{ px: 2, pb: 1.5 }}>
+            <Button
+              onClick={() => setIsSaveViewDialogOpen(false)}
+              size="small"
+              sx={{ textTransform: "none", fontSize: "12px" }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              size="small"
+              disabled={!newViewName.trim()}
+              onClick={handleSaveCurrentView}
+              sx={{ textTransform: "none", fontSize: "12px", fontWeight: 600 }}
+            >
+              Save View
+            </Button>
+          </DialogActions>
         </Dialog>
       </Box>
     </ThemeProvider>
