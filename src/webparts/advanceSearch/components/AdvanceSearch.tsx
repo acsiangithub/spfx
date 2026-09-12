@@ -612,26 +612,64 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const [selectedFileForAction, setSelectedFileForAction] = React.useState<doclib_AllProducts | null>(null);
   const [editModalUrl, setEditModalUrl] = React.useState<string | null>(null);
 
-  // Dynamic table container height to prevent double vertical scrollbars
-  const [tableMaxHeight, setTableMaxHeight] = React.useState<string>("calc(100vh - 210px)");
+  // Dynamic table container height to fill available vertical space cleanly
+  const paperRef = React.useRef<HTMLDivElement | null>(null);
   const tableContainerRef = React.useRef<HTMLDivElement | null>(null);
+  const [tableHeight, setTableHeight] = React.useState<string>("calc(100vh - 160px)");
 
   React.useEffect(() => {
     const updateHeight = (): void => {
-      if (tableContainerRef.current) {
-        const rect = tableContainerRef.current.getBoundingClientRect();
-        // Reserve space for MRT bottom pagination toolbar (~52px) and bottom padding (~16px)
-        const availableHeight = window.innerHeight - rect.top - 68;
-        setTableMaxHeight(`${Math.max(300, Math.floor(availableHeight))}px`);
+      const targetEl = paperRef.current || tableContainerRef.current;
+      if (targetEl) {
+        const rect = targetEl.getBoundingClientRect();
+        // Reserve 8px for bottom padding/margin so table reaches bottom without window scrollbar
+        const availableHeight = window.innerHeight - rect.top - 8;
+        setTableHeight(`${Math.max(300, Math.floor(availableHeight))}px`);
       }
     };
 
     updateHeight();
+
+    const scheduleUpdate = (): void => {
+      updateHeight();
+      setTimeout(updateHeight, 60);
+      setTimeout(updateHeight, 200);
+      setTimeout(updateHeight, 400);
+    };
+
     window.addEventListener("resize", updateHeight);
+    window.addEventListener("scroll", updateHeight);
+    document.addEventListener("click", scheduleUpdate);
+    document.addEventListener("transitionend", updateHeight);
+
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(() => {
+        updateHeight();
+      });
+      if (document.body) ro.observe(document.body);
+      if (document.documentElement) ro.observe(document.documentElement);
+      const spCanvas = document.getElementById("spPageCanvasContent");
+      if (spCanvas) ro.observe(spCanvas);
+    }
+
+    let mo: MutationObserver | null = null;
+    if (typeof MutationObserver !== "undefined") {
+      mo = new MutationObserver(() => {
+        updateHeight();
+      });
+      mo.observe(document.body, { attributes: true, subtree: false });
+    }
+
     const timer = setTimeout(updateHeight, 300);
 
     return () => {
       window.removeEventListener("resize", updateHeight);
+      window.removeEventListener("scroll", updateHeight);
+      document.removeEventListener("click", scheduleUpdate);
+      document.removeEventListener("transitionend", updateHeight);
+      if (ro) ro.disconnect();
+      if (mo) mo.disconnect();
       clearTimeout(timer);
     };
   }, []);
@@ -2176,18 +2214,24 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       density: "compact",
     },
     muiTablePaperProps: {
+      ref: paperRef,
       sx: {
         boxShadow: "none",
         border: "1px solid #e1dfdd",
         width: "100%",
         maxWidth: "100%",
+        height: tableHeight,
+        display: "flex",
+        flexDirection: "column",
       },
     },
     muiTableContainerProps: {
       ref: tableContainerRef,
       onMouseDown: handleTableMouseDown,
       sx: {
-        maxHeight: tableMaxHeight,
+        flex: 1,
+        minHeight: 0,
+        height: "100%",
         width: "100%",
         maxWidth: "100%",
       },
@@ -2205,8 +2249,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     },
     muiTableHeadCellProps: {
       sx: {
-        fontSize: "13px",
-        padding: "10px 12px",
+        fontSize: "12.5px",
+        padding: "7px 10px",
         lineHeight: 1.2,
         whiteSpace: "normal",
         wordBreak: "break-word",
@@ -2218,8 +2262,9 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     },
     muiTableBodyCellProps: {
       sx: {
-        fontSize: "13px",
-        padding: "9px 12px",
+        fontSize: "12.5px",
+        padding: "5px 10px",
+        lineHeight: 1.25,
         whiteSpace: "normal",
         wordBreak: "normal",
         overflowWrap: "break-word",
