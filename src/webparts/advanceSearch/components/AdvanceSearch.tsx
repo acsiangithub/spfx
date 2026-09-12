@@ -26,6 +26,8 @@ import ShareIcon from "@mui/icons-material/Share";
 import FilterListOffIcon from "@mui/icons-material/FilterListOff";
 import BookmarkBorderIcon from "@mui/icons-material/BookmarkBorder";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import CheckIcon from "@mui/icons-material/Check";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -40,6 +42,7 @@ import Select from "@mui/material/Select";
 import Checkbox from "@mui/material/Checkbox";
 import ListItemText from "@mui/material/ListItemText";
 import OutlinedInput from "@mui/material/OutlinedInput";
+import Divider from "@mui/material/Divider";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Link from "@mui/material/Link";
@@ -521,6 +524,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
   // --- View Management State ---
   const [selectedViewId, setSelectedViewId] = React.useState<string>("default");
+  const [viewMenuAnchorEl, setViewMenuAnchorEl] = React.useState<null | HTMLElement>(null);
   const [customViews, setCustomViews] = React.useState<ITableViewPreset[]>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY_CUSTOM_VIEWS);
@@ -543,6 +547,10 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const allAvailableViews = React.useMemo(() => {
     return [...BUILT_IN_VIEWS, ...customViews];
   }, [customViews]);
+
+  const currentView = React.useMemo(() => {
+    return allAvailableViews.find((v) => v.id === selectedViewId) || BUILT_IN_VIEWS[0];
+  }, [allAvailableViews, selectedViewId]);
 
   const handleApplyView = (viewId: string): void => {
     setSelectedViewId(viewId);
@@ -2062,76 +2070,199 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           <ShareIcon />
         </IconButton>
 
-        {/* --- View Preset Selector --- */}
-        <Box sx={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <FormControl size="small" sx={{ minWidth: 160 }}>
-            <Select
-              size="small"
-              value={selectedViewId}
-              onChange={(e) => handleApplyView(e.target.value as string)}
-              displayEmpty
+        {/* --- SharePoint OOB Style View Switcher --- */}
+        <Box sx={{ display: "flex", alignItems: "center" }}>
+          <Button
+            size="small"
+            onClick={(e) => setViewMenuAnchorEl(e.currentTarget)}
+            endIcon={<KeyboardArrowDownIcon sx={{ fontSize: 16, color: "action.active" }} />}
+            sx={{
+              height: "28px",
+              fontSize: "12.5px",
+              fontWeight: 600,
+              textTransform: "none",
+              color: "text.primary",
+              backgroundColor: Boolean(viewMenuAnchorEl) ? "rgba(0, 0, 0, 0.06)" : "transparent",
+              border: "1px solid",
+              borderColor: Boolean(viewMenuAnchorEl) ? "#c8c6c4" : "#e1dfdd",
+              borderRadius: "4px",
+              px: 1.25,
+              gap: 0.5,
+              "&:hover": {
+                backgroundColor: "rgba(0, 0, 0, 0.04)",
+                borderColor: "#a19f9d",
+              },
+            }}
+            title="Switch view or save current view"
+          >
+            {currentView.name}
+          </Button>
+
+          <Menu
+            anchorEl={viewMenuAnchorEl}
+            open={Boolean(viewMenuAnchorEl)}
+            onClose={() => setViewMenuAnchorEl(null)}
+            anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+            transformOrigin={{ vertical: "top", horizontal: "left" }}
+            PaperProps={{
+              sx: {
+                minWidth: 210,
+                boxShadow: "0 4px 16px rgba(0, 0, 0, 0.14)",
+                borderRadius: "6px",
+                py: 0.5,
+                border: "1px solid #edebe9",
+              },
+            }}
+          >
+            <Typography
+              variant="caption"
               sx={{
-                height: "28px",
-                fontSize: "12px",
-                "& .MuiSelect-select": { py: "3px", px: "8px" },
+                px: 2,
+                pt: 1,
+                pb: 0.5,
+                display: "block",
+                fontSize: "10.5px",
+                fontWeight: 700,
+                color: "text.secondary",
+                textTransform: "uppercase",
+                letterSpacing: "0.5px",
               }}
             >
-              <MenuItem disabled sx={{ fontSize: "11px", fontWeight: 700, color: "text.secondary" }}>
-                Standard Views
-              </MenuItem>
-              {BUILT_IN_VIEWS.map((v) => (
-                <MenuItem key={v.id} value={v.id} sx={{ fontSize: "12px" }}>
-                  {v.name}
-                </MenuItem>
-              ))}
+              Standard Views
+            </Typography>
 
-              {customViews.length > 0 && [
-                <MenuItem key="custom-divider" disabled sx={{ fontSize: "11px", fontWeight: 700, color: "text.secondary" }}>
+            {BUILT_IN_VIEWS.map((v) => (
+              <MenuItem
+                key={v.id}
+                selected={selectedViewId === v.id}
+                onClick={() => {
+                  handleApplyView(v.id);
+                  setViewMenuAnchorEl(null);
+                }}
+                sx={{
+                  fontSize: "12.5px",
+                  py: 0.75,
+                  px: 1.5,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                }}
+              >
+                <Box sx={{ width: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {selectedViewId === v.id && (
+                    <CheckIcon sx={{ fontSize: 16, color: "primary.main" }} />
+                  )}
+                </Box>
+                <ListItemText
+                  primary={v.name}
+                  primaryTypographyProps={{
+                    fontSize: "12.5px",
+                    fontWeight: selectedViewId === v.id ? 600 : 400,
+                  }}
+                />
+              </MenuItem>
+            ))}
+
+            {customViews.length > 0 && (
+              <>
+                <Divider sx={{ my: 0.5 }} />
+                <Typography
+                  variant="caption"
+                  sx={{
+                    px: 2,
+                    pt: 1,
+                    pb: 0.5,
+                    display: "block",
+                    fontSize: "10.5px",
+                    fontWeight: 700,
+                    color: "text.secondary",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                  }}
+                >
                   Saved Views
-                </MenuItem>,
-                ...customViews.map((v) => (
+                </Typography>
+                {customViews.map((v) => (
                   <MenuItem
                     key={v.id}
-                    value={v.id}
+                    selected={selectedViewId === v.id}
+                    onClick={() => {
+                      handleApplyView(v.id);
+                      setViewMenuAnchorEl(null);
+                    }}
                     sx={{
-                      fontSize: "12px",
+                      fontSize: "12.5px",
+                      py: 0.75,
+                      px: 1.5,
                       display: "flex",
-                      justifyContent: "space-between",
                       alignItems: "center",
+                      justifyContent: "space-between",
                     }}
                   >
-                    <span>{v.name}</span>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <Box sx={{ width: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        {selectedViewId === v.id && (
+                          <CheckIcon sx={{ fontSize: 16, color: "primary.main" }} />
+                        )}
+                      </Box>
+                      <ListItemText
+                        primary={v.name}
+                        primaryTypographyProps={{
+                          fontSize: "12.5px",
+                          fontWeight: selectedViewId === v.id ? 600 : 400,
+                        }}
+                      />
+                    </Box>
                     <IconButton
                       size="small"
-                      onClick={(e) => handleDeleteView(v.id, e)}
-                      sx={{ ml: 1, p: 0.25 }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteView(v.id, e);
+                      }}
+                      sx={{
+                        ml: 1,
+                        p: 0.25,
+                        color: "text.secondary",
+                        "&:hover": { color: "error.main" },
+                      }}
                       title="Delete view"
                     >
                       <DeleteOutlineIcon sx={{ fontSize: 15 }} />
                     </IconButton>
                   </MenuItem>
-                )),
-              ]}
-            </Select>
-          </FormControl>
+                ))}
+              </>
+            )}
 
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<BookmarkBorderIcon sx={{ fontSize: 16 }} />}
-            onClick={() => setIsSaveViewDialogOpen(true)}
-            sx={{
-              fontSize: "12px",
-              textTransform: "none",
-              py: 0.25,
-              px: 1,
-              minHeight: "28px",
-              height: "28px",
-            }}
-            title="Save current columns, grouping, and sort as a view"
-          >
-            Save View
-          </Button>
+            <Divider sx={{ my: 0.5 }} />
+
+            <MenuItem
+              onClick={() => {
+                setViewMenuAnchorEl(null);
+                setIsSaveViewDialogOpen(true);
+              }}
+              sx={{
+                fontSize: "12.5px",
+                py: 0.75,
+                px: 1.5,
+                color: "primary.main",
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+                "&:hover": {
+                  backgroundColor: "rgba(25, 118, 210, 0.08)",
+                },
+              }}
+            >
+              <Box sx={{ width: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <BookmarkBorderIcon sx={{ fontSize: 16 }} />
+              </Box>
+              <ListItemText
+                primary="Save view as..."
+                primaryTypographyProps={{ fontSize: "12.5px", fontWeight: 500 }}
+              />
+            </MenuItem>
+          </Menu>
         </Box>
 
         <Box sx={{ display: "flex", gap: "8px", alignItems: "center" }}>
