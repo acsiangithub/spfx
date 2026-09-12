@@ -6,6 +6,9 @@ import { spfi, SPFx, SPFI } from "@pnp/sp";
 import {
   MaterialReactTable,
   useMaterialReactTable,
+  MRT_ShowHideColumnsButton,
+  MRT_ToggleDensePaddingButton,
+  MRT_ToggleGlobalFilterButton,
   type MRT_ColumnDef,
   type MRT_ColumnFiltersState,
   type MRT_GroupingState,
@@ -2210,6 +2213,13 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     enableColumnResizing: true,
     columnResizeMode: "onChange",
     layoutMode: "grid-no-grow",
+    renderToolbarInternalActions: ({ table }) => (
+      <>
+        <MRT_ToggleGlobalFilterButton table={table} />
+        <MRT_ShowHideColumnsButton table={table} />
+        <MRT_ToggleDensePaddingButton table={table} />
+      </>
+    ),
     initialState: {
       density: "compact",
     },
