@@ -13,41 +13,54 @@ import {
   IDocumentTypeItem,
   ISubDocumentTypeItem,
   IFieldFormatters,
+  IAlertRule,
   ISharingConfig,
   IChipStyle,
 } from "../webparts/advanceSearch/types/advanceSearchTypes";
 import {
   choiceToString,
   parseSpCustomFormatter,
+  parseAlertsCustomFormatter,
 } from "../webparts/advanceSearch/utils/formatters";
 
-export const mapSharePointItemsToProducts = (items: any[]): doclib_AllProducts[] => {
-  return items.map((item: any) => ({
-    id: item.Id,
-    filename: item.FileLeafRef ?? "",
-    fileUrl: item.FileRef,
-    PIMProduct: (item.PIMProductCode ?? []).map((p: any) => ({
-      ID: p.ID ?? p.Id ?? 0,
-      Title: p.Title ?? "",
-      PIMProductName: p.PIMProductName ?? "",
-      Manufacturer: p.Manufacturer ?? "",
-      BusinessLine: p.BusinessLine ?? "",
-      ManufacturerLookupId: p.ManufacturerLookupId,
-    })),
-    PIMProductSearchText: (item.PIMProductCode ?? [])
-      .map((p: any) => `${p.Title} ${p.PIMProductName}`)
-      .join(" "),
-    ManufacturerSearchText: item.Manufacturer ?? "",
-    BusinessLine: choiceToString(item.Business_x0020_Line),
-    CountrySoldTo: choiceToString(item.Country),
-    DocumentTypeSearchText: item.Document_x0020_Type ?? "",
-    SubDocumentTypeSearchText: item.Sub_x0020_Document_x0020_Type ?? "",
-    DocumentDate: item.Document_x0020_Date
-      ? new Date(item.Document_x0020_Date)
-      : null,
-    Confidentiality: choiceToString(item.Confidentiality),
-    Alerts: item.Alerts ?? "",
-  }));
+export const mapSharePointItemsToProducts = (
+  items: any[]
+): doclib_AllProducts[] => {
+  return items.map((item: any) => {
+    const editorEmail = item.Editor?.EMail || item.Editor?.Email || "";
+    const editorTitle = item.Editor?.Title || "";
+    const modifiedDate = item.Modified ? new Date(item.Modified) : null;
+
+    return {
+      id: item.Id,
+      filename: item.FileLeafRef ?? "",
+      fileUrl: item.FileRef,
+      PIMProduct: (item.PIMProductCode ?? []).map((p: any) => ({
+        ID: p.ID ?? p.Id ?? 0,
+        Title: p.Title ?? "",
+        PIMProductName: p.PIMProductName ?? "",
+        Manufacturer: p.Manufacturer ?? "",
+        BusinessLine: p.BusinessLine ?? "",
+        ManufacturerLookupId: p.ManufacturerLookupId,
+      })),
+      PIMProductSearchText: (item.PIMProductCode ?? [])
+        .map((p: any) => `${p.Title} ${p.PIMProductName}`)
+        .join(" "),
+      ManufacturerSearchText: item.Manufacturer ?? "",
+      BusinessLine: choiceToString(item.Business_x0020_Line),
+      CountrySoldTo: choiceToString(item.Country),
+      DocumentTypeSearchText: item.Document_x0020_Type ?? "",
+      SubDocumentTypeSearchText: item.Sub_x0020_Document_x0020_Type ?? "",
+      DocumentDate: item.Document_x0020_Date
+        ? new Date(item.Document_x0020_Date)
+        : null,
+      Confidentiality: choiceToString(item.Confidentiality),
+      Alerts: item.Alerts ?? "",
+      Modified: modifiedDate,
+      EditorEmail: editorEmail,
+      EditorTitle: editorTitle,
+    };
+  });
 };
 
 export const searchProducts = async (
@@ -176,7 +189,7 @@ export interface IListFieldMetadata {
 
 export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadata> => {
   const defaultResult: IListFieldMetadata = {
-    formatters: { businessLine: {}, confidentiality: {} },
+    formatters: { businessLine: {}, confidentiality: {}, alerts: null },
     choices: { businessLine: [], country: [], confidentiality: [] },
   };
 
@@ -187,11 +200,12 @@ export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadat
       .getByTitle("Clients & Products")
       .fields.select("InternalName", "CustomFormatter", "Choices")
       .filter(
-        "InternalName eq 'Business_x0020_Line' or InternalName eq 'Country' or InternalName eq 'Confidentiality'"
+        "InternalName eq 'Business_x0020_Line' or InternalName eq 'Country' or InternalName eq 'Confidentiality' or InternalName eq 'Alerts'"
       )();
 
     let blFormat: Record<string, IChipStyle> = {};
     let confFormat: Record<string, IChipStyle> = {};
+    let alertsRule: IAlertRule | null = null;
     let businessLineChoices: string[] = [];
     let countryChoices: string[] = [];
     let confidentialityChoices: string[] = [];
@@ -210,11 +224,19 @@ export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadat
           confFormat = parseSpCustomFormatter(f.CustomFormatter);
         }
         confidentialityChoices = choices;
+      } else if (f.InternalName === "Alerts") {
+        if (f.CustomFormatter) {
+          alertsRule = parseAlertsCustomFormatter(f.CustomFormatter);
+        }
       }
     });
 
     return {
-      formatters: { businessLine: blFormat, confidentiality: confFormat },
+      formatters: {
+        businessLine: blFormat,
+        confidentiality: confFormat,
+        alerts: alertsRule,
+      },
       choices: {
         businessLine: businessLineChoices.sort((a, b) =>
           a.localeCompare(b, undefined, { sensitivity: "base" })
@@ -268,9 +290,13 @@ export const loadRecordsBatch = async (
       "Sub_x0020_Document_x0020_Type",
       "Document_x0020_Date",
       "Alerts",
-      "Confidentiality"
+      "Confidentiality",
+      "Modified",
+      "Editor/Id",
+      "Editor/Title",
+      "Editor/EMail"
     )
-    .expand("PIMProductCode")
+    .expand("PIMProductCode", "Editor")
     .orderBy("Id", false)
     .top(pageSize);
 
@@ -375,9 +401,13 @@ export const searchRecords = async (
               "Sub_x0020_Document_x0020_Type",
               "Document_x0020_Date",
               "Alerts",
-              "Confidentiality"
+              "Confidentiality",
+              "Modified",
+              "Editor/Id",
+              "Editor/Title",
+              "Editor/EMail"
             )
-            .expand("PIMProductCode")
+            .expand("PIMProductCode", "Editor")
             .filter(filter)()
         );
       }

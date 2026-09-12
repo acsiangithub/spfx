@@ -12,6 +12,9 @@ export type doclib_AllProducts = {
   fileUrl: string;
   Confidentiality: string;
   Alerts: string;
+  Modified?: Date | null;
+  EditorEmail?: string;
+  EditorTitle?: string;
 };
 
 export type IProductLookupItem = {
@@ -48,9 +51,18 @@ export interface IChipStyle {
   text: string;
 }
 
+export interface IAlertRule {
+  durationMinutes: number;
+  requiresEditorMe: boolean;
+  text: string;
+  color: string;
+  style: IChipStyle;
+}
+
 export interface IFieldFormatters {
   businessLine: Record<string, IChipStyle>;
   confidentiality: Record<string, IChipStyle>;
+  alerts?: IAlertRule | null;
 }
 
 export interface ISharingConfig {

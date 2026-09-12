@@ -61,6 +61,7 @@ import {
   sanitizeKqlValue,
   getDynamicChipStyle,
   getSemanticConfidentialityStyle,
+  getSemanticAlertStyle,
 } from "../utils/formatters";
 import {
   multiSelectFilterFn,
@@ -439,10 +440,62 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     message: "",
   });
 
+  const currentUserEmail =
+    props.context?.pageContext?.user?.email ||
+    props.context?.pageContext?.user?.loginName ||
+    "";
+  const currentUserName = props.context?.pageContext?.user?.displayName || "";
+
   const [fieldFormatters, setFieldFormatters] = React.useState<IFieldFormatters>({
     businessLine: {},
     confidentiality: {},
+    alerts: null,
   });
+
+  const getRowAlerts = React.useCallback(
+    (row: doclib_AllProducts): string[] => {
+      const results: string[] = [];
+      const rule = fieldFormatters.alerts;
+
+      if (rule) {
+        // Strict SharePoint Column Formatter evaluation:
+        // txtContent: =if((Number(@now) - Number([$Modified]))/60000 < 1 && [$Editor.email] == @me, 'Update in progress', '')
+        if (row.Modified) {
+          const modTime = new Date(row.Modified).getTime();
+          const diffMinutes = (Date.now() - modTime) / 60000;
+
+          let isMe = true;
+          if (rule.requiresEditorMe) {
+            const editorEmail = (row.EditorEmail || "").toLowerCase();
+            const editorTitle = (row.EditorTitle || "").toLowerCase();
+            const curEmail = currentUserEmail.toLowerCase();
+            const curName = currentUserName.toLowerCase();
+            isMe =
+              (Boolean(curEmail) && Boolean(editorEmail) && editorEmail === curEmail) ||
+              (Boolean(curName) && Boolean(editorTitle) && editorTitle === curName);
+          }
+
+          if (diffMinutes >= -0.5 && diffMinutes < rule.durationMinutes && isMe) {
+            results.push(rule.text);
+          }
+        }
+        // When column format rule exists, it outputs '' when condition is false, hiding underlying text
+        return results;
+      }
+
+      if (row.Alerts && row.Alerts.trim()) {
+        row.Alerts.split(/[\r\n;,]+/).forEach((a) => {
+          const trimmed = a.trim();
+          if (trimmed && !results.includes(trimmed)) {
+            results.push(trimmed);
+          }
+        });
+      }
+
+      return results;
+    },
+    [fieldFormatters.alerts, currentUserEmail, currentUserName]
+  );
 
   const [columnFilters, setColumnFilters] = React.useState<MRT_ColumnFiltersState>([]);
   const [applyColumnFilters, setApplyColumnFilters] = React.useState<boolean>(false);
@@ -1298,10 +1351,23 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         return items_AllProducts;
       }
       return items_AllProducts.filter((item) =>
-        activeFilters.every((f) => itemMatchesFilter(item, f.id, f.value))
+        activeFilters.every((f) => {
+          if (f.id === "Alerts") {
+            const rowAlerts = getRowAlerts(item);
+            const selected = (Array.isArray(f.value) ? f.value : [f.value]).map((v) => String(v).trim());
+            if (selected.length === 0) return true;
+            if (rowAlerts.length === 0) {
+              return selected.some((v) => v.toLowerCase() === "(empty)");
+            }
+            return selected.some((v) =>
+              rowAlerts.some((a) => a.toLowerCase() === v.toLowerCase())
+            );
+          }
+          return itemMatchesFilter(item, f.id, f.value);
+        })
       );
     },
-    [items_AllProducts, columnFilters]
+    [items_AllProducts, columnFilters, getRowAlerts]
   );
 
   const clientOptions = useMemo(
@@ -1779,20 +1845,49 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         header: "Alerts",
         size: 160,
         minSize: 140,
-        filterFn: "contains",
-        Cell: ({ cell }) => {
-          const raw = String(cell.getValue() || "").trim();
-          if (!raw) return "-";
+        filterFn: (row, _columnId, filterValue) => {
+          if (!filterValue) return true;
+          const search = String(filterValue).trim().toLowerCase();
+          if (!search) return true;
+          const rowAlerts = getRowAlerts(row.original);
+          return rowAlerts.some((a) => a.toLowerCase().includes(search));
+        },
+        Cell: ({ row, column }) => {
+          const items = getRowAlerts(row.original);
+          if (items.length === 0) return "-";
+
           return (
-            <div
-              style={{
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-                lineHeight: 1.4,
+            <CollapsibleItemList
+              items={items}
+              filterValues={column.getFilterValue()}
+              renderItem={(item, idx) => {
+                const rule = fieldFormatters.alerts;
+                const style =
+                  (rule && rule.text.toLowerCase() === item.toLowerCase() ? rule.style : null) ||
+                  getSemanticAlertStyle(item) ||
+                  getDynamicChipStyle(item);
+
+                return (
+                  <span
+                    key={idx}
+                    style={{
+                      backgroundColor: style.bg,
+                      color: style.text,
+                      border: `1px solid ${style.border}`,
+                      borderRadius: "12px",
+                      padding: "1px 8px",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      lineHeight: "18px",
+                      display: "inline-block",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {item}
+                  </span>
+                );
               }}
-            >
-              {raw}
-            </div>
+            />
           );
         },
       },
@@ -1828,6 +1923,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       subDocumentTypeOptions,
       confidentialityOptions,
       fieldFormatters,
+      getRowAlerts,
     ]
   );
 
@@ -2894,7 +2990,10 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         {/* In-page Modal Dialog for OOB Edit Form */}
         <Dialog
           open={Boolean(editModalUrl)}
-          onClose={() => setEditModalUrl(null)}
+          onClose={() => {
+            setEditModalUrl(null);
+            void handleRefresh();
+          }}
           fullWidth
           maxWidth="md"
           PaperProps={{
@@ -2919,7 +3018,13 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             <Typography variant="h6" sx={{ fontSize: "16px", fontWeight: 600 }}>
               Edit Properties - {selectedFileForAction?.filename || "Document"}
             </Typography>
-            <IconButton size="small" onClick={() => setEditModalUrl(null)}>
+            <IconButton
+              size="small"
+              onClick={() => {
+                setEditModalUrl(null);
+                void handleRefresh();
+              }}
+            >
               <CloseIcon fontSize="small" />
             </IconButton>
           </DialogTitle>
