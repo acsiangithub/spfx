@@ -15,6 +15,16 @@ export type doclib_AllProducts = {
   Modified?: Date | null;
   EditorEmail?: string;
   EditorTitle?: string;
+  Created?: Date | null;
+  AuthorEmail?: string;
+  AuthorTitle?: string;
+  IssuedBy?: string;
+  DocumentStatus?: string;
+  ReviewedByTitle?: string;
+  ReviewedByEmail?: string;
+  DocumentLanguage?: string;
+  ExpiryDate?: Date | null;
+  NextReviewDate?: Date | null;
 };
 
 export type IProductLookupItem = {
@@ -63,6 +73,9 @@ export interface IFieldFormatters {
   businessLine: Record<string, IChipStyle>;
   confidentiality: Record<string, IChipStyle>;
   alerts?: IAlertRule | null;
+  documentStatus: Record<string, IChipStyle>;
+  expiryDateCustomFormatter?: string;
+  nextReviewDateCustomFormatter?: string;
 }
 
 export interface ISharingConfig {

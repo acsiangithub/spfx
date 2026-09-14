@@ -1,3 +1,4 @@
+import dayjs, { Dayjs } from "dayjs";
 import { IChipStyle, IAlertRule } from "../types/advanceSearchTypes";
 
 export const choiceToString = (value: string | string[] | undefined | null): string => {
@@ -177,4 +178,93 @@ export const parseAlertsCustomFormatter = (
     console.warn("Could not parse Alerts CustomFormatter:", err);
     return null;
   }
+};
+
+export const getSemanticDocumentStatusStyle = (val: string): IChipStyle | null => {
+  const clean = val.trim().toLowerCase();
+  if (
+    clean === "approved" ||
+    clean === "published" ||
+    clean === "active" ||
+    clean === "valid" ||
+    clean === "released" ||
+    clean.includes("success")
+  ) {
+    return { bg: "#dff6dd", border: "#92c353", text: "#107c10" };
+  }
+  if (
+    clean.includes("review") ||
+    clean.includes("pending") ||
+    clean.includes("progress") ||
+    clean.includes("waiting")
+  ) {
+    return { bg: "#fff4ce", border: "#fde37f", text: "#795b00" };
+  }
+  if (clean === "draft" || clean === "new" || clean === "created") {
+    return { bg: "#e0f2fe", border: "#bae6fd", text: "#0369a1" };
+  }
+  if (
+    clean.includes("reject") ||
+    clean.includes("obsolete") ||
+    clean.includes("expired") ||
+    clean.includes("cancel") ||
+    clean.includes("inactive")
+  ) {
+    return { bg: "#fde7e9", border: "#f19999", text: "#a80000" };
+  }
+  return null;
+};
+
+export const evaluateDateCustomFormatter = (
+  date: Dayjs,
+  customFormatterJson?: string
+): IChipStyle => {
+  if (customFormatterJson) {
+    try {
+      const raw = customFormatterJson;
+      const now = dayjs();
+      const diffMs = date.diff(now, "millisecond");
+
+      const pastMatch = /@currentField\s*<=\s*@now\s*,\s*['"]([^'"]+)['"]/i.exec(raw);
+      if (date.isBefore(now, "day") && pastMatch) {
+        const cls = pastMatch[1].trim().toLowerCase();
+        if (SP_FORMAT_CLASS_MAP[cls]) return SP_FORMAT_CLASS_MAP[cls];
+        if (cls.startsWith("#") || cls.startsWith("rgb")) {
+          return { bg: cls, border: cls, text: "#1a1918" };
+        }
+      }
+
+      const windowRegex = /@currentField\s*<=\s*@now\s*\+\s*(\d+)\s*,\s*['"]([^'"]+)['"]/gi;
+      let winMatch: RegExpExecArray | null;
+      while ((winMatch = windowRegex.exec(raw)) !== null) {
+        const offsetMs = parseInt(winMatch[1], 10);
+        if (diffMs > 0 && diffMs <= offsetMs) {
+          const cls = winMatch[2].trim().toLowerCase();
+          if (SP_FORMAT_CLASS_MAP[cls]) return SP_FORMAT_CLASS_MAP[cls];
+          if (cls.startsWith("#") || cls.startsWith("rgb")) {
+            return { bg: cls, border: cls, text: "#1a1918" };
+          }
+        }
+      }
+
+      const lastBranch = /,\s*['"](sp-css-[^'"]+|#[0-9a-fA-F]{3,8})['"]\s*\)+/i.exec(raw);
+      if (date.isAfter(now, "day") && lastBranch) {
+        const cls = lastBranch[1].trim().toLowerCase();
+        if (SP_FORMAT_CLASS_MAP[cls]) return SP_FORMAT_CLASS_MAP[cls];
+        if (cls.startsWith("#") || cls.startsWith("rgb")) {
+          return { bg: cls, border: cls, text: "#1a1918" };
+        }
+      }
+    } catch (err) {
+      console.warn("Could not evaluate date custom formatter:", err);
+    }
+  }
+
+  if (date.isBefore(dayjs(), "day")) {
+    return { bg: "#fde7e9", border: "#f19999", text: "#a80000" };
+  }
+  if (date.diff(dayjs(), "day") <= 30) {
+    return { bg: "#fff4ce", border: "#fde37f", text: "#795b00" };
+  }
+  return { bg: "#dff6dd", border: "#92c353", text: "#107c10" };
 };

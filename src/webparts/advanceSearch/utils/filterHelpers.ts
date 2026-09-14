@@ -71,13 +71,52 @@ export const documentDateFilter = (
   return rowDate.isSame(filterDate, "day") || rowDate.isAfter(filterDate, "day");
 };
 
+export const exactDateFilter = (
+  row: { getValue: (columnId: string) => unknown },
+  columnId: string,
+  filterValue: unknown
+): boolean => {
+  const rowValue = row.getValue(columnId);
+  if (!rowValue || !filterValue) return true;
+
+  const rowDate = dayjs(rowValue as string | Date);
+  const filterDate = dayjs(filterValue as string);
+
+  if (!rowDate.isValid() || !filterDate.isValid()) return true;
+
+  return rowDate.isSame(filterDate, "day");
+};
+
+export const isPersonMe = (
+  email: string | undefined,
+  title: string | undefined,
+  curEmail: string | undefined,
+  curName: string | undefined
+): boolean => {
+  const e = (email || "").toLowerCase().trim();
+  const t = (title || "").toLowerCase().trim();
+  const cE = (curEmail || "").toLowerCase().trim();
+  const cN = (curName || "").toLowerCase().trim();
+  return (
+    (Boolean(cE) && Boolean(e) && (e === cE || e.includes(cE) || cE.includes(e))) ||
+    (Boolean(cN) && Boolean(t) && (t === cN || t.includes(cN) || cN.includes(t)))
+  );
+};
+
 export const itemMatchesFilter = (
   item: doclib_AllProducts,
   colId: string,
-  filterValue: unknown
+  filterValue: unknown,
+  currentUserEmail?: string,
+  currentUserName?: string
 ): boolean => {
   if (filterValue === undefined || filterValue === null || filterValue === "") return true;
   if (Array.isArray(filterValue) && filterValue.length === 0) return true;
+
+  if (colId === "id") {
+    if (item.id === undefined || item.id === null) return false;
+    return String(item.id).trim() === String(filterValue).trim();
+  }
 
   if (colId === "filename") {
     return (item.filename || "").toLowerCase().includes(String(filterValue).toLowerCase());
@@ -85,12 +124,21 @@ export const itemMatchesFilter = (
   if (colId === "Alerts") {
     return (item.Alerts || "").toLowerCase().includes(String(filterValue).toLowerCase());
   }
-  if (colId === "DocumentDate") {
-    if (!item.DocumentDate) return false;
-    const rowDate = dayjs(item.DocumentDate);
+  if (colId === "DocumentDate" || colId === "ExpiryDate" || colId === "NextReviewDate") {
+    const rawDate = (item as any)[colId];
+    if (!rawDate) return false;
+    const rowDate = dayjs(rawDate);
     const filterDate = dayjs(filterValue as string);
     if (!rowDate.isValid() || !filterDate.isValid()) return true;
     return rowDate.isSame(filterDate, "day") || rowDate.isAfter(filterDate, "day");
+  }
+  if (colId === "Created" || colId === "Modified") {
+    const rawDate = (item as any)[colId];
+    if (!rawDate) return false;
+    const rowDate = dayjs(rawDate);
+    const filterDate = dayjs(filterValue as string);
+    if (!rowDate.isValid() || !filterDate.isValid()) return true;
+    return rowDate.isSame(filterDate, "day");
   }
 
   const selectedValues = (Array.isArray(filterValue) ? filterValue : [filterValue])
@@ -98,6 +146,43 @@ export const itemMatchesFilter = (
     .filter((v) => v !== "");
 
   if (selectedValues.length === 0) return true;
+
+  if (colId === "AuthorTitle" || colId === "EditorTitle" || colId === "ReviewedByTitle") {
+    let personEmail = "";
+    let personTitle = "";
+    if (colId === "AuthorTitle") {
+      personEmail = item.AuthorEmail || "";
+      personTitle = item.AuthorTitle || "";
+    } else if (colId === "EditorTitle") {
+      personEmail = item.EditorEmail || "";
+      personTitle = item.EditorTitle || "";
+    } else if (colId === "ReviewedByTitle") {
+      personEmail = item.ReviewedByEmail || "";
+      personTitle = item.ReviewedByTitle || "";
+    }
+
+    const empty = !personTitle && !personEmail;
+    const matchEmpty = selectedValues.some((v) => v.toLowerCase() === "(empty)");
+    if (empty) return matchEmpty;
+
+    const matchMe = selectedValues.some((v) => v.toLowerCase() === "me");
+    if (matchMe && isPersonMe(personEmail, personTitle, currentUserEmail, currentUserName)) {
+      return true;
+    }
+
+    const regularSelections = selectedValues
+      .filter((v) => v.toLowerCase() !== "(empty)" && v.toLowerCase() !== "me")
+      .map((v) => v.toLowerCase());
+
+    if (regularSelections.length === 0) return false;
+
+    const tokens = personTitle
+      .split(/[\r\n;,]+/)
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean);
+
+    return regularSelections.some((sel) => tokens.includes(sel));
+  }
 
   const raw = (item as Record<string, unknown>)[colId];
   const empty = isValueEmpty(raw);

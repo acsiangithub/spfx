@@ -68,10 +68,14 @@ import {
   getDynamicChipStyle,
   getSemanticConfidentialityStyle,
   getSemanticAlertStyle,
+  getSemanticDocumentStatusStyle,
+  evaluateDateCustomFormatter,
 } from "../utils/formatters";
 import {
   multiSelectFilterFn,
   documentDateFilter,
+  exactDateFilter,
+  isPersonMe,
   itemMatchesFilter,
 } from "../utils/filterHelpers";
 import { compactTheme } from "../theme/compactTheme";
@@ -87,16 +91,17 @@ import {
 } from "../../../services/sharePointService";
 import EmailShareDialog from "./EmailShareDialog";
 
-const DocumentDateFilter: React.FC<{
+const DateFilterControl: React.FC<{
   column: { getFilterValue: () => unknown; setFilterValue: (value: unknown) => void };
-}> = ({ column }) => {
+  label?: string;
+}> = ({ column, label = "Min Date" }) => {
   const filterValue = column.getFilterValue() as string | null;
   const pickerValue = filterValue ? dayjs(filterValue) : null;
 
   return (
     <DatePicker
       format="DD/MM/YYYY"
-      label="Min Date"
+      label={label}
       value={pickerValue && pickerValue.isValid() ? pickerValue : null}
       onChange={(newValue) => {
         column.setFilterValue(newValue?.isValid() ? newValue.toISOString() : undefined);
@@ -456,6 +461,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     businessLine: {},
     confidentiality: {},
     alerts: null,
+    documentStatus: {},
   });
 
   const getRowAlerts = React.useCallback(
@@ -1412,11 +1418,68 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
               rowAlerts.some((a) => a.toLowerCase() === v.toLowerCase())
             );
           }
-          return itemMatchesFilter(item, f.id, f.value);
+          return itemMatchesFilter(item, f.id, f.value, currentUserEmail, currentUserName);
         })
       );
     },
-    [items_AllProducts, columnFilters, getRowAlerts]
+    [items_AllProducts, columnFilters, getRowAlerts, currentUserEmail, currentUserName]
+  );
+
+  const personFilterFn = React.useCallback(
+    (
+      row: { original: doclib_AllProducts; getValue: (columnId: string) => unknown },
+      columnId: string,
+      filterValue: unknown
+    ): boolean => {
+      if (filterValue === undefined || filterValue === null || filterValue === "") return true;
+      if (Array.isArray(filterValue) && filterValue.length === 0) return true;
+
+      const selectedValues = (Array.isArray(filterValue) ? filterValue : [filterValue])
+        .map((v) => String(v).trim())
+        .filter((v) => v !== "");
+
+      if (selectedValues.length === 0) return true;
+
+      const item = row.original;
+      let personEmail = "";
+      let personTitle = "";
+
+      if (columnId === "AuthorTitle") {
+        personEmail = item.AuthorEmail || "";
+        personTitle = item.AuthorTitle || "";
+      } else if (columnId === "EditorTitle") {
+        personEmail = item.EditorEmail || "";
+        personTitle = item.EditorTitle || "";
+      } else if (columnId === "ReviewedByTitle") {
+        personEmail = item.ReviewedByEmail || "";
+        personTitle = item.ReviewedByTitle || "";
+      } else {
+        personTitle = String(row.getValue(columnId) || "");
+      }
+
+      const empty = !personTitle && !personEmail;
+      const matchEmpty = selectedValues.some((v) => v.toLowerCase() === "(empty)");
+      if (empty) return matchEmpty;
+
+      const matchMe = selectedValues.some((v) => v.toLowerCase() === "me");
+      if (matchMe && isPersonMe(personEmail, personTitle, currentUserEmail, currentUserName)) {
+        return true;
+      }
+
+      const regularSelections = selectedValues
+        .filter((v) => v.toLowerCase() !== "(empty)" && v.toLowerCase() !== "me")
+        .map((v) => v.toLowerCase());
+
+      if (regularSelections.length === 0) return false;
+
+      const tokens = personTitle
+        .split(/[\r\n;,]+/)
+        .map((t) => t.trim().toLowerCase())
+        .filter(Boolean);
+
+      return regularSelections.some((sel) => tokens.includes(sel));
+    },
+    [currentUserEmail, currentUserName]
   );
 
   const clientOptions = useMemo(
@@ -1633,6 +1696,149 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
   }, [libraryChoices.confidentiality, confidentialityOptions]);
 
+  const issuedByOptions = useMemo(() => {
+    const items = getItemsFilteredExcluding("IssuedBy");
+    const unique = new Set<string>();
+    let hasEmpty = false;
+    items.forEach((item) => {
+      const raw = item.IssuedBy;
+      if (!raw || raw.trim() === "") {
+        hasEmpty = true;
+      } else {
+        raw.split(",").forEach((val) => {
+          const trimmed = val.trim();
+          if (trimmed) unique.add(trimmed);
+        });
+      }
+    });
+    const result: string[] = Array.from(unique).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    );
+    if (hasEmpty) {
+      result.unshift("(Empty)");
+    }
+    return result;
+  }, [getItemsFilteredExcluding]);
+
+  const documentStatusOptions = useMemo(() => {
+    const items = getItemsFilteredExcluding("DocumentStatus");
+    const unique = new Set<string>();
+    let hasEmpty = false;
+    items.forEach((item) => {
+      const raw = item.DocumentStatus;
+      if (!raw || raw.trim() === "") {
+        hasEmpty = true;
+      } else {
+        raw.split(",").forEach((val) => {
+          const trimmed = val.trim();
+          if (trimmed) unique.add(trimmed);
+        });
+      }
+    });
+    const result: string[] = Array.from(unique).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    );
+    if (hasEmpty) {
+      result.unshift("(Empty)");
+    }
+    return result;
+  }, [getItemsFilteredExcluding]);
+
+  const documentLanguageOptions = useMemo(() => {
+    const items = getItemsFilteredExcluding("DocumentLanguage");
+    const unique = new Set<string>();
+    let hasEmpty = false;
+    items.forEach((item) => {
+      const raw = item.DocumentLanguage;
+      if (!raw || raw.trim() === "") {
+        hasEmpty = true;
+      } else {
+        raw.split(",").forEach((val) => {
+          const trimmed = val.trim();
+          if (trimmed) unique.add(trimmed);
+        });
+      }
+    });
+    const result: string[] = Array.from(unique).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    );
+    if (hasEmpty) {
+      result.unshift("(Empty)");
+    }
+    return result;
+  }, [getItemsFilteredExcluding]);
+
+  const reviewedByOptions = useMemo(() => {
+    const items = getItemsFilteredExcluding("ReviewedByTitle");
+    const unique = new Set<string>();
+    let hasEmpty = false;
+    items.forEach((item) => {
+      const raw = item.ReviewedByTitle;
+      if (!raw || raw.trim() === "") {
+        hasEmpty = true;
+      } else {
+        raw.split(/[\r\n;,]+/).forEach((val) => {
+          const trimmed = val.trim();
+          if (trimmed) unique.add(trimmed);
+        });
+      }
+    });
+    const result: string[] = Array.from(unique).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    );
+    if (hasEmpty) {
+      result.unshift("(Empty)");
+    }
+    result.unshift("Me");
+    return result;
+  }, [getItemsFilteredExcluding]);
+
+  const authorOptions = useMemo(() => {
+    const items = getItemsFilteredExcluding("AuthorTitle");
+    const unique = new Set<string>();
+    let hasEmpty = false;
+    items.forEach((item) => {
+      const raw = item.AuthorTitle;
+      if (!raw || raw.trim() === "") {
+        hasEmpty = true;
+      } else {
+        const trimmed = raw.trim();
+        if (trimmed) unique.add(trimmed);
+      }
+    });
+    const result: string[] = Array.from(unique).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    );
+    if (hasEmpty) {
+      result.unshift("(Empty)");
+    }
+    result.unshift("Me");
+    return result;
+  }, [getItemsFilteredExcluding]);
+
+  const editorOptions = useMemo(() => {
+    const items = getItemsFilteredExcluding("EditorTitle");
+    const unique = new Set<string>();
+    let hasEmpty = false;
+    items.forEach((item) => {
+      const raw = item.EditorTitle;
+      if (!raw || raw.trim() === "") {
+        hasEmpty = true;
+      } else {
+        const trimmed = raw.trim();
+        if (trimmed) unique.add(trimmed);
+      }
+    });
+    const result: string[] = Array.from(unique).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    );
+    if (hasEmpty) {
+      result.unshift("(Empty)");
+    }
+    result.unshift("Me");
+    return result;
+  }, [getItemsFilteredExcluding]);
+
   const columns_AllProducts = useMemo<MRT_ColumnDef<doclib_AllProducts>[]>(
     () => [
       {
@@ -1840,6 +2046,83 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         },
       },
       {
+        accessorKey: "IssuedBy",
+        header: "Issued By",
+        filterVariant: "multi-select",
+        filterSelectOptions: issuedByOptions,
+        filterFn: multiSelectFilterFn,
+        size: 140,
+        minSize: 130,
+        Cell: ({ cell }) => {
+          const raw = String(cell.getValue() || "").trim();
+          return <span>{raw || "-"}</span>;
+        },
+      },
+      {
+        accessorKey: "DocumentStatus",
+        header: "Document Status",
+        filterVariant: "multi-select",
+        filterSelectOptions: documentStatusOptions,
+        filterFn: multiSelectFilterFn,
+        size: 150,
+        minSize: 130,
+        Cell: ({ cell, column }) => {
+          const raw = String(cell.getValue() || "").trim();
+          if (!raw || raw === "-") return "-";
+          const items = raw
+            .split(",")
+            .map((v) => v.trim())
+            .filter(Boolean);
+
+          return (
+            <CollapsibleItemList
+              items={items}
+              filterValues={column.getFilterValue()}
+              renderItem={(item, idx) => {
+                const style =
+                  (fieldFormatters.documentStatus &&
+                    fieldFormatters.documentStatus[item.toLowerCase()]) ||
+                  getSemanticDocumentStatusStyle(item) ||
+                  getDynamicChipStyle(item);
+
+                return (
+                  <span
+                    key={idx}
+                    style={{
+                      backgroundColor: style.bg,
+                      color: style.text,
+                      border: `1px solid ${style.border}`,
+                      borderRadius: "12px",
+                      padding: "1px 8px",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      lineHeight: "18px",
+                      display: "inline-block",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {item}
+                  </span>
+                );
+              }}
+            />
+          );
+        },
+      },
+      {
+        accessorKey: "DocumentLanguage",
+        header: "Document Language",
+        filterVariant: "multi-select",
+        filterSelectOptions: documentLanguageOptions,
+        filterFn: multiSelectFilterFn,
+        size: 140,
+        minSize: 130,
+        Cell: ({ cell }) => {
+          const raw = String(cell.getValue() || "").trim();
+          return <span>{raw || "-"}</span>;
+        },
+      },
+      {
         accessorKey: "Confidentiality",
         header: "Confidentiality",
         filterVariant: "multi-select",
@@ -1887,6 +2170,199 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
               }}
             />
           );
+        },
+      },
+      {
+        accessorKey: "DocumentDate",
+        header: "Document Date",
+        size: 100,
+        minSize: 100,
+        filterFn: documentDateFilter,
+        Filter: ({ column }) => (
+          <DateFilterControl
+            column={column}
+            label="Min Date"
+          />
+        ),
+        Cell: ({ cell }) => {
+          const value = cell.getValue<Date | string | null>();
+          if (!value) return "-";
+
+          const d = dayjs(value);
+          if (!d.isValid()) return "-";
+
+          return d.format("DD/MM/YYYY");
+        },
+      },
+      {
+        accessorKey: "ExpiryDate",
+        header: "Expiry Date",
+        size: 115,
+        minSize: 100,
+        filterFn: documentDateFilter,
+        Filter: ({ column }) => (
+          <DateFilterControl
+            column={column}
+            label="Min Date"
+          />
+        ),
+        Cell: ({ cell }) => {
+          const value = cell.getValue<Date | string | null>();
+          if (!value) return "-";
+
+          const d = dayjs(value);
+          if (!d.isValid()) return "-";
+
+          const style = evaluateDateCustomFormatter(
+            d,
+            fieldFormatters.expiryDateCustomFormatter
+          );
+
+          return (
+            <span
+              style={{
+                backgroundColor: style.bg,
+                color: style.text,
+                border: `1px solid ${style.border}`,
+                borderRadius: "12px",
+                padding: "1px 8px",
+                fontSize: "11px",
+                fontWeight: 600,
+                lineHeight: "18px",
+                display: "inline-block",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {d.format("DD/MM/YYYY")}
+            </span>
+          );
+        },
+      },
+      {
+        accessorKey: "NextReviewDate",
+        header: "Next Review Date",
+        size: 130,
+        minSize: 110,
+        filterFn: documentDateFilter,
+        Filter: ({ column }) => (
+          <DateFilterControl
+            column={column}
+            label="Min Date"
+          />
+        ),
+        Cell: ({ cell }) => {
+          const value = cell.getValue<Date | string | null>();
+          if (!value) return "-";
+
+          const d = dayjs(value);
+          if (!d.isValid()) return "-";
+
+          const style = evaluateDateCustomFormatter(
+            d,
+            fieldFormatters.nextReviewDateCustomFormatter
+          );
+
+          return (
+            <span
+              style={{
+                backgroundColor: style.bg,
+                color: style.text,
+                border: `1px solid ${style.border}`,
+                borderRadius: "12px",
+                padding: "1px 8px",
+                fontSize: "11px",
+                fontWeight: 600,
+                lineHeight: "18px",
+                display: "inline-block",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {d.format("DD/MM/YYYY")}
+            </span>
+          );
+        },
+      },
+      {
+        accessorKey: "Created",
+        header: "Created",
+        size: 110,
+        minSize: 100,
+        filterFn: exactDateFilter,
+        Filter: ({ column }) => (
+          <DateFilterControl
+            column={column}
+            label="Date"
+          />
+        ),
+        Cell: ({ cell }) => {
+          const value = cell.getValue<Date | string | null>();
+          if (!value) return "-";
+
+          const d = dayjs(value);
+          if (!d.isValid()) return "-";
+
+          return d.format("DD/MM/YYYY");
+        },
+      },
+      {
+        accessorKey: "AuthorTitle",
+        header: "Created by",
+        filterVariant: "multi-select",
+        filterSelectOptions: authorOptions,
+        filterFn: personFilterFn,
+        size: 150,
+        minSize: 140,
+        Cell: ({ cell }) => {
+          const raw = String(cell.getValue() || "").trim();
+          return <span>{raw || "-"}</span>;
+        },
+      },
+      {
+        accessorKey: "Modified",
+        header: "Modified",
+        size: 110,
+        minSize: 100,
+        filterFn: exactDateFilter,
+        Filter: ({ column }) => (
+          <DateFilterControl
+            column={column}
+            label="Date"
+          />
+        ),
+        Cell: ({ cell }) => {
+          const value = cell.getValue<Date | string | null>();
+          if (!value) return "-";
+
+          const d = dayjs(value);
+          if (!d.isValid()) return "-";
+
+          return d.format("DD/MM/YYYY");
+        },
+      },
+      {
+        accessorKey: "EditorTitle",
+        header: "Modified by",
+        filterVariant: "multi-select",
+        filterSelectOptions: editorOptions,
+        filterFn: personFilterFn,
+        size: 150,
+        minSize: 140,
+        Cell: ({ cell }) => {
+          const raw = String(cell.getValue() || "").trim();
+          return <span>{raw || "-"}</span>;
+        },
+      },
+      {
+        accessorKey: "ReviewedByTitle",
+        header: "Reviewed By",
+        filterVariant: "multi-select",
+        filterSelectOptions: reviewedByOptions,
+        filterFn: personFilterFn,
+        size: 150,
+        minSize: 140,
+        Cell: ({ cell }) => {
+          const raw = String(cell.getValue() || "").trim();
+          return <span>{raw || "-"}</span>;
         },
       },
       {
@@ -1941,24 +2417,14 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         },
       },
       {
-        accessorKey: "DocumentDate",
-        header: "Document Date",
-        size: 100,
-        minSize: 100,
-        filterFn: documentDateFilter,
-        Filter: ({ column }) => (
-          <DocumentDateFilter
-            column={column}
-          />
-        ),
+        accessorKey: "id",
+        header: "ID",
+        size: 70,
+        minSize: 60,
+        filterFn: "equals",
         Cell: ({ cell }) => {
-          const value = cell.getValue<Date | string | null>();
-          if (!value) return "-";
-
-          const d = dayjs(value);
-          if (!d.isValid()) return "-";
-
-          return d.format("DD/MM/YYYY");
+          const val = cell.getValue<number | undefined>();
+          return <span>{val !== undefined && val !== null ? val : "-"}</span>;
         },
       },
     ],
@@ -1971,8 +2437,15 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       documentTypeOptions,
       subDocumentTypeOptions,
       confidentialityOptions,
+      issuedByOptions,
+      documentStatusOptions,
+      documentLanguageOptions,
+      reviewedByOptions,
+      authorOptions,
+      editorOptions,
       fieldFormatters,
       getRowAlerts,
+      personFilterFn,
     ]
   );
 

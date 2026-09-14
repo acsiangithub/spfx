@@ -30,6 +30,17 @@ export const mapSharePointItemsToProducts = (
     const editorEmail = item.Editor?.EMail || item.Editor?.Email || "";
     const editorTitle = item.Editor?.Title || "";
     const modifiedDate = item.Modified ? new Date(item.Modified) : null;
+    const authorEmail = item.Author?.EMail || item.Author?.Email || "";
+    const authorTitle = item.Author?.Title || "";
+    const createdDate = item.Created ? new Date(item.Created) : null;
+    const reviewedByEmail = Array.isArray(item.ReviewActionTakenBy)
+      ? item.ReviewActionTakenBy.map((u: any) => u.EMail || u.Email).filter(Boolean).join(", ")
+      : (item.ReviewActionTakenBy?.EMail || item.ReviewActionTakenBy?.Email || "");
+    const reviewedByTitle = Array.isArray(item.ReviewActionTakenBy)
+      ? item.ReviewActionTakenBy.map((u: any) => u.Title).filter(Boolean).join(", ")
+      : (item.ReviewActionTakenBy?.Title || "");
+    const expiryDate = item.Expiry_x0020_Date ? new Date(item.Expiry_x0020_Date) : null;
+    const nextReviewDate = item.Next_x0020_Review_x0020_Date ? new Date(item.Next_x0020_Review_x0020_Date) : null;
 
     return {
       id: item.Id,
@@ -59,6 +70,16 @@ export const mapSharePointItemsToProducts = (
       Modified: modifiedDate,
       EditorEmail: editorEmail,
       EditorTitle: editorTitle,
+      Created: createdDate,
+      AuthorEmail: authorEmail,
+      AuthorTitle: authorTitle,
+      IssuedBy: choiceToString(item.Issued_x0020_By),
+      DocumentStatus: choiceToString(item.Document_x0020_Status),
+      ReviewedByTitle: reviewedByTitle,
+      ReviewedByEmail: reviewedByEmail,
+      DocumentLanguage: choiceToString(item.Document_x0020_Language),
+      ExpiryDate: expiryDate,
+      NextReviewDate: nextReviewDate,
     };
   });
 };
@@ -189,7 +210,7 @@ export interface IListFieldMetadata {
 
 export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadata> => {
   const defaultResult: IListFieldMetadata = {
-    formatters: { businessLine: {}, confidentiality: {}, alerts: null },
+    formatters: { businessLine: {}, confidentiality: {}, alerts: null, documentStatus: {} },
     choices: { businessLine: [], country: [], confidentiality: [] },
   };
 
@@ -200,11 +221,14 @@ export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadat
       .getByTitle("Clients & Products")
       .fields.select("InternalName", "CustomFormatter", "Choices")
       .filter(
-        "InternalName eq 'Business_x0020_Line' or InternalName eq 'Country' or InternalName eq 'Confidentiality' or InternalName eq 'Alerts'"
+        "InternalName eq 'Business_x0020_Line' or InternalName eq 'Country' or InternalName eq 'Confidentiality' or InternalName eq 'Alerts' or InternalName eq 'Document_x0020_Status' or InternalName eq 'Expiry_x0020_Date' or InternalName eq 'Next_x0020_Review_x0020_Date'"
       )();
 
     let blFormat: Record<string, IChipStyle> = {};
     let confFormat: Record<string, IChipStyle> = {};
+    let docStatusFormat: Record<string, IChipStyle> = {};
+    let expiryDateFormatter: string | undefined = undefined;
+    let nextReviewDateFormatter: string | undefined = undefined;
     let alertsRule: IAlertRule | null = null;
     let businessLineChoices: string[] = [];
     let countryChoices: string[] = [];
@@ -228,6 +252,18 @@ export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadat
         if (f.CustomFormatter) {
           alertsRule = parseAlertsCustomFormatter(f.CustomFormatter);
         }
+      } else if (f.InternalName === "Document_x0020_Status") {
+        if (f.CustomFormatter) {
+          docStatusFormat = parseSpCustomFormatter(f.CustomFormatter);
+        }
+      } else if (f.InternalName === "Expiry_x0020_Date") {
+        if (f.CustomFormatter) {
+          expiryDateFormatter = f.CustomFormatter;
+        }
+      } else if (f.InternalName === "Next_x0020_Review_x0020_Date") {
+        if (f.CustomFormatter) {
+          nextReviewDateFormatter = f.CustomFormatter;
+        }
       }
     });
 
@@ -236,6 +272,9 @@ export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadat
         businessLine: blFormat,
         confidentiality: confFormat,
         alerts: alertsRule,
+        documentStatus: docStatusFormat,
+        expiryDateCustomFormatter: expiryDateFormatter,
+        nextReviewDateCustomFormatter: nextReviewDateFormatter,
       },
       choices: {
         businessLine: businessLineChoices.sort((a, b) =>
@@ -294,9 +333,21 @@ export const loadRecordsBatch = async (
       "Modified",
       "Editor/Id",
       "Editor/Title",
-      "Editor/EMail"
+      "Editor/EMail",
+      "Created",
+      "Author/Id",
+      "Author/Title",
+      "Author/EMail",
+      "Issued_x0020_By",
+      "Document_x0020_Status",
+      "ReviewActionTakenBy/Id",
+      "ReviewActionTakenBy/Title",
+      "ReviewActionTakenBy/EMail",
+      "Document_x0020_Language",
+      "Expiry_x0020_Date",
+      "Next_x0020_Review_x0020_Date"
     )
-    .expand("PIMProductCode", "Editor")
+    .expand("PIMProductCode", "Editor", "Author", "ReviewActionTakenBy")
     .orderBy("Id", false)
     .top(pageSize);
 
@@ -405,9 +456,21 @@ export const searchRecords = async (
               "Modified",
               "Editor/Id",
               "Editor/Title",
-              "Editor/EMail"
+              "Editor/EMail",
+              "Created",
+              "Author/Id",
+              "Author/Title",
+              "Author/EMail",
+              "Issued_x0020_By",
+              "Document_x0020_Status",
+              "ReviewActionTakenBy/Id",
+              "ReviewActionTakenBy/Title",
+              "ReviewActionTakenBy/EMail",
+              "Document_x0020_Language",
+              "Expiry_x0020_Date",
+              "Next_x0020_Review_x0020_Date"
             )
-            .expand("PIMProductCode", "Editor")
+            .expand("PIMProductCode", "Editor", "Author", "ReviewActionTakenBy")
             .filter(filter)()
         );
       }
