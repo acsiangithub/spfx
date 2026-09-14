@@ -14,6 +14,7 @@ import {
   type MRT_GroupingState,
   type MRT_VisibilityState,
   type MRT_SortingState,
+  type MRT_ColumnPinningState,
 } from "material-react-table";
 
 import Autocomplete from "@mui/material/Autocomplete";
@@ -357,6 +358,7 @@ interface ITableViewPreset {
   columnVisibility?: MRT_VisibilityState;
   columnOrder?: string[];
   columnFilters?: MRT_ColumnFiltersState;
+  columnPinning?: MRT_ColumnPinningState;
 }
 
 const STORAGE_KEY_CUSTOM_VIEWS = "advanceSearch_user_views";
@@ -545,6 +547,10 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   ]);
   const [columnVisibility, setColumnVisibility] = React.useState<MRT_VisibilityState>({});
   const [columnOrder, setColumnOrder] = React.useState<string[]>([]);
+  const [columnPinning, setColumnPinning] = React.useState<MRT_ColumnPinningState>({
+    left: [],
+    right: [],
+  });
 
   // Dialog state for "Save Current View"
   const [isSaveViewDialogOpen, setIsSaveViewDialogOpen] = React.useState(false);
@@ -572,6 +578,11 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     if (view.columnFilters !== undefined) {
       setColumnFilters(view.columnFilters);
     }
+    if (view.columnPinning !== undefined) {
+      setColumnPinning(view.columnPinning);
+    } else {
+      setColumnPinning({ left: [], right: [] });
+    }
   };
 
   const handleSaveCurrentView = (): void => {
@@ -587,6 +598,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       columnVisibility,
       columnOrder,
       columnFilters,
+      columnPinning,
     };
 
     const updated = [...customViews.filter((v) => v.name.toLowerCase() !== trimmed.toLowerCase()), newView];
@@ -2463,7 +2475,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     // Don't drag if clicking interactive controls, filter inputs, sort labels, resize handles, or grab handles
     if (
       target.closest(
-        'button, input, textarea, select, [role="button"], [role="checkbox"], .MuiInputBase-root, .MuiIconButton-root, .MuiSelect-select, .MuiTableSortLabel-root, .Mui-TableHeadCell-ResizeHandle, .Mui-TableHeadCell-GrabHandle'
+        'button, input, textarea, select, [role="button"], [role="checkbox"], .MuiInputBase-root, .MuiIconButton-root, .MuiSelect-select, .MuiTableSortLabel-root, .Mui-TableHeadCell-ResizeHandle, .Mui-TableHeadCell-GrabHandle, .Mui-TableHeadCell-ColumnActionsButton'
       )
     ) {
       return;
@@ -2815,6 +2827,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     enableColumnDragging: true,
     enableColumnOrdering: true,
     enableColumnResizing: true,
+    enableColumnPinning: true,
+    enableColumnActions: true,
     columnResizeMode: "onChange",
     layoutMode: "grid-no-grow",
     renderToolbarInternalActions: ({ table }) => (
@@ -2899,11 +2913,13 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     onSortingChange: setSorting,
     onColumnVisibilityChange: setColumnVisibility,
     onColumnOrderChange: setColumnOrder,
+    onColumnPinningChange: setColumnPinning,
     state: {
       isLoading: resultsLoading,
       showProgressBars: isLoadingMore,
       showColumnFilters: true,
       columnFilters,
+      columnPinning,
       grouping,
       sorting,
       columnVisibility,
