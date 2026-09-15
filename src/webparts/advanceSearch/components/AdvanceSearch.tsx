@@ -49,6 +49,7 @@ import Typography from "@mui/material/Typography";
 import Link from "@mui/material/Link";
 import CloseIcon from "@mui/icons-material/Close";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import Tooltip from "@mui/material/Tooltip";
 import { ThemeProvider } from "@mui/material/styles";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -78,6 +79,7 @@ import {
   exactDateFilter,
   isPersonMe,
   itemMatchesFilter,
+  filenameFilterFn,
 } from "../utils/filterHelpers";
 import { compactTheme } from "../theme/compactTheme";
 import {
@@ -138,6 +140,258 @@ const DateFilterControl: React.FC<{
         },
       }}
     />
+  );
+};
+
+const WordFileTypeIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, display: "inline-block", verticalAlign: "middle" }}>
+    <path d="M2.5 1.5A1.5 1.5 0 0 1 4 0h6a1.5 1.5 0 0 1 1.06.44l3.5 3.5A1.5 1.5 0 0 1 15 5v9.5A1.5 1.5 0 0 1 13.5 16H4A1.5 1.5 0 0 1 2.5 14.5v-13z" fill="#185ABD" />
+    <path d="M10 0v3.5a1.5 1.5 0 0 0 1.5 1.5H15" fill="#0D47A1" opacity="0.6" />
+    <text x="8.5" y="12.5" textAnchor="middle" fill="#ffffff" fontSize="8" fontWeight="bold" fontFamily="Segoe UI, Roboto, Helvetica, Arial, sans-serif">W</text>
+  </svg>
+);
+
+const ExcelFileTypeIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, display: "inline-block", verticalAlign: "middle" }}>
+    <path d="M2.5 1.5A1.5 1.5 0 0 1 4 0h6a1.5 1.5 0 0 1 1.06.44l3.5 3.5A1.5 1.5 0 0 1 15 5v9.5A1.5 1.5 0 0 1 13.5 16H4A1.5 1.5 0 0 1 2.5 14.5v-13z" fill="#107C41" />
+    <path d="M10 0v3.5a1.5 1.5 0 0 0 1.5 1.5H15" fill="#0A5C2F" opacity="0.6" />
+    <text x="8.5" y="12.5" textAnchor="middle" fill="#ffffff" fontSize="8" fontWeight="bold" fontFamily="Segoe UI, Roboto, Helvetica, Arial, sans-serif">X</text>
+  </svg>
+);
+
+const PptFileTypeIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, display: "inline-block", verticalAlign: "middle" }}>
+    <path d="M2.5 1.5A1.5 1.5 0 0 1 4 0h6a1.5 1.5 0 0 1 1.06.44l3.5 3.5A1.5 1.5 0 0 1 15 5v9.5A1.5 1.5 0 0 1 13.5 16H4A1.5 1.5 0 0 1 2.5 14.5v-13z" fill="#C43E1C" />
+    <path d="M10 0v3.5a1.5 1.5 0 0 0 1.5 1.5H15" fill="#9E2F13" opacity="0.6" />
+    <text x="8.5" y="12.5" textAnchor="middle" fill="#ffffff" fontSize="8" fontWeight="bold" fontFamily="Segoe UI, Roboto, Helvetica, Arial, sans-serif">P</text>
+  </svg>
+);
+
+const PdfFileTypeIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, display: "inline-block", verticalAlign: "middle" }}>
+    <path d="M2.5 1.5A1.5 1.5 0 0 1 4 0h6a1.5 1.5 0 0 1 1.06.44l3.5 3.5A1.5 1.5 0 0 1 15 5v9.5A1.5 1.5 0 0 1 13.5 16H4A1.5 1.5 0 0 1 2.5 14.5v-13z" fill="#B30B00" />
+    <path d="M10 0v3.5a1.5 1.5 0 0 0 1.5 1.5H15" fill="#7F0800" opacity="0.6" />
+    <text x="8.5" y="12" textAnchor="middle" fill="#ffffff" fontSize="5.5" fontWeight="bold" fontFamily="Segoe UI, Roboto, Helvetica, Arial, sans-serif">PDF</text>
+  </svg>
+);
+
+const GenericFileTypeIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, display: "inline-block", verticalAlign: "middle" }}>
+    <path d="M2.5 1.5A1.5 1.5 0 0 1 4 0h6a1.5 1.5 0 0 1 1.06.44l3.5 3.5A1.5 1.5 0 0 1 15 5v9.5A1.5 1.5 0 0 1 13.5 16H4A1.5 1.5 0 0 1 2.5 14.5v-13z" fill="#797775" />
+    <path d="M10 0v3.5a1.5 1.5 0 0 0 1.5 1.5H15" fill="#484644" opacity="0.6" />
+    <rect x="5" y="7" width="6" height="1" rx="0.5" fill="#fff" />
+    <rect x="5" y="9.5" width="6" height="1" rx="0.5" fill="#fff" />
+    <rect x="5" y="12" width="4" height="1" rx="0.5" fill="#fff" />
+  </svg>
+);
+
+const getFilenameIcon = (filename: string, size: number = 16): React.ReactNode => {
+  const lower = (filename || "").toLowerCase();
+  if (lower.endsWith(".doc") || lower.endsWith(".docx") || lower.endsWith(".docm") || lower.endsWith(".dotx")) {
+    return <WordFileTypeIcon size={size} />;
+  }
+  if (lower.endsWith(".xls") || lower.endsWith(".xlsx") || lower.endsWith(".xlsm") || lower.endsWith(".csv")) {
+    return <ExcelFileTypeIcon size={size} />;
+  }
+  if (lower.endsWith(".ppt") || lower.endsWith(".pptx") || lower.endsWith(".pptm")) {
+    return <PptFileTypeIcon size={size} />;
+  }
+  if (lower.endsWith(".pdf")) {
+    return <PdfFileTypeIcon size={size} />;
+  }
+  // Generic file icon if the file type is not among the 4
+  return <GenericFileTypeIcon size={size} />;
+};
+
+const exportToExcelCsv = (items: doclib_AllProducts[], customFileName: string = "Clients_Products_Export"): void => {
+  if (!items || items.length === 0) return;
+
+  const headers = [
+    "File Name",
+    "Clients",
+    "Products",
+    "Document Type",
+    "Sub Document Type",
+    "Business Line",
+    "Country Sold To",
+    "Issued By",
+    "Document Status",
+    "Document Language",
+    "Confidentiality",
+    "Document Date",
+    "Expiry Date",
+    "Next Review Date",
+    "Created",
+    "Created by",
+    "Modified",
+    "Modified by",
+    "Reviewed By",
+    "Alerts",
+    "File URL",
+    "ID",
+  ];
+
+  const escapeCsv = (val: unknown): string => {
+    if (val === null || val === undefined) return '""';
+    let str = "";
+    if (val instanceof Date) {
+      const d = dayjs(val);
+      str = d.isValid() ? d.format("DD/MM/YYYY") : "";
+    } else {
+      str = String(val);
+    }
+    return `"${str.replace(/"/g, '""')}"`;
+  };
+
+  const csvRows: string[] = [];
+  csvRows.push(headers.map((h) => `"${h}"`).join(","));
+
+  items.forEach((item) => {
+    const productsStr = (item.PIMProduct || [])
+      .map((p) => `${p.Title || ""} ${p.PIMProductName || ""}`.trim())
+      .filter(Boolean)
+      .join("; ");
+
+    const row = [
+      escapeCsv(item.filename),
+      escapeCsv(item.ManufacturerSearchText),
+      escapeCsv(productsStr),
+      escapeCsv(item.DocumentTypeSearchText),
+      escapeCsv(item.SubDocumentTypeSearchText),
+      escapeCsv(item.BusinessLine),
+      escapeCsv(item.CountrySoldTo),
+      escapeCsv(item.IssuedBy),
+      escapeCsv(item.DocumentStatus),
+      escapeCsv(item.DocumentLanguage),
+      escapeCsv(item.Confidentiality),
+      escapeCsv(item.DocumentDate),
+      escapeCsv(item.ExpiryDate),
+      escapeCsv(item.NextReviewDate),
+      escapeCsv(item.Created),
+      escapeCsv(item.AuthorTitle),
+      escapeCsv(item.Modified),
+      escapeCsv(item.EditorTitle),
+      escapeCsv(item.ReviewedByTitle),
+      escapeCsv(item.Alerts),
+      escapeCsv(item.fileUrl),
+      escapeCsv(item.id),
+    ];
+    csvRows.push(row.join(","));
+  });
+
+  // UTF-8 BOM (\uFEFF) forces Excel to interpret as UTF-8 so characters and column alignment are preserved
+  const blob = new Blob(["\uFEFF" + csvRows.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const timestamp = dayjs().format("YYYYMMDD_HHmmss");
+  link.href = url;
+  link.setAttribute("download", `${customFileName}_${timestamp}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
+const FilenameFilterInput: React.FC<{
+  column: { getFilterValue: () => unknown; setFilterValue: (value: unknown) => void };
+}> = ({ column }) => {
+  const raw = column.getFilterValue();
+  const filterVal: { text?: string; fileTypes?: string[] } =
+    typeof raw === "string"
+      ? { text: raw, fileTypes: [] }
+      : (raw as { text?: string; fileTypes?: string[] }) || {};
+
+  const currentText = filterVal.text || "";
+  const currentFileTypes = filterVal.fileTypes || [];
+
+  return (
+    <Box sx={{ width: "100%", display: "flex", flexDirection: "column", gap: 0.5 }}>
+      <TextField
+        size="small"
+        placeholder="Filter file name..."
+        variant="standard"
+        value={currentText}
+        onChange={(e) => {
+          const newText = e.target.value;
+          if (!newText && currentFileTypes.length === 0) {
+            column.setFilterValue(undefined);
+          } else {
+            column.setFilterValue({ ...filterVal, text: newText });
+          }
+        }}
+        InputProps={{
+          endAdornment: currentText ? (
+            <IconButton
+              size="small"
+              onClick={() => {
+                if (currentFileTypes.length === 0) {
+                  column.setFilterValue(undefined);
+                } else {
+                  column.setFilterValue({ ...filterVal, text: "" });
+                }
+              }}
+              sx={{ p: "2px" }}
+            >
+              <CloseIcon sx={{ fontSize: 13 }} />
+            </IconButton>
+          ) : null,
+        }}
+        sx={{
+          minWidth: "120px",
+          "& .MuiInputBase-root": {
+            fontSize: "12px",
+            padding: "2px 4px",
+          },
+          "& .MuiInputBase-input": {
+            fontSize: "12px",
+            padding: "2px 4px",
+          },
+        }}
+      />
+      {currentFileTypes.length > 0 && (
+        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, mt: 0.25 }}>
+          {currentFileTypes.map((ft) => (
+            <Chip
+              key={ft}
+              size="small"
+              label={ft.toUpperCase()}
+              onDelete={() => {
+                const next = currentFileTypes.filter((t) => t !== ft);
+                if (next.length === 0 && !currentText) {
+                  column.setFilterValue(undefined);
+                } else {
+                  column.setFilterValue({ ...filterVal, fileTypes: next });
+                }
+              }}
+              sx={{
+                height: "18px",
+                fontSize: "10px",
+                fontWeight: 600,
+                bgcolor:
+                  ft === "word"
+                    ? "#e8f0fe"
+                    : ft === "excel"
+                    ? "#e6f4ea"
+                    : ft === "powerpoint"
+                    ? "#fce8e6"
+                    : "#fde8e8",
+                color:
+                  ft === "word"
+                    ? "#185abd"
+                    : ft === "excel"
+                    ? "#107c41"
+                    : ft === "powerpoint"
+                    ? "#c43e1c"
+                    : "#b30b00",
+                "& .MuiChip-deleteIcon": {
+                  fontSize: "12px",
+                },
+              }}
+            />
+          ))}
+        </Box>
+      )}
+    </Box>
   );
 };
 
@@ -1232,8 +1486,14 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
     // 9. Keyword / File Name
     const filenameFilter = columnFilters.find((f) => f.id === "filename")?.value;
-    if (filenameFilter && typeof filenameFilter === "string" && filenameFilter.trim()) {
-      setKeywordInput(filenameFilter.trim());
+    if (filenameFilter) {
+      const textVal =
+        typeof filenameFilter === "string"
+          ? filenameFilter
+          : (filenameFilter as { text?: string })?.text;
+      if (textVal && typeof textVal === "string" && textVal.trim()) {
+        setKeywordInput(textVal.trim());
+      }
     }
   };
 
@@ -1856,37 +2116,252 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       {
         accessorKey: "filename",
         header: "File Name",
-        size: 140,
+        size: 160,
         minSize: 140,
-        filterFn: "contains",
-        Cell: ({ row }) => {
-          const displayName =
-            row.original.filename.length > 20
-              ? `${row.original.filename.slice(0, 17)}...`
-              : row.original.filename;
+        filterFn: filenameFilterFn,
+        Filter: ({ column }) => <FilenameFilterInput column={column} />,
+        Header: ({ column }) => {
+          const raw = column.getFilterValue();
+          const filterVal: { text?: string; fileTypes?: string[] } =
+            typeof raw === "string"
+              ? { text: raw, fileTypes: [] }
+              : (raw as { text?: string; fileTypes?: string[] }) || {};
+          const activeTypes = filterVal.fileTypes || [];
 
           return (
-            <span
-              onClick={(e) => {
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, flexWrap: "nowrap" }}>
+              <span>File Name</span>
+              {activeTypes.length > 0 && (
+                <Chip
+                  size="small"
+                  label={activeTypes.length === 1 ? activeTypes[0].toUpperCase() : `${activeTypes.length} Types`}
+                  onDelete={(e) => {
+                    e.stopPropagation();
+                    if (!filterVal.text) {
+                      column.setFilterValue(undefined);
+                    } else {
+                      column.setFilterValue({ ...filterVal, fileTypes: [] });
+                    }
+                  }}
+                  sx={{
+                    height: "17px",
+                    fontSize: "9.5px",
+                    fontWeight: 700,
+                    bgcolor: "#e3f2fd",
+                    color: "#1976d2",
+                    "& .MuiChip-deleteIcon": {
+                      fontSize: "11px",
+                      color: "#1976d2",
+                      marginRight: "2px",
+                    },
+                  }}
+                />
+              )}
+            </Box>
+          );
+        },
+        renderColumnActionsMenuItems: ({ column, table, internalColumnMenuItems, closeMenu }) => {
+          const raw = column.getFilterValue();
+          const filterVal: { text?: string; fileTypes?: string[] } =
+            typeof raw === "string"
+              ? { text: raw, fileTypes: [] }
+              : (raw as { text?: string; fileTypes?: string[] }) || {};
+          const currentTypes = filterVal.fileTypes || [];
+
+          const toggleType = (type: string) => {
+            const exists = currentTypes.includes(type);
+            const next = exists
+              ? currentTypes.filter((t) => t !== type)
+              : [...currentTypes, type];
+            if (next.length === 0 && !filterVal.text) {
+              column.setFilterValue(undefined);
+            } else {
+              column.setFilterValue({ ...filterVal, fileTypes: next });
+            }
+          };
+
+          const clearTypes = () => {
+            if (!filterVal.text) {
+              column.setFilterValue(undefined);
+            } else {
+              column.setFilterValue({ ...filterVal, fileTypes: [] });
+            }
+          };
+
+          const fileTypeDefinitions = [
+            { id: "word", label: "Word Documents", ext: ".docx, .doc", icon: <WordFileTypeIcon size={20} /> },
+            { id: "excel", label: "Excel Spreadsheets", ext: ".xlsx, .csv", icon: <ExcelFileTypeIcon size={20} /> },
+            { id: "powerpoint", label: "PowerPoint Presentations", ext: ".pptx, .ppt", icon: <PptFileTypeIcon size={20} /> },
+            { id: "pdf", label: "PDF Documents", ext: ".pdf", icon: <PdfFileTypeIcon size={20} /> },
+          ];
+
+          const selectedRowCount = table.getSelectedRowModel().rows.length;
+          const totalRowCount = table.getPrePaginationRowModel().rows.length;
+          const exportRowCount = selectedRowCount > 0 ? selectedRowCount : totalRowCount;
+
+          return [
+            // Quick icons bar at top of menu (horizontally stacked)
+            <Box key="file-type-section" sx={{ px: 2, pt: 1.25, pb: 1, borderBottom: "1px solid #edebe9" }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  display: "block",
+                  fontSize: "10.5px",
+                  fontWeight: 700,
+                  color: "text.secondary",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                  mb: 0.75,
+                }}
+              >
+                Filter by File Type
+              </Typography>
+              <Box sx={{ display: "flex", gap: 0.75, alignItems: "center" }}>
+                <Tooltip title="All Files (Clear filter)" arrow>
+                  <Button
+                    size="small"
+                    variant={currentTypes.length === 0 ? "contained" : "outlined"}
+                    onClick={clearTypes}
+                    sx={{
+                      minWidth: "32px",
+                      height: "26px",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      textTransform: "none",
+                      px: 1,
+                      py: 0,
+                      borderRadius: "6px",
+                      boxShadow: "none",
+                      bgcolor: currentTypes.length === 0 ? "#424242" : "transparent",
+                      color: currentTypes.length === 0 ? "#fff" : "text.secondary",
+                      borderColor: "#d0d0d0",
+                      "&:hover": {
+                        bgcolor: currentTypes.length === 0 ? "#212121" : "#f5f5f5",
+                        boxShadow: "none",
+                      },
+                    }}
+                  >
+                    All
+                  </Button>
+                </Tooltip>
+
+                {fileTypeDefinitions.map((ft) => {
+                  const isSelected = currentTypes.includes(ft.id);
+                  return (
+                    <Tooltip key={ft.id} title={`${ft.label} (${ft.ext})`} arrow>
+                      <IconButton
+                        size="small"
+                        onClick={() => toggleType(ft.id)}
+                        sx={{
+                          p: "3px",
+                          borderRadius: "6px",
+                          border: isSelected ? "2px solid #1976d2" : "1px solid #e0e0e0",
+                          bgcolor: isSelected ? "rgba(25, 118, 210, 0.1)" : "transparent",
+                          transition: "all 0.15s ease-in-out",
+                          "&:hover": {
+                            bgcolor: isSelected ? "rgba(25, 118, 210, 0.18)" : "#f5f5f5",
+                            transform: "scale(1.08)",
+                          },
+                        }}
+                      >
+                        {ft.icon}
+                      </IconButton>
+                    </Tooltip>
+                  );
+                })}
+              </Box>
+            </Box>,
+
+            // Export to Excel menu item
+            <MenuItem
+              key="export-excel-action"
+              onClick={() => {
+                closeMenu();
+                const selectedRows = table.getSelectedRowModel().rows;
+                const rowsToExport =
+                  selectedRows.length > 0
+                    ? selectedRows.map((r) => r.original)
+                    : table.getPrePaginationRowModel().rows.map((r) => r.original);
+                exportToExcelCsv(rowsToExport);
+              }}
+              sx={{
+                fontSize: "12.5px",
+                py: 0.9,
+                px: 2,
+                display: "flex",
+                alignItems: "center",
+                gap: 1.25,
+                color: "#107c41",
+                "&:hover": {
+                  bgcolor: "rgba(16, 124, 65, 0.08)",
+                },
+              }}
+            >
+              <ExcelFileTypeIcon size={18} />
+              <ListItemText
+                primary={`Export to Excel (${exportRowCount.toLocaleString()} ${selectedRowCount > 0 ? "selected" : "rows"})`}
+                secondary="Download Excel-compatible .csv"
+                primaryTypographyProps={{ fontSize: "12.5px", fontWeight: 600, color: "#107c41" }}
+                secondaryTypographyProps={{ fontSize: "10.5px" }}
+              />
+            </MenuItem>,
+
+            <Divider key="divider-mrt-actions" sx={{ my: 0.5 }} />,
+
+            internalColumnMenuItems,
+          ];
+        },
+        Cell: ({ row }) => {
+          const rawName = row.original.filename || "";
+          const displayName =
+            rawName.length > 35
+              ? `${rawName.slice(0, 32)}...`
+              : rawName;
+
+          const fileIcon = getFilenameIcon(rawName, 16);
+
+          return (
+            <Box
+              component="span"
+              onClick={(e: React.MouseEvent<HTMLElement>) => {
                 e.preventDefault();
                 e.stopPropagation();
                 setSelectedFileForAction(row.original);
                 setFileMenuAnchorEl(e.currentTarget);
               }}
-              title={row.original.filename}
-              style={{
-                display: "inline-block",
+              title={rawName}
+              sx={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
                 maxWidth: "100%",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                color: "#1976d2",
-                textDecoration: "underline",
                 cursor: "pointer",
+                userSelect: "none",
+                "&:hover .sp-filename-text": {
+                  color: "#0078d4",
+                  textDecoration: "underline",
+                },
               }}
             >
-              {displayName}
-            </span>
+              <Box sx={{ display: "inline-flex", alignItems: "center", flexShrink: 0 }}>
+                {fileIcon}
+              </Box>
+              <Box
+                component="span"
+                className="sp-filename-text"
+                sx={{
+                  color: "#323130",
+                  fontWeight: 500,
+                  fontSize: "12.5px",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  transition: "color 0.15s ease",
+                }}
+              >
+                {displayName}
+              </Box>
+            </Box>
           );
         },
       },

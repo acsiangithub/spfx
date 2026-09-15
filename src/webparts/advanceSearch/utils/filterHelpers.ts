@@ -103,6 +103,52 @@ export const isPersonMe = (
   );
 };
 
+export type FileTypeCategory = "word" | "excel" | "powerpoint" | "pdf";
+
+export const FILE_TYPE_EXTENSIONS: Record<FileTypeCategory, string[]> = {
+  word: [".doc", ".docx", ".docm", ".dot", ".dotx"],
+  excel: [".xls", ".xlsx", ".xlsm", ".xlsb", ".csv"],
+  powerpoint: [".ppt", ".pptx", ".pptm", ".pot", ".potx", ".pps", ".ppsx"],
+  pdf: [".pdf"],
+};
+
+export const matchesFileType = (filename: string, fileTypes: string[]): boolean => {
+  if (!filename || !fileTypes || fileTypes.length === 0) return true;
+  const lower = filename.toLowerCase().trim();
+  return fileTypes.some((type) => {
+    const exts = FILE_TYPE_EXTENSIONS[type as FileTypeCategory];
+    if (exts) {
+      return exts.some((ext) => lower.endsWith(ext));
+    }
+    return false;
+  });
+};
+
+export const filenameFilterFn = (
+  row: { original: doclib_AllProducts; getValue: (columnId: string) => unknown },
+  _columnId: string,
+  filterValue: unknown
+): boolean => {
+  if (filterValue === undefined || filterValue === null || filterValue === "") return true;
+  const filename = (row.original.filename || "").toLowerCase();
+
+  if (typeof filterValue === "string") {
+    return filename.includes(filterValue.toLowerCase().trim());
+  }
+
+  if (typeof filterValue === "object" && filterValue !== null) {
+    const fVal = filterValue as { text?: string; fileTypes?: string[] };
+    if (fVal.text && fVal.text.trim()) {
+      if (!filename.includes(fVal.text.trim().toLowerCase())) return false;
+    }
+    if (fVal.fileTypes && fVal.fileTypes.length > 0) {
+      return matchesFileType(filename, fVal.fileTypes);
+    }
+  }
+
+  return true;
+};
+
 export const itemMatchesFilter = (
   item: doclib_AllProducts,
   colId: string,
@@ -119,7 +165,21 @@ export const itemMatchesFilter = (
   }
 
   if (colId === "filename") {
-    return (item.filename || "").toLowerCase().includes(String(filterValue).toLowerCase());
+    const fname = (item.filename || "").toLowerCase();
+    if (typeof filterValue === "string") {
+      return fname.includes(filterValue.toLowerCase().trim());
+    }
+    if (typeof filterValue === "object" && filterValue !== null) {
+      const fVal = filterValue as { text?: string; fileTypes?: string[] };
+      if (fVal.text && fVal.text.trim()) {
+        if (!fname.includes(fVal.text.trim().toLowerCase())) return false;
+      }
+      if (fVal.fileTypes && fVal.fileTypes.length > 0) {
+        return matchesFileType(fname, fVal.fileTypes);
+      }
+      return true;
+    }
+    return true;
   }
   if (colId === "Alerts") {
     return (item.Alerts || "").toLowerCase().includes(String(filterValue).toLowerCase());
