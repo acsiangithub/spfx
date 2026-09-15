@@ -683,6 +683,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const [clientSearchText, setClientSearchText] = React.useState("");
   const [additionalKeywords, setAdditionalKeywords] = React.useState<string[]>([]);
   const [keywordInput, setKeywordInput] = React.useState<string>("");
+  const [selectedDateField, setSelectedDateField] = React.useState<string>("DocumentDate");
   const [dateFrom, setDateFrom] = React.useState<Dayjs | null>(null);
   const [dateTo, setDateTo] = React.useState<Dayjs | null>(null);
 
@@ -774,6 +775,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     clientSearchText: string;
     selectedDocumentTypes: string[];
     selectedSubDocumentTypes: string[];
+    selectedDateField: string;
     dateFrom: Dayjs | null;
     dateTo: Dayjs | null;
     additionalKeywords: string[];
@@ -1203,19 +1205,27 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       );
     }
 
+    const datePropertyMap: Record<string, string> = {
+      DocumentDate: "DocumentDateOWSTDATE",
+      ExpiryDate: "ExpiryDateOWSTDATE",
+      Created: "Created",
+      Modified: "LastModifiedTime",// "ModifiedOWSDate",
+    };
+    const targetDateProp = datePropertyMap[selectedDateField] || "DocumentDateOWSTDATE";
+
     if (dateFrom && dateTo) {
       clauses.push(
-        `DocumentDateOWSTDATE:${dateFrom
+        `${targetDateProp}:${dateFrom
           .startOf("day")
           .toISOString()}..${dateTo.endOf("day").toISOString()}`
       );
     } else if (dateFrom) {
       clauses.push(
-        `DocumentDateOWSTDATE>=${dateFrom.startOf("day").toISOString()}`
+        `${targetDateProp}>=${dateFrom.startOf("day").toISOString()}`
       );
     } else if (dateTo) {
       clauses.push(
-        `DocumentDateOWSTDATE<=${dateTo.endOf("day").toISOString()}`
+        `${targetDateProp}<=${dateTo.endOf("day").toISOString()}`
       );
     }
 
@@ -1439,12 +1449,22 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       }
     }
 
-    // 5. Document Date
-    const docDateColFilter = columnFilters.find((f) => f.id === "DocumentDate")?.value;
-    if (docDateColFilter) {
-      const parsedDate = dayjs(docDateColFilter as string | Date);
-      if (parsedDate.isValid()) {
-        setDateFrom(parsedDate);
+    // 5. Date filters (Document Date, Expiry Date, Created, Modified)
+    const dateColCandidates = [
+      { id: "DocumentDate", key: "DocumentDate" },
+      { id: "ExpiryDate", key: "ExpiryDate" },
+      { id: "Created", key: "Created" },
+      { id: "Modified", key: "Modified" },
+    ];
+    for (const item of dateColCandidates) {
+      const dateColFilter = columnFilters.find((f) => f.id === item.id)?.value;
+      if (dateColFilter) {
+        const parsedDate = dayjs(dateColFilter as string | Date);
+        if (parsedDate.isValid()) {
+          setSelectedDateField(item.key);
+          setDateFrom(parsedDate);
+          break;
+        }
       }
     }
 
@@ -1516,6 +1536,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         clientSearchText,
         selectedDocumentTypes,
         selectedSubDocumentTypes,
+        selectedDateField,
         dateFrom,
         dateTo,
         additionalKeywords,
@@ -1535,6 +1556,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         setClientSearchText(prev.clientSearchText);
         setSelectedDocumentTypes(prev.selectedDocumentTypes);
         setSelectedSubDocumentTypes(prev.selectedSubDocumentTypes);
+        setSelectedDateField(prev.selectedDateField || "DocumentDate");
         setDateFrom(prev.dateFrom);
         setDateTo(prev.dateTo);
         setAdditionalKeywords(prev.additionalKeywords);
@@ -1619,6 +1641,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     setClientSearchText("");
     setSelectedDocumentTypes([]);
     setSelectedSubDocumentTypes([]);
+    setSelectedDateField("DocumentDate");
     setDateFrom(null);
     setDateTo(null);
     setAdditionalKeywords([]);
@@ -3872,13 +3895,28 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                 className="filter-row-grid"
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
+                  gridTemplateColumns: "1.2fr 1fr 1fr",
                   gap: "12px",
                   marginBottom: "12px",
                 }}
               >
+                <FormControl fullWidth size="small">
+                  <InputLabel id="date-field-filter-label">Date Filter</InputLabel>
+                  <Select
+                    labelId="date-field-filter-label"
+                    value={selectedDateField}
+                    onChange={(event) => setSelectedDateField(event.target.value)}
+                    input={<OutlinedInput label="Date Filter" />}
+                    size="small"
+                  >
+                    <MenuItem value="DocumentDate">Document Date</MenuItem>
+                    <MenuItem value="ExpiryDate">Expiry Date</MenuItem>
+                    <MenuItem value="Created">Created Date</MenuItem>
+                    <MenuItem value="Modified">Modified Date</MenuItem>
+                  </Select>
+                </FormControl>
                 <DatePicker
-                  label="Document Date From"
+                  label="Date From"
                   format="DD/MM/YYYY"
                   value={dateFrom}
                   onChange={(newValue) => setDateFrom(newValue)}
@@ -3888,7 +3926,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                   }}
                 />
                 <DatePicker
-                  label="Document Date To"
+                  label="Date To"
                   format="DD/MM/YYYY"
                   value={dateTo}
                   onChange={(newValue) => setDateTo(newValue)}

@@ -393,6 +393,11 @@ export const searchRecords = async (
         "ListItemID",
         "Path",
         "DocumentDateOWSTDATE",
+        "ExpiryDateOWSTDATE",
+        "CreatedOWSDATE",
+        "Created",
+        //"ModifiedOWSDate",
+        "LastModifiedTime",
         "BusinessLineOWSCHCM",
         "CountryOWSCHCM",
         //"CountryOWSCHM",
@@ -403,9 +408,6 @@ export const searchRecords = async (
         "PIMProductCodeOWSTEXT",
         "ConfidentialityOWSCHCS",
         "AlertsOWSMTXT",
-         
-
-        
       ],
     });
 
@@ -430,13 +432,19 @@ export const searchRecords = async (
     });
 
     if (chunkIds.length > 0) {
-      const chunkPromises: Promise<any[]>[] = [];
-      for (let i = 0; i < chunkIds.length; i += 100) {
-        const slice = chunkIds.slice(i, i + 100);
-        const filter = slice.map((id) => `Id eq ${id}`).join(" or ");
+      const CHUNK_SIZE = 40;
+      const CONCURRENCY_LIMIT = 8;
+      const chunkSlices: number[][] = [];
+      for (let i = 0; i < chunkIds.length; i += CHUNK_SIZE) {
+        chunkSlices.push(chunkIds.slice(i, i + CHUNK_SIZE));
+      }
 
-        chunkPromises.push(
-          sp.web.lists
+      const chunkItems: any[] = [];
+      for (let i = 0; i < chunkSlices.length; i += CONCURRENCY_LIMIT) {
+        const batchSlices = chunkSlices.slice(i, i + CONCURRENCY_LIMIT);
+        const batchPromises = batchSlices.map((slice) => {
+          const filter = slice.map((id) => `Id eq ${id}`).join(" or ");
+          return sp.web.lists
             .getByTitle("Clients & Products")
             .items.select(
               "Id",
@@ -471,15 +479,15 @@ export const searchRecords = async (
               "Next_x0020_Review_x0020_Date"
             )
             .expand("PIMProductCode", "Editor", "Author", "ReviewActionTakenBy")
-            .filter(filter)()
-        );
-      }
+            .filter(filter)
+            .top(CHUNK_SIZE)();
+        });
 
-      const chunkResults = await Promise.all(chunkPromises);
-      const chunkItems: any[] = [];
-      chunkResults.forEach((items) => {
-        chunkItems.push(...items);
-      });
+        const batchResults = await Promise.all(batchPromises);
+        batchResults.forEach((items) => {
+          chunkItems.push(...items);
+        });
+      }
 
       const itemMap = new Map<number, any>();
       chunkItems.forEach((item) => itemMap.set(item.Id, item));
