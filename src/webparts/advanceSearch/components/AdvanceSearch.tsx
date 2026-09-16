@@ -4178,10 +4178,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         {/* In-page Modal Dialog for OOB Edit Form */}
         <Dialog
           open={Boolean(editModalUrl)}
-          onClose={() => {
-            setEditModalUrl(null);
-            void handleRefresh();
-          }}
+          onClose={() => setEditModalUrl(null)}
           fullWidth
           maxWidth="md"
           PaperProps={{
@@ -4208,10 +4205,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             </Typography>
             <IconButton
               size="small"
-              onClick={() => {
-                setEditModalUrl(null);
-                void handleRefresh();
-              }}
+              onClick={() => setEditModalUrl(null)}
             >
               <CloseIcon fontSize="small" />
             </IconButton>
