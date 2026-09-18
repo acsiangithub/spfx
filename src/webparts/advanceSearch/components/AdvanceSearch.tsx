@@ -1367,20 +1367,24 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         .filter((v) => v && v.toLowerCase() !== "(empty)" && v !== "-");
 
       if (vals.length > 0) {
-        setSelectedClients((prev) => {
-          const existingTitles = new Set(prev.map((c) => (c.Title || "").toLowerCase()));
-          const newItems: IClientLookupItem[] = [];
-          vals.forEach((v) => {
-            if (!existingTitles.has(v.toLowerCase())) {
-              const fromLoaded = clients.find((c) => (c.Title || "").toLowerCase() === v.toLowerCase());
-              newItems.push(fromLoaded || { ID: -Math.floor(Math.random() * 100000), Title: v });
-              existingTitles.add(v.toLowerCase());
-            }
-          });
-          return newItems.length > 0 ? [...prev, ...newItems] : prev;
+        const seenTitles = new Set<string>();
+        const newItems: IClientLookupItem[] = [];
+        vals.forEach((v) => {
+          const vLower = v.toLowerCase();
+          if (!seenTitles.has(vLower)) {
+            seenTitles.add(vLower);
+            const fromLoaded = clients.find((c) => (c.Title || "").toLowerCase() === vLower);
+            newItems.push(fromLoaded || { ID: -Math.floor(Math.random() * 100000), Title: v });
+          }
         });
+        setSelectedClients(newItems);
+      } else {
+        setSelectedClients([]);
       }
+    } else {
+      setSelectedClients([]);
     }
+    setClientSearchText("");
 
     // 2. Products
     const productColFilter = activeColumnFilters.find((f) => f.id === "PIMProductSearchText")?.value;
@@ -1409,62 +1413,63 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
         products.forEach(registerProduct);
 
-        setSelectedProducts((prev) => {
-          const existingKeys = new Set(
-            prev.map((p) => `${p.Title || ""} ${p.PIMProductName || ""}`.trim().toLowerCase())
-          );
-          const newItems: IProductLookupItem[] = [];
+        const newItems: IProductLookupItem[] = [];
+        const seenKeys = new Set<string>();
 
-          vals.forEach((v) => {
-            const vLower = v.toLowerCase();
+        vals.forEach((v) => {
+          const vLower = v.toLowerCase();
 
-            const matched = allKnownProducts.find((p) => {
-              const fullKey = `${p.Title || ""} ${p.PIMProductName || ""}`.trim().toLowerCase();
-              return (
-                fullKey === vLower ||
-                (p.Title && p.Title.toLowerCase() === vLower) ||
-                (p.PIMProductName && p.PIMProductName.toLowerCase() === vLower)
-              );
-            });
-
-            if (matched) {
-              const matchedKey = `${matched.Title || ""} ${matched.PIMProductName || ""}`.trim().toLowerCase();
-              if (!existingKeys.has(matchedKey)) {
-                newItems.push(matched);
-                existingKeys.add(matchedKey);
-              }
-            } else {
-              let parsedTitle = v;
-              let parsedName = "";
-
-              if (v.includes("|")) {
-                const parts = v.split("|").map((p) => p.trim());
-                parsedTitle = parts[0] || "";
-                parsedName = parts.slice(1).join(" ");
-              } else {
-                const spaceIdx = v.indexOf(" ");
-                if (spaceIdx > 0) {
-                  parsedTitle = v.substring(0, spaceIdx).trim();
-                  parsedName = v.substring(spaceIdx + 1).trim();
-                }
-              }
-
-              const itemKey = `${parsedTitle} ${parsedName}`.trim().toLowerCase();
-              if (!existingKeys.has(itemKey)) {
-                newItems.push({
-                  ID: -Math.floor(Math.random() * 100000),
-                  Title: parsedTitle,
-                  PIMProductName: parsedName,
-                });
-                existingKeys.add(itemKey);
-              }
-            }
+          const matched = allKnownProducts.find((p) => {
+            const fullKey = `${p.Title || ""} ${p.PIMProductName || ""}`.trim().toLowerCase();
+            return (
+              fullKey === vLower ||
+              (p.Title && p.Title.toLowerCase() === vLower) ||
+              (p.PIMProductName && p.PIMProductName.toLowerCase() === vLower)
+            );
           });
 
-          return newItems.length > 0 ? [...prev, ...newItems] : prev;
+          if (matched) {
+            const matchedKey = `${matched.Title || ""} ${matched.PIMProductName || ""}`.trim().toLowerCase();
+            if (!seenKeys.has(matchedKey)) {
+              newItems.push(matched);
+              seenKeys.add(matchedKey);
+            }
+          } else {
+            let parsedTitle = v;
+            let parsedName = "";
+
+            if (v.includes("|")) {
+              const parts = v.split("|").map((p) => p.trim());
+              parsedTitle = parts[0] || "";
+              parsedName = parts.slice(1).join(" ");
+            } else {
+              const spaceIdx = v.indexOf(" ");
+              if (spaceIdx > 0) {
+                parsedTitle = v.substring(0, spaceIdx).trim();
+                parsedName = v.substring(spaceIdx + 1).trim();
+              }
+            }
+
+            const itemKey = `${parsedTitle} ${parsedName}`.trim().toLowerCase();
+            if (!seenKeys.has(itemKey)) {
+              newItems.push({
+                ID: -Math.floor(Math.random() * 100000),
+                Title: parsedTitle,
+                PIMProductName: parsedName,
+              });
+              seenKeys.add(itemKey);
+            }
+          }
         });
+
+        setSelectedProducts(newItems);
+      } else {
+        setSelectedProducts([]);
       }
+    } else {
+      setSelectedProducts([]);
     }
+    setProductSearchText("");
 
     // 3. Document Types
     const docTypeColFilter = activeColumnFilters.find((f) => f.id === "DocumentTypeSearchText")?.value;
@@ -1473,9 +1478,9 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         .map((v) => String(v).trim())
         .filter((v) => v && v.toLowerCase() !== "(empty)" && v !== "-");
 
-      if (vals.length > 0) {
-        setSelectedDocumentTypes((prev) => Array.from(new Set([...prev, ...vals])));
-      }
+      setSelectedDocumentTypes(Array.from(new Set(vals)));
+    } else {
+      setSelectedDocumentTypes([]);
     }
 
     // 4. Sub Document Types
@@ -1485,9 +1490,9 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         .map((v) => String(v).trim())
         .filter((v) => v && v.toLowerCase() !== "(empty)" && v !== "-");
 
-      if (vals.length > 0) {
-        setSelectedSubDocumentTypes((prev) => Array.from(new Set([...prev, ...vals])));
-      }
+      setSelectedSubDocumentTypes(Array.from(new Set(vals)));
+    } else {
+      setSelectedSubDocumentTypes([]);
     }
 
     // 5. Date filters (Document Date, Expiry Date, Next Review Date, Created, Modified)
@@ -1498,21 +1503,28 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       { id: "Created", key: "Created" },
       { id: "Modified", key: "Modified" },
     ];
+    const newDateFilters: IDateFiltersState = {
+      DocumentDate: { from: null, to: null },
+      ExpiryDate: { from: null, to: null },
+      NextReviewDate: { from: null, to: null },
+      Created: { from: null, to: null },
+      Modified: { from: null, to: null },
+    };
     dateColCandidates.forEach((item) => {
       const dateColFilter = activeColumnFilters.find((f) => f.id === item.id)?.value;
       if (dateColFilter) {
         const parsedDate = dayjs(dateColFilter as string | Date);
         if (parsedDate.isValid()) {
-          setDateFilters((prev) => ({
-            ...prev,
-            [item.key]: {
-              ...prev[item.key],
-              from: parsedDate,
-            },
-          }));
+          newDateFilters[item.key] = {
+            from: parsedDate,
+            to: null,
+          };
         }
       }
     });
+    setDateFilters(newDateFilters);
+
+    let hasMoreFilterActive = false;
 
     // 6. Business Line
     const blFilter = activeColumnFilters.find((f) => f.id === "BusinessLine")?.value;
@@ -1520,10 +1532,11 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       const vals = (Array.isArray(blFilter) ? blFilter : [blFilter])
         .map((v) => String(v).trim())
         .filter((v) => v && v.toLowerCase() !== "(empty)" && v !== "-");
-      if (vals.length > 0) {
-        setSelectedBusinessLines((prev) => Array.from(new Set([...prev, ...vals])));
-        setShowMoreFilters(true);
-      }
+      const uniqueVals = Array.from(new Set(vals));
+      setSelectedBusinessLines(uniqueVals);
+      if (uniqueVals.length > 0) hasMoreFilterActive = true;
+    } else {
+      setSelectedBusinessLines([]);
     }
 
     // 7. Country Sold To
@@ -1532,10 +1545,11 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       const vals = (Array.isArray(countryFilter) ? countryFilter : [countryFilter])
         .map((v) => String(v).trim())
         .filter((v) => v && v.toLowerCase() !== "(empty)" && v !== "-");
-      if (vals.length > 0) {
-        setSelectedCountries((prev) => Array.from(new Set([...prev, ...vals])));
-        setShowMoreFilters(true);
-      }
+      const uniqueVals = Array.from(new Set(vals));
+      setSelectedCountries(uniqueVals);
+      if (uniqueVals.length > 0) hasMoreFilterActive = true;
+    } else {
+      setSelectedCountries([]);
     }
 
     // 8. Confidentiality
@@ -1544,10 +1558,15 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       const vals = (Array.isArray(confFilter) ? confFilter : [confFilter])
         .map((v) => String(v).trim())
         .filter((v) => v && v.toLowerCase() !== "(empty)" && v !== "-");
-      if (vals.length > 0) {
-        setSelectedConfidentialities((prev) => Array.from(new Set([...prev, ...vals])));
-        setShowMoreFilters(true);
-      }
+      const uniqueVals = Array.from(new Set(vals));
+      setSelectedConfidentialities(uniqueVals);
+      if (uniqueVals.length > 0) hasMoreFilterActive = true;
+    } else {
+      setSelectedConfidentialities([]);
+    }
+
+    if (hasMoreFilterActive) {
+      setShowMoreFilters(true);
     }
 
     // 9. Keyword / File Name
@@ -1559,8 +1578,13 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           : (filenameFilter as { text?: string })?.text;
       if (textVal && typeof textVal === "string" && textVal.trim()) {
         setKeywordInput(textVal.trim());
+      } else {
+        setKeywordInput("");
       }
+    } else {
+      setKeywordInput("");
     }
+    setAdditionalKeywords([]);
   };
 
   const handleOpenSearchDialog = (): void => {
@@ -3763,7 +3787,13 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                     ? `${option.Title ?? ""} ${option.PIMProductName ?? ""}`
                     : ""
                 }
-                isOptionEqualToValue={(option, value) => option.ID === value.ID}
+                isOptionEqualToValue={(option, value) =>
+                  option.ID === value.ID ||
+                  (Boolean(option.Title) &&
+                    Boolean(value.Title) &&
+                    `${option.Title} ${option.PIMProductName ?? ""}`.trim().toLowerCase() ===
+                      `${value.Title} ${value.PIMProductName ?? ""}`.trim().toLowerCase())
+                }
                 onInputChange={handleProductInputChange}
                 onChange={handleProductSelectionChange}
                 renderOption={(props, option) => (
@@ -3850,7 +3880,12 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                 getOptionLabel={(option: IClientLookupItem) =>
                   option ? option.Title : ""
                 }
-                isOptionEqualToValue={(option, value) => option.ID === value.ID}
+                isOptionEqualToValue={(option, value) =>
+                  option.ID === value.ID ||
+                  (Boolean(option.Title) &&
+                    Boolean(value.Title) &&
+                    option.Title.trim().toLowerCase() === value.Title.trim().toLowerCase())
+                }
                 onInputChange={handleClientInputChange}
                 onChange={handleClientSelectionChange}
                 renderInput={(params) => (
