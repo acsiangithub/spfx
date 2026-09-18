@@ -1630,6 +1630,11 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         setSelectedBusinessLines(prev.selectedBusinessLines);
         setSelectedCountries(prev.selectedCountries);
         setSelectedConfidentialities(prev.selectedConfidentialities);
+        setShowMoreFilters(
+          prev.selectedBusinessLines.length > 0 ||
+          prev.selectedCountries.length > 0 ||
+          prev.selectedConfidentialities.length > 0
+        );
       }
     }
   };
@@ -1714,6 +1719,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     setSelectedBusinessLines([]);
     setSelectedCountries([]);
     setSelectedConfidentialities([]);
+    setShowMoreFilters(false);
     setApplyColumnFilters(false);
     savedDialogValuesRef.current = null;
   };
@@ -3978,6 +3984,10 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
               />
             </div>
 
+            <Box sx={{ mb: 1.5, width: "100%" }}>
+              {renderKeywordInput()}
+            </Box>
+
             <LocalizationProvider dateAdapter={AdapterDayjs}>
               {(() => {
                 const activeDateFiltersCount = (
@@ -4226,155 +4236,169 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
               })()}
             </LocalizationProvider>
 
-            {!showMoreFilters ? (
-              <div
-                className="filter-row-grid"
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
-                  gap: "12px",
-                  marginBottom: "12px",
-                  alignItems: "center",
-                }}
-              >
-                {renderKeywordInput()}
-                <Button
-                  variant="outlined"
-                  fullWidth
-                  size="small"
-                  onClick={() => setShowMoreFilters(true)}
+            {(() => {
+              const activeMoreFiltersCount =
+                (selectedBusinessLines.length > 0 ? 1 : 0) +
+                (selectedCountries.length > 0 ? 1 : 0) +
+                (selectedConfidentialities.length > 0 ? 1 : 0);
+
+              return (
+                <Accordion
+                  disableGutters
+                  elevation={0}
+                  expanded={showMoreFilters}
+                  onChange={(_e, expanded) => setShowMoreFilters(expanded)}
                   sx={{
-                    height: "40px",
-                    textTransform: "none",
-                    fontWeight: 600,
-                    fontSize: "13px",
+                    mb: 1.5,
+                    border: "1px solid #e0e0e0",
+                    borderRadius: "6px !important",
+                    bgcolor: "#fafafa",
+                    "&:before": { display: "none" },
                   }}
                 >
-                  More Filters
-                </Button>
-              </div>
-            ) : (
-              <>
-                <div
-                  style={{
-                    marginBottom: "12px",
-                    width: "100%",
-                  }}
-                >
-                  {renderKeywordInput()}
-                </div>
-
-                <div
-                  className="filter-row-grid"
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
-                    gap: "12px",
-                    marginBottom: "12px",
-                    alignItems: "center",
-                  }}
-                >
-                  <FormControl fullWidth size="small">
-                    <InputLabel id="business-line-filter-label">Business Line</InputLabel>
-                    <Select
-                      labelId="business-line-filter-label"
-                      multiple
-                      value={selectedBusinessLines}
-                      onChange={(event) => {
-                        const val = event.target.value;
-                        setSelectedBusinessLines(
-                          typeof val === "string" ? val.split(",") : val
-                        );
-                      }}
-                      input={<OutlinedInput label="Business Line" />}
-                      renderValue={(selected) => (selected as string[]).join(", ")}
-                      size="small"
-                    >
-                      {availableBusinessLines.map((opt) => (
-                        <MenuItem key={opt} value={opt}>
-                          <Checkbox
-                            size="small"
-                            checked={selectedBusinessLines.indexOf(opt) > -1}
-                          />
-                          <ListItemText primary={opt} />
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-
-                  <FormControl fullWidth size="small">
-                    <InputLabel id="country-sold-to-filter-label">Country Sold To</InputLabel>
-                    <Select
-                      labelId="country-sold-to-filter-label"
-                      multiple
-                      value={selectedCountries}
-                      onChange={(event) => {
-                        const val = event.target.value;
-                        setSelectedCountries(
-                          typeof val === "string" ? val.split(",") : val
-                        );
-                      }}
-                      input={<OutlinedInput label="Country Sold To" />}
-                      renderValue={(selected) => (selected as string[]).join(", ")}
-                      size="small"
-                    >
-                      {availableCountries.map((opt) => (
-                        <MenuItem key={opt} value={opt}>
-                          <Checkbox
-                            size="small"
-                            checked={selectedCountries.indexOf(opt) > -1}
-                          />
-                          <ListItemText primary={opt} />
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-
-                  <FormControl fullWidth size="small">
-                    <InputLabel id="confidentiality-filter-label">Confidentiality</InputLabel>
-                    <Select
-                      labelId="confidentiality-filter-label"
-                      multiple
-                      value={selectedConfidentialities}
-                      onChange={(event) => {
-                        const val = event.target.value;
-                        setSelectedConfidentialities(
-                          typeof val === "string" ? val.split(",") : val
-                        );
-                      }}
-                      input={<OutlinedInput label="Confidentiality" />}
-                      renderValue={(selected) => (selected as string[]).join(", ")}
-                      size="small"
-                    >
-                      {availableConfidentialities.map((opt) => (
-                        <MenuItem key={opt} value={opt}>
-                          <Checkbox
-                            size="small"
-                            checked={selectedConfidentialities.indexOf(opt) > -1}
-                          />
-                          <ListItemText primary={opt} />
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-
-                  <Button
-                    variant="outlined"
-                    fullWidth
-                    size="small"
-                    onClick={() => setShowMoreFilters(false)}
+                  <AccordionSummary
+                    expandIcon={<ExpandMoreIcon sx={{ fontSize: 20 }} />}
                     sx={{
-                      height: "40px",
-                      textTransform: "none",
-                      fontWeight: 600,
-                      fontSize: "13px",
+                      minHeight: "36px",
+                      height: "36px",
+                      px: 1.5,
+                      "& .MuiAccordionSummary-content": {
+                        my: 0,
+                        alignItems: "center",
+                        gap: 1,
+                      },
                     }}
                   >
-                    Less Filters
-                  </Button>
-                </div>
-              </>
-            )}
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        fontWeight: 700,
+                        color: "text.secondary",
+                        textTransform: "uppercase",
+                        fontSize: "11px",
+                        letterSpacing: "0.5px",
+                      }}
+                    >
+                      More Filters
+                    </Typography>
+                    {activeMoreFiltersCount > 0 && (
+                      <Chip
+                        size="small"
+                        label={`${activeMoreFiltersCount} active`}
+                        sx={{
+                          height: "18px",
+                          fontSize: "10px",
+                          fontWeight: 600,
+                          bgcolor: "#e3f2fd",
+                          color: "#1976d2",
+                        }}
+                      />
+                    )}
+                  </AccordionSummary>
+                  <AccordionDetails
+                    sx={{
+                      p: 1.5,
+                      pt: 1,
+                      borderTop: "1px solid #eee",
+                    }}
+                  >
+                    <div
+                      className="filter-row-grid"
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(3, minmax(180px, 1fr))",
+                        gap: "12px",
+                        alignItems: "center",
+                      }}
+                    >
+                      <FormControl fullWidth size="small">
+                        <InputLabel id="business-line-filter-label">Business Line</InputLabel>
+                        <Select
+                          labelId="business-line-filter-label"
+                          multiple
+                          value={selectedBusinessLines}
+                          onChange={(event) => {
+                            const val = event.target.value;
+                            setSelectedBusinessLines(
+                              typeof val === "string" ? val.split(",") : val
+                            );
+                          }}
+                          input={<OutlinedInput label="Business Line" />}
+                          renderValue={(selected) => (selected as string[]).join(", ")}
+                          size="small"
+                        >
+                          {availableBusinessLines.map((opt) => (
+                            <MenuItem key={opt} value={opt}>
+                              <Checkbox
+                                size="small"
+                                checked={selectedBusinessLines.indexOf(opt) > -1}
+                              />
+                              <ListItemText primary={opt} />
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+
+                      <FormControl fullWidth size="small">
+                        <InputLabel id="country-sold-to-filter-label">Country Sold To</InputLabel>
+                        <Select
+                          labelId="country-sold-to-filter-label"
+                          multiple
+                          value={selectedCountries}
+                          onChange={(event) => {
+                            const val = event.target.value;
+                            setSelectedCountries(
+                              typeof val === "string" ? val.split(",") : val
+                            );
+                          }}
+                          input={<OutlinedInput label="Country Sold To" />}
+                          renderValue={(selected) => (selected as string[]).join(", ")}
+                          size="small"
+                        >
+                          {availableCountries.map((opt) => (
+                            <MenuItem key={opt} value={opt}>
+                              <Checkbox
+                                size="small"
+                                checked={selectedCountries.indexOf(opt) > -1}
+                              />
+                              <ListItemText primary={opt} />
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+
+                      <FormControl fullWidth size="small">
+                        <InputLabel id="confidentiality-filter-label">Confidentiality</InputLabel>
+                        <Select
+                          labelId="confidentiality-filter-label"
+                          multiple
+                          value={selectedConfidentialities}
+                          onChange={(event) => {
+                            const val = event.target.value;
+                            setSelectedConfidentialities(
+                              typeof val === "string" ? val.split(",") : val
+                            );
+                          }}
+                          input={<OutlinedInput label="Confidentiality" />}
+                          renderValue={(selected) => (selected as string[]).join(", ")}
+                          size="small"
+                        >
+                          {availableConfidentialities.map((opt) => (
+                            <MenuItem key={opt} value={opt}>
+                              <Checkbox
+                                size="small"
+                                checked={selectedConfidentialities.indexOf(opt) > -1}
+                              />
+                              <ListItemText primary={opt} />
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </div>
+                  </AccordionDetails>
+                </Accordion>
+              );
+            })()}
           </DialogContent>
           <DialogActions sx={{ px: 2.5, pb: 2, pt: 1, borderTop: "1px solid #e0e0e0" }}>
             <Button
