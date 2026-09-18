@@ -11,6 +11,40 @@ export const isValueEmpty = (value: unknown): boolean => {
   return str === "";
 };
 
+export const isFilterActive = (filterValue: unknown): boolean => {
+  if (filterValue === undefined || filterValue === null) return false;
+  if (typeof filterValue === "string") {
+    return filterValue.trim() !== "";
+  }
+  if (typeof filterValue === "number" || typeof filterValue === "boolean") {
+    return true;
+  }
+  if (Array.isArray(filterValue)) {
+    if (filterValue.length === 0) return false;
+    return filterValue.some((v) => isFilterActive(v));
+  }
+  if (typeof filterValue === "object") {
+    if (filterValue instanceof Date) {
+      return !isNaN(filterValue.getTime());
+    }
+    const anyObj = filterValue as Record<string, unknown>;
+    if (typeof (anyObj as { isValid?: () => boolean }).isValid === "function") {
+      return Boolean((anyObj as { isValid: () => boolean }).isValid());
+    }
+    if ("text" in anyObj || "fileTypes" in anyObj) {
+      const textVal = anyObj.text;
+      const typesVal = anyObj.fileTypes;
+      const hasText = typeof textVal === "string" && textVal.trim() !== "";
+      const hasTypes = Array.isArray(typesVal) && typesVal.length > 0;
+      return hasText || hasTypes;
+    }
+    const keys = Object.keys(anyObj);
+    if (keys.length === 0) return false;
+    return keys.some((k) => isFilterActive(anyObj[k]));
+  }
+  return false;
+};
+
 export const multiSelectFilterFn = (
   row: { getValue: (columnId: string) => unknown },
   columnId: string,
@@ -54,6 +88,7 @@ export const multiSelectFilterFn = (
     return false;
   });
 };
+(multiSelectFilterFn as { autoRemove?: (val: unknown) => boolean }).autoRemove = (val: unknown) => !isFilterActive(val);
 
 export const documentDateFilter = (
   row: { getValue: (columnId: string) => unknown },
@@ -70,6 +105,7 @@ export const documentDateFilter = (
 
   return rowDate.isSame(filterDate, "day") || rowDate.isAfter(filterDate, "day");
 };
+(documentDateFilter as { autoRemove?: (val: unknown) => boolean }).autoRemove = (val: unknown) => !isFilterActive(val);
 
 export const exactDateFilter = (
   row: { getValue: (columnId: string) => unknown },
@@ -86,6 +122,7 @@ export const exactDateFilter = (
 
   return rowDate.isSame(filterDate, "day");
 };
+(exactDateFilter as { autoRemove?: (val: unknown) => boolean }).autoRemove = (val: unknown) => !isFilterActive(val);
 
 export const isPersonMe = (
   email: string | undefined,
@@ -148,6 +185,7 @@ export const filenameFilterFn = (
 
   return true;
 };
+(filenameFilterFn as { autoRemove?: (val: unknown) => boolean }).autoRemove = (val: unknown) => !isFilterActive(val);
 
 export const itemMatchesFilter = (
   item: doclib_AllProducts,

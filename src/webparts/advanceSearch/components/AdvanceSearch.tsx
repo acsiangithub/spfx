@@ -46,6 +46,10 @@ import OutlinedInput from "@mui/material/OutlinedInput";
 import Divider from "@mui/material/Divider";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
+import Accordion from "@mui/material/Accordion";
+import AccordionSummary from "@mui/material/AccordionSummary";
+import AccordionDetails from "@mui/material/AccordionDetails";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import Link from "@mui/material/Link";
 import CloseIcon from "@mui/icons-material/Close";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -80,6 +84,7 @@ import {
   isPersonMe,
   itemMatchesFilter,
   filenameFilterFn,
+  isFilterActive,
 } from "../utils/filterHelpers";
 import { compactTheme } from "../theme/compactTheme";
 import {
@@ -660,6 +665,27 @@ const BUILT_IN_VIEWS: ITableViewPreset[] = [
   },
 ];
 
+export interface IDateRange {
+  from: Dayjs | null;
+  to: Dayjs | null;
+}
+
+export interface IDateFiltersState {
+  DocumentDate: IDateRange;
+  ExpiryDate: IDateRange;
+  NextReviewDate: IDateRange;
+  Created: IDateRange;
+  Modified: IDateRange;
+}
+
+const INITIAL_DATE_FILTERS: IDateFiltersState = {
+  DocumentDate: { from: null, to: null },
+  ExpiryDate: { from: null, to: null },
+  NextReviewDate: { from: null, to: null },
+  Created: { from: null, to: null },
+  Modified: { from: null, to: null },
+};
+
 const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const [items_AllProducts, setItems_AllProducts] =
     React.useState<doclib_AllProducts[]>([]);
@@ -683,9 +709,20 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const [clientSearchText, setClientSearchText] = React.useState("");
   const [additionalKeywords, setAdditionalKeywords] = React.useState<string[]>([]);
   const [keywordInput, setKeywordInput] = React.useState<string>("");
-  const [selectedDateField, setSelectedDateField] = React.useState<string>("DocumentDate");
-  const [dateFrom, setDateFrom] = React.useState<Dayjs | null>(null);
-  const [dateTo, setDateTo] = React.useState<Dayjs | null>(null);
+  const [dateFilters, setDateFilters] = React.useState<IDateFiltersState>(INITIAL_DATE_FILTERS);
+
+  const handleDateChange = React.useCallback(
+    (field: keyof IDateFiltersState, bound: "from" | "to", value: Dayjs | null) => {
+      setDateFilters((prev) => ({
+        ...prev,
+        [field]: {
+          ...prev[field],
+          [bound]: value,
+        },
+      }));
+    },
+    []
+  );
 
   const [showMoreFilters, setShowMoreFilters] = React.useState<boolean>(false);
   const [selectedBusinessLines, setSelectedBusinessLines] = React.useState<string[]>([]);
@@ -767,6 +804,9 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   );
 
   const [columnFilters, setColumnFilters] = React.useState<MRT_ColumnFiltersState>([]);
+  const activeColumnFilters = React.useMemo(() => {
+    return columnFilters.filter((f) => isFilterActive(f.value));
+  }, [columnFilters]);
   const [applyColumnFilters, setApplyColumnFilters] = React.useState<boolean>(false);
   const savedDialogValuesRef = React.useRef<{
     selectedProducts: IProductLookupItem[];
@@ -775,9 +815,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     clientSearchText: string;
     selectedDocumentTypes: string[];
     selectedSubDocumentTypes: string[];
-    selectedDateField: string;
-    dateFrom: Dayjs | null;
-    dateTo: Dayjs | null;
+    dateFilters: IDateFiltersState;
     additionalKeywords: string[];
     keywordInput: string;
     selectedBusinessLines: string[];
@@ -832,7 +870,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       setColumnOrder(view.columnOrder);
     }
     if (view.columnFilters !== undefined) {
-      setColumnFilters(view.columnFilters);
+      setColumnFilters(view.columnFilters.filter((f) => isFilterActive(f.value)));
     }
     if (view.columnPinning !== undefined) {
       setColumnPinning(view.columnPinning);
@@ -853,7 +891,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       sorting,
       columnVisibility,
       columnOrder,
-      columnFilters,
+      columnFilters: activeColumnFilters,
       columnPinning,
     };
 
@@ -1205,29 +1243,32 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       );
     }
 
-    const datePropertyMap: Record<string, string> = {
+    const datePropertyMap: Record<keyof IDateFiltersState, string> = {
       DocumentDate: "DocumentDateOWSTDATE",
       ExpiryDate: "ExpiryDateOWSTDATE",
+      NextReviewDate: "NextReviewDateOWSTDATE",
       Created: "Created",
-      Modified: "LastModifiedTime",// "ModifiedOWSDate",
+      Modified: "LastModifiedTime",
     };
-    const targetDateProp = datePropertyMap[selectedDateField] || "DocumentDateOWSTDATE";
 
-    if (dateFrom && dateTo) {
-      clauses.push(
-        `${targetDateProp}:${dateFrom
-          .startOf("day")
-          .toISOString()}..${dateTo.endOf("day").toISOString()}`
-      );
-    } else if (dateFrom) {
-      clauses.push(
-        `${targetDateProp}>=${dateFrom.startOf("day").toISOString()}`
-      );
-    } else if (dateTo) {
-      clauses.push(
-        `${targetDateProp}<=${dateTo.endOf("day").toISOString()}`
-      );
-    }
+    (Object.keys(dateFilters) as (keyof IDateFiltersState)[]).forEach((fieldKey) => {
+      const { from, to } = dateFilters[fieldKey];
+      const targetProp = datePropertyMap[fieldKey];
+
+      if (from && to) {
+        clauses.push(
+          `${targetProp}:${from.startOf("day").toISOString()}..${to.endOf("day").toISOString()}`
+        );
+      } else if (from) {
+        clauses.push(
+          `${targetProp}>=${from.startOf("day").toISOString()}`
+        );
+      } else if (to) {
+        clauses.push(
+          `${targetProp}<=${to.endOf("day").toISOString()}`
+        );
+      }
+    });
 
     return clauses.join(" AND ");
   };
@@ -1319,7 +1360,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
   const applyColumnFiltersToDialog = (): void => {
     // 1. Clients
-    const clientColFilter = columnFilters.find((f) => f.id === "ManufacturerSearchText")?.value;
+    const clientColFilter = activeColumnFilters.find((f) => f.id === "ManufacturerSearchText")?.value;
     if (clientColFilter) {
       const vals = (Array.isArray(clientColFilter) ? clientColFilter : [clientColFilter])
         .map((v) => String(v).trim())
@@ -1342,7 +1383,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     }
 
     // 2. Products
-    const productColFilter = columnFilters.find((f) => f.id === "PIMProductSearchText")?.value;
+    const productColFilter = activeColumnFilters.find((f) => f.id === "PIMProductSearchText")?.value;
     if (productColFilter) {
       const vals = (Array.isArray(productColFilter) ? productColFilter : [productColFilter])
         .map((v) => String(v).trim())
@@ -1426,7 +1467,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     }
 
     // 3. Document Types
-    const docTypeColFilter = columnFilters.find((f) => f.id === "DocumentTypeSearchText")?.value;
+    const docTypeColFilter = activeColumnFilters.find((f) => f.id === "DocumentTypeSearchText")?.value;
     if (docTypeColFilter) {
       const vals = (Array.isArray(docTypeColFilter) ? docTypeColFilter : [docTypeColFilter])
         .map((v) => String(v).trim())
@@ -1438,7 +1479,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     }
 
     // 4. Sub Document Types
-    const subDocTypeColFilter = columnFilters.find((f) => f.id === "SubDocumentTypeSearchText")?.value;
+    const subDocTypeColFilter = activeColumnFilters.find((f) => f.id === "SubDocumentTypeSearchText")?.value;
     if (subDocTypeColFilter) {
       const vals = (Array.isArray(subDocTypeColFilter) ? subDocTypeColFilter : [subDocTypeColFilter])
         .map((v) => String(v).trim())
@@ -1449,27 +1490,32 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       }
     }
 
-    // 5. Date filters (Document Date, Expiry Date, Created, Modified)
-    const dateColCandidates = [
+    // 5. Date filters (Document Date, Expiry Date, Next Review Date, Created, Modified)
+    const dateColCandidates: { id: string; key: keyof IDateFiltersState }[] = [
       { id: "DocumentDate", key: "DocumentDate" },
       { id: "ExpiryDate", key: "ExpiryDate" },
+      { id: "NextReviewDate", key: "NextReviewDate" },
       { id: "Created", key: "Created" },
       { id: "Modified", key: "Modified" },
     ];
-    for (const item of dateColCandidates) {
-      const dateColFilter = columnFilters.find((f) => f.id === item.id)?.value;
+    dateColCandidates.forEach((item) => {
+      const dateColFilter = activeColumnFilters.find((f) => f.id === item.id)?.value;
       if (dateColFilter) {
         const parsedDate = dayjs(dateColFilter as string | Date);
         if (parsedDate.isValid()) {
-          setSelectedDateField(item.key);
-          setDateFrom(parsedDate);
-          break;
+          setDateFilters((prev) => ({
+            ...prev,
+            [item.key]: {
+              ...prev[item.key],
+              from: parsedDate,
+            },
+          }));
         }
       }
-    }
+    });
 
     // 6. Business Line
-    const blFilter = columnFilters.find((f) => f.id === "BusinessLine")?.value;
+    const blFilter = activeColumnFilters.find((f) => f.id === "BusinessLine")?.value;
     if (blFilter) {
       const vals = (Array.isArray(blFilter) ? blFilter : [blFilter])
         .map((v) => String(v).trim())
@@ -1481,7 +1527,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     }
 
     // 7. Country Sold To
-    const countryFilter = columnFilters.find((f) => f.id === "CountrySoldTo")?.value;
+    const countryFilter = activeColumnFilters.find((f) => f.id === "CountrySoldTo")?.value;
     if (countryFilter) {
       const vals = (Array.isArray(countryFilter) ? countryFilter : [countryFilter])
         .map((v) => String(v).trim())
@@ -1493,7 +1539,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     }
 
     // 8. Confidentiality
-    const confFilter = columnFilters.find((f) => f.id === "Confidentiality")?.value;
+    const confFilter = activeColumnFilters.find((f) => f.id === "Confidentiality")?.value;
     if (confFilter) {
       const vals = (Array.isArray(confFilter) ? confFilter : [confFilter])
         .map((v) => String(v).trim())
@@ -1505,7 +1551,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     }
 
     // 9. Keyword / File Name
-    const filenameFilter = columnFilters.find((f) => f.id === "filename")?.value;
+    const filenameFilter = activeColumnFilters.find((f) => f.id === "filename")?.value;
     if (filenameFilter) {
       const textVal =
         typeof filenameFilter === "string"
@@ -1536,9 +1582,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         clientSearchText,
         selectedDocumentTypes,
         selectedSubDocumentTypes,
-        selectedDateField,
-        dateFrom,
-        dateTo,
+        dateFilters,
         additionalKeywords,
         keywordInput,
         selectedBusinessLines,
@@ -1556,9 +1600,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         setClientSearchText(prev.clientSearchText);
         setSelectedDocumentTypes(prev.selectedDocumentTypes);
         setSelectedSubDocumentTypes(prev.selectedSubDocumentTypes);
-        setSelectedDateField(prev.selectedDateField || "DocumentDate");
-        setDateFrom(prev.dateFrom);
-        setDateTo(prev.dateTo);
+        setDateFilters(prev.dateFilters);
         setAdditionalKeywords(prev.additionalKeywords);
         setKeywordInput(prev.keywordInput);
         setSelectedBusinessLines(prev.selectedBusinessLines);
@@ -1603,7 +1645,9 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     const hasClient = selectedClients.some((item) => Boolean(item.Title?.trim()));
     const hasDocType = selectedDocumentTypes.length > 0;
     const hasSubDocType = selectedSubDocumentTypes.length > 0;
-    const hasDate = dateFrom !== null || dateTo !== null;
+    const hasDate = Object.values(dateFilters).some(
+      (range) => range.from !== null || range.to !== null
+    );
     const hasKeyword = additionalKeywords.length > 0 || Boolean(keywordInput.trim());
     const hasBusinessLine = selectedBusinessLines.length > 0;
     const hasCountry = selectedCountries.length > 0;
@@ -1625,8 +1669,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     selectedClients,
     selectedDocumentTypes,
     selectedSubDocumentTypes,
-    dateFrom,
-    dateTo,
+    dateFilters,
     additionalKeywords,
     keywordInput,
     selectedBusinessLines,
@@ -1641,9 +1684,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     setClientSearchText("");
     setSelectedDocumentTypes([]);
     setSelectedSubDocumentTypes([]);
-    setSelectedDateField("DocumentDate");
-    setDateFrom(null);
-    setDateTo(null);
+    setDateFilters(INITIAL_DATE_FILTERS);
     setAdditionalKeywords([]);
     setKeywordInput("");
     setSelectedBusinessLines([]);
@@ -1692,10 +1733,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       const activeFilters = columnFilters.filter(
         (f) =>
           f.id !== excludedColId &&
-          f.value !== undefined &&
-          f.value !== null &&
-          f.value !== "" &&
-          !(Array.isArray(f.value) && f.value.length === 0)
+          isFilterActive(f.value)
       );
       if (activeFilters.length === 0) {
         return items_AllProducts;
@@ -1776,6 +1814,19 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     },
     [currentUserEmail, currentUserName]
   );
+  (personFilterFn as { autoRemove?: (val: unknown) => boolean }).autoRemove = (val: unknown) => !isFilterActive(val);
+
+  const alertsFilterFn = React.useCallback(
+    (row: { original: doclib_AllProducts }, _columnId: string, filterValue: unknown): boolean => {
+      if (!filterValue) return true;
+      const search = String(filterValue).trim().toLowerCase();
+      if (!search) return true;
+      const rowAlerts = getRowAlerts(row.original);
+      return rowAlerts.some((a) => a.toLowerCase().includes(search));
+    },
+    [getRowAlerts]
+  );
+  (alertsFilterFn as { autoRemove?: (val: unknown) => boolean }).autoRemove = (val: unknown) => !isFilterActive(val);
 
   const clientOptions = useMemo(
     () => {
@@ -2880,13 +2931,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         header: "Alerts",
         size: 160,
         minSize: 140,
-        filterFn: (row, _columnId, filterValue) => {
-          if (!filterValue) return true;
-          const search = String(filterValue).trim().toLowerCase();
-          if (!search) return true;
-          const rowAlerts = getRowAlerts(row.original);
-          return rowAlerts.some((a) => a.toLowerCase().includes(search));
-        },
+        filterFn: alertsFilterFn,
         Cell: ({ row, column }) => {
           const items = getRowAlerts(row.original);
           if (items.length === 0) return "-";
@@ -2956,6 +3001,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       fieldFormatters,
       getRowAlerts,
       personFilterFn,
+      alertsFilterFn,
     ]
   );
 
@@ -3301,10 +3347,11 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             variant="outlined"
             size="small"
             color="primary"
-            disabled={columnFilters.length === 0}
+            disabled={activeColumnFilters.length === 0}
             onClick={() => {
               setColumnFilters([]);
               table.resetColumnFilters();
+              table.resetGlobalFilter();
             }}
             startIcon={<FilterListOffIcon fontSize="small" />}
             sx={{
@@ -3316,7 +3363,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             }}
             title="Clear all column filters"
           >
-            Clear Filters{columnFilters.length > 0 ? ` (${columnFilters.length})` : ""}
+            Clear Filters{activeColumnFilters.length > 0 ? ` (${activeColumnFilters.length})` : ""}
           </Button>
         </Box>
       </Box>
@@ -3338,6 +3385,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     ),
     initialState: {
       density: "compact",
+      columnFilters: [],
     },
     muiTablePaperProps: {
       ref: paperRef,
@@ -3406,7 +3454,12 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         },
       },
     },
-    onColumnFiltersChange: setColumnFilters,
+    onColumnFiltersChange: (updater) => {
+      setColumnFilters((prev) => {
+        const next = typeof updater === "function" ? updater(prev) : updater;
+        return next.filter((f) => isFilterActive(f.value));
+      });
+    },
     onGroupingChange: setGrouping,
     onSortingChange: setSorting,
     onColumnVisibilityChange: setColumnVisibility,
@@ -3681,9 +3734,9 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                   </Typography>
                 }
               />
-              {columnFilters.length > 0 && (
+              {activeColumnFilters.length > 0 && (
                 <Typography variant="caption" sx={{ fontSize: "11px", color: "text.secondary" }}>
-                  {columnFilters.length} column filter{columnFilters.length > 1 ? "s" : ""} active in grid
+                  {activeColumnFilters.length} column filter{activeColumnFilters.length > 1 ? "s" : ""} active in grid
                 </Typography>
               )}
             </Box>
@@ -3891,52 +3944,251 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             </div>
 
             <LocalizationProvider dateAdapter={AdapterDayjs}>
-              <div
-                className="filter-row-grid"
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1.2fr 1fr 1fr",
-                  gap: "12px",
-                  marginBottom: "12px",
-                }}
-              >
-                <FormControl fullWidth size="small">
-                  <InputLabel id="date-field-filter-label">Date Filter</InputLabel>
-                  <Select
-                    labelId="date-field-filter-label"
-                    value={selectedDateField}
-                    onChange={(event) => setSelectedDateField(event.target.value)}
-                    input={<OutlinedInput label="Date Filter" />}
-                    size="small"
+              {(() => {
+                const activeDateFiltersCount = (
+                  Object.keys(dateFilters) as (keyof IDateFiltersState)[]
+                ).filter((k) => dateFilters[k].from !== null || dateFilters[k].to !== null).length;
+
+                return (
+                  <Accordion
+                    disableGutters
+                    elevation={0}
+                    defaultExpanded={false}
+                    sx={{
+                      mb: 1.5,
+                      border: "1px solid #e0e0e0",
+                      borderRadius: "6px !important",
+                      bgcolor: "#fafafa",
+                      "&:before": { display: "none" },
+                    }}
                   >
-                    <MenuItem value="DocumentDate">Document Date</MenuItem>
-                    <MenuItem value="ExpiryDate">Expiry Date</MenuItem>
-                    <MenuItem value="Created">Created Date</MenuItem>
-                    <MenuItem value="Modified">Modified Date</MenuItem>
-                  </Select>
-                </FormControl>
-                <DatePicker
-                  label="Date From"
-                  format="DD/MM/YYYY"
-                  value={dateFrom}
-                  onChange={(newValue) => setDateFrom(newValue)}
-                  slotProps={{
-                    textField: { size: "small", fullWidth: true },
-                    field: { clearable: true },
-                  }}
-                />
-                <DatePicker
-                  label="Date To"
-                  format="DD/MM/YYYY"
-                  value={dateTo}
-                  onChange={(newValue) => setDateTo(newValue)}
-                  minDate={dateFrom ?? undefined}
-                  slotProps={{
-                    textField: { size: "small", fullWidth: true },
-                    field: { clearable: true },
-                  }}
-                />
-              </div>
+                    <AccordionSummary
+                      expandIcon={<ExpandMoreIcon sx={{ fontSize: 20 }} />}
+                      sx={{
+                        minHeight: "36px",
+                        height: "36px",
+                        px: 1.5,
+                        "& .MuiAccordionSummary-content": {
+                          my: 0,
+                          alignItems: "center",
+                          gap: 1,
+                        },
+                      }}
+                    >
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          fontWeight: 700,
+                          color: "text.secondary",
+                          textTransform: "uppercase",
+                          fontSize: "11px",
+                          letterSpacing: "0.5px",
+                        }}
+                      >
+                        Date Filters
+                      </Typography>
+                      {activeDateFiltersCount > 0 && (
+                        <Chip
+                          size="small"
+                          label={`${activeDateFiltersCount} active`}
+                          sx={{
+                            height: "18px",
+                            fontSize: "10px",
+                            fontWeight: 600,
+                            bgcolor: "#e3f2fd",
+                            color: "#1976d2",
+                          }}
+                        />
+                      )}
+                    </AccordionSummary>
+                    <AccordionDetails
+                      sx={{
+                        p: 1.5,
+                        pt: 0.5,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 1.25,
+                        borderTop: "1px solid #eee",
+                      }}
+                    >
+                      {/* 1. Document Date */}
+                      <Box
+                        sx={{
+                          display: "grid",
+                          gridTemplateColumns: "130px 1fr 1fr",
+                          gap: "10px",
+                          alignItems: "center",
+                        }}
+                      >
+                        <Typography variant="body2" sx={{ fontSize: "12.5px", fontWeight: 600 }}>
+                          Document Date:
+                        </Typography>
+                        <DatePicker
+                          label="From"
+                          format="DD/MM/YYYY"
+                          value={dateFilters.DocumentDate.from}
+                          onChange={(newValue) => handleDateChange("DocumentDate", "from", newValue)}
+                          slotProps={{
+                            textField: { size: "small", fullWidth: true },
+                            field: { clearable: true },
+                          }}
+                        />
+                        <DatePicker
+                          label="To"
+                          format="DD/MM/YYYY"
+                          value={dateFilters.DocumentDate.to}
+                          onChange={(newValue) => handleDateChange("DocumentDate", "to", newValue)}
+                          minDate={dateFilters.DocumentDate.from ?? undefined}
+                          slotProps={{
+                            textField: { size: "small", fullWidth: true },
+                            field: { clearable: true },
+                          }}
+                        />
+                      </Box>
+
+                      {/* 2. Expiry Date */}
+                      <Box
+                        sx={{
+                          display: "grid",
+                          gridTemplateColumns: "130px 1fr 1fr",
+                          gap: "10px",
+                          alignItems: "center",
+                        }}
+                      >
+                        <Typography variant="body2" sx={{ fontSize: "12.5px", fontWeight: 600 }}>
+                          Expiry Date:
+                        </Typography>
+                        <DatePicker
+                          label="From"
+                          format="DD/MM/YYYY"
+                          value={dateFilters.ExpiryDate.from}
+                          onChange={(newValue) => handleDateChange("ExpiryDate", "from", newValue)}
+                          slotProps={{
+                            textField: { size: "small", fullWidth: true },
+                            field: { clearable: true },
+                          }}
+                        />
+                        <DatePicker
+                          label="To"
+                          format="DD/MM/YYYY"
+                          value={dateFilters.ExpiryDate.to}
+                          onChange={(newValue) => handleDateChange("ExpiryDate", "to", newValue)}
+                          minDate={dateFilters.ExpiryDate.from ?? undefined}
+                          slotProps={{
+                            textField: { size: "small", fullWidth: true },
+                            field: { clearable: true },
+                          }}
+                        />
+                      </Box>
+
+                      {/* 3. Next Review Date */}
+                      <Box
+                        sx={{
+                          display: "grid",
+                          gridTemplateColumns: "130px 1fr 1fr",
+                          gap: "10px",
+                          alignItems: "center",
+                        }}
+                      >
+                        <Typography variant="body2" sx={{ fontSize: "12.5px", fontWeight: 600 }}>
+                          Next Review Date:
+                        </Typography>
+                        <DatePicker
+                          label="From"
+                          format="DD/MM/YYYY"
+                          value={dateFilters.NextReviewDate.from}
+                          onChange={(newValue) => handleDateChange("NextReviewDate", "from", newValue)}
+                          slotProps={{
+                            textField: { size: "small", fullWidth: true },
+                            field: { clearable: true },
+                          }}
+                        />
+                        <DatePicker
+                          label="To"
+                          format="DD/MM/YYYY"
+                          value={dateFilters.NextReviewDate.to}
+                          onChange={(newValue) => handleDateChange("NextReviewDate", "to", newValue)}
+                          minDate={dateFilters.NextReviewDate.from ?? undefined}
+                          slotProps={{
+                            textField: { size: "small", fullWidth: true },
+                            field: { clearable: true },
+                          }}
+                        />
+                      </Box>
+
+                      {/* 4. Created Date */}
+                      <Box
+                        sx={{
+                          display: "grid",
+                          gridTemplateColumns: "130px 1fr 1fr",
+                          gap: "10px",
+                          alignItems: "center",
+                        }}
+                      >
+                        <Typography variant="body2" sx={{ fontSize: "12.5px", fontWeight: 600 }}>
+                          Created Date:
+                        </Typography>
+                        <DatePicker
+                          label="From"
+                          format="DD/MM/YYYY"
+                          value={dateFilters.Created.from}
+                          onChange={(newValue) => handleDateChange("Created", "from", newValue)}
+                          slotProps={{
+                            textField: { size: "small", fullWidth: true },
+                            field: { clearable: true },
+                          }}
+                        />
+                        <DatePicker
+                          label="To"
+                          format="DD/MM/YYYY"
+                          value={dateFilters.Created.to}
+                          onChange={(newValue) => handleDateChange("Created", "to", newValue)}
+                          minDate={dateFilters.Created.from ?? undefined}
+                          slotProps={{
+                            textField: { size: "small", fullWidth: true },
+                            field: { clearable: true },
+                          }}
+                        />
+                      </Box>
+
+                      {/* 4. Modified Date */}
+                      <Box
+                        sx={{
+                          display: "grid",
+                          gridTemplateColumns: "130px 1fr 1fr",
+                          gap: "10px",
+                          alignItems: "center",
+                        }}
+                      >
+                        <Typography variant="body2" sx={{ fontSize: "12.5px", fontWeight: 600 }}>
+                          Modified Date:
+                        </Typography>
+                        <DatePicker
+                          label="From"
+                          format="DD/MM/YYYY"
+                          value={dateFilters.Modified.from}
+                          onChange={(newValue) => handleDateChange("Modified", "from", newValue)}
+                          slotProps={{
+                            textField: { size: "small", fullWidth: true },
+                            field: { clearable: true },
+                          }}
+                        />
+                        <DatePicker
+                          label="To"
+                          format="DD/MM/YYYY"
+                          value={dateFilters.Modified.to}
+                          onChange={(newValue) => handleDateChange("Modified", "to", newValue)}
+                          minDate={dateFilters.Modified.from ?? undefined}
+                          slotProps={{
+                            textField: { size: "small", fullWidth: true },
+                            field: { clearable: true },
+                          }}
+                        />
+                      </Box>
+                    </AccordionDetails>
+                  </Accordion>
+                );
+              })()}
             </LocalizationProvider>
 
             {!showMoreFilters ? (
