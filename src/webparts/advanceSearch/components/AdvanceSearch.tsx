@@ -76,6 +76,7 @@ import {
   getSemanticAlertStyle,
   getSemanticDocumentStatusStyle,
   evaluateDateCustomFormatter,
+  compileKeywordsToKql,
 } from "../utils/formatters";
 import {
   multiSelectFilterFn,
@@ -1224,23 +1225,9 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       );
     }
 
-    const allKeywords = [...additionalKeywords];
-    if (keywordInput.trim()) {
-      keywordInput
-        .split(",")
-        .map((k) => k.trim())
-        .filter(Boolean)
-        .forEach((k) => {
-          if (!allKeywords.includes(k)) allKeywords.push(k);
-        });
-    }
-
-    if (allKeywords.length === 1) {
-      clauses.push(`"${sanitizeKqlValue(allKeywords[0])}"`);
-    } else if (allKeywords.length > 1) {
-      clauses.push(
-        `(${allKeywords.map((k) => `"${sanitizeKqlValue(k)}"`).join(" AND ")})`
-      );
+    const keywordClause = compileKeywordsToKql(additionalKeywords, keywordInput);
+    if (keywordClause) {
+      clauses.push(keywordClause);
     }
 
     const datePropertyMap: Record<keyof IDateFiltersState, string> = {
@@ -1677,7 +1664,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     const hasDate = Object.values(dateFilters).some(
       (range) => range.from !== null || range.to !== null
     );
-    const hasKeyword = additionalKeywords.length > 0 || Boolean(keywordInput.trim());
+    const hasKeyword = Boolean(compileKeywordsToKql(additionalKeywords, keywordInput));
     const hasBusinessLine = selectedBusinessLines.length > 0;
     const hasCountry = selectedCountries.length > 0;
     const hasConfidentiality = selectedConfidentialities.length > 0;
@@ -3416,6 +3403,10 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     initialState: {
       density: "compact",
       columnFilters: [],
+      pagination: {
+        pageIndex: 0,
+        pageSize: 50,
+      },
     },
     muiTablePaperProps: {
       ref: paperRef,
@@ -3550,19 +3541,31 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         setKeywordInput("");
       }}
       renderTags={(value: readonly string[], getTagProps) =>
-        value.map((option: string, index: number) => (
-          <Chip
-            {...getTagProps({ index })}
-            key={index}
-            label={option}
-            size="small"
-            sx={{
-              height: "24px",
-              fontSize: "12px",
-              margin: "2px",
-            }}
-          />
-        ))
+        value.map((option: string, index: number) => {
+          const upper = option.trim().toUpperCase();
+          const isOperator = upper === "AND" || upper === "OR" || upper === "NOT";
+          return (
+            <Chip
+              {...getTagProps({ index })}
+              key={index}
+              label={isOperator ? upper : option}
+              size="small"
+              sx={{
+                height: "24px",
+                fontSize: "12px",
+                margin: "2px",
+                ...(isOperator
+                  ? {
+                      fontWeight: 700,
+                      bgcolor: "#e0e7ff",
+                      color: "#3730a3",
+                      border: "1px solid #c7d2fe",
+                    }
+                  : {}),
+              }}
+            />
+          );
+        })
       }
       renderInput={(params) => (
         <TextField
@@ -3571,7 +3574,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           label="Additional Keywords"
           placeholder={
             additionalKeywords.length === 0
-              ? "Type keyword & press comma or Enter"
+              ? "e.g. ALLERG*, cardio OR pulmonary, NOT pediatric"
               : ""
           }
         />

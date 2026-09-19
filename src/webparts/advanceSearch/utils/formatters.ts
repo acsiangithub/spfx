@@ -9,6 +9,119 @@ export const choiceToString = (value: string | string[] | undefined | null): str
 export const sanitizeKqlValue = (value: string): string =>
   value.replace(/"/g, '\\"').trim();
 
+export const formatKeywordTerm = (raw: string): string => {
+  let val = raw.trim();
+  if (!val) return "";
+
+  // If already wrapped in quotes
+  if (val.startsWith('"') && val.endsWith('"') && val.length >= 2) {
+    val = val.slice(1, -1).trim();
+  }
+
+  // Check if it contains wildcard *
+  if (val.includes("*")) {
+    // In SharePoint KQL, wildcards MUST NOT be wrapped in quotes for prefix expansion to work
+    return sanitizeKqlValue(val);
+  }
+
+  return `"${sanitizeKqlValue(val)}"`;
+};
+
+export const compileKeywordsToKql = (chips: string[], pendingInput?: string): string => {
+  const rawList: string[] = [...chips];
+  if (pendingInput && pendingInput.trim()) {
+    pendingInput
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .forEach((s) => {
+        if (!rawList.includes(s)) {
+          rawList.push(s);
+        }
+      });
+  }
+
+  if (rawList.length === 0) return "";
+
+  type Token = { type: "op"; value: "AND" | "OR" | "NOT" } | { type: "term"; value: string };
+  const tokens: Token[] = [];
+
+  const tokenRegex = /"([^"]+)"|(\S+)/g;
+
+  rawList.forEach((entry) => {
+    let match: RegExpExecArray | null;
+    tokenRegex.lastIndex = 0;
+    while ((match = tokenRegex.exec(entry)) !== null) {
+      if (match[1] !== undefined) {
+        const quotedContent = match[1].trim();
+        if (quotedContent) {
+          tokens.push({
+            type: "term",
+            value: formatKeywordTerm(`"${quotedContent}"`),
+          });
+        }
+      } else if (match[2] !== undefined) {
+        const word = match[2].trim();
+        const upper = word.toUpperCase();
+        if (upper === "AND" || upper === "&&") {
+          tokens.push({ type: "op", value: "AND" });
+        } else if (upper === "OR" || upper === "||") {
+          tokens.push({ type: "op", value: "OR" });
+        } else if (upper === "NOT" || upper === "!") {
+          tokens.push({ type: "op", value: "NOT" });
+        } else {
+          tokens.push({
+            type: "term",
+            value: formatKeywordTerm(word),
+          });
+        }
+      }
+    }
+  });
+
+  if (tokens.length === 0) return "";
+
+  // 1. Remove leading binary operators (AND, OR)
+  while (tokens.length > 0 && tokens[0].type === "op" && (tokens[0].value === "AND" || tokens[0].value === "OR")) {
+    tokens.shift();
+  }
+
+  // 2. Remove trailing operators (AND, OR, NOT)
+  while (tokens.length > 0 && tokens[tokens.length - 1].type === "op") {
+    tokens.pop();
+  }
+
+  if (tokens.length === 0) return "";
+
+  // 3. Build string with default AND when two terms are adjacent without an operator
+  const resultParts: string[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const curr = tokens[i];
+    const prev = i > 0 ? tokens[i - 1] : null;
+
+    if (curr.type === "term") {
+      if (prev && prev.type === "term") {
+        resultParts.push("AND");
+      }
+      resultParts.push(curr.value);
+    } else if (curr.type === "op") {
+      if (curr.value === "NOT") {
+        resultParts.push("NOT");
+      } else {
+        if (prev && prev.type === "op") {
+          resultParts.pop();
+        }
+        resultParts.push(curr.value);
+      }
+    }
+  }
+
+  if (resultParts.length === 0) return "";
+  if (resultParts.length === 1) return resultParts[0];
+
+  return `(${resultParts.join(" ")})`;
+};
+
 // Deterministic pastel color generator for any string choice
 export const getDynamicChipStyle = (str: string): IChipStyle => {
   let hash = 0;
