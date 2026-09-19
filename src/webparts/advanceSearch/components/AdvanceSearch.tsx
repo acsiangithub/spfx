@@ -29,6 +29,7 @@ import BookmarkBorderIcon from "@mui/icons-material/BookmarkBorder";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import CheckIcon from "@mui/icons-material/Check";
+import EventBusyIcon from "@mui/icons-material/EventBusy";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -86,6 +87,7 @@ import {
   itemMatchesFilter,
   filenameFilterFn,
   isFilterActive,
+  parseDateFilterValue,
 } from "../utils/filterHelpers";
 import { compactTheme } from "../theme/compactTheme";
 import {
@@ -103,49 +105,117 @@ import EmailShareDialog from "./EmailShareDialog";
 const DateFilterControl: React.FC<{
   column: { getFilterValue: () => unknown; setFilterValue: (value: unknown) => void };
   label?: string;
-}> = ({ column, label = "Min Date" }) => {
-  const filterValue = column.getFilterValue() as string | null;
-  const pickerValue = filterValue ? dayjs(filterValue) : null;
+  allowEmpty?: boolean;
+}> = ({ column, label = "Min Date", allowEmpty = false }) => {
+  const filterValue = column.getFilterValue();
+  const { date: pickerValue, empty: isEmpty, dateStr } = parseDateFilterValue(filterValue);
+
+  const handleDateChange = (newValue: dayjs.Dayjs | null): void => {
+    const valid = newValue && newValue.isValid();
+    const newDateStr = valid ? newValue.toISOString() : undefined;
+    if (!allowEmpty) {
+      column.setFilterValue(newDateStr);
+      return;
+    }
+    if (!newDateStr && !isEmpty) {
+      column.setFilterValue(undefined);
+    } else {
+      column.setFilterValue({
+        date: newDateStr || null,
+        empty: isEmpty,
+      });
+    }
+  };
+
+  const handleEmptyToggle = (): void => {
+    if (!allowEmpty) return;
+    const nextEmpty = !isEmpty;
+    if (!nextEmpty && !dateStr) {
+      column.setFilterValue(undefined);
+    } else {
+      column.setFilterValue({
+        date: dateStr || null,
+        empty: nextEmpty,
+      });
+    }
+  };
 
   return (
-    <DatePicker
-      format="DD/MM/YYYY"
-      label={label}
-      value={pickerValue && pickerValue.isValid() ? pickerValue : null}
-      onChange={(newValue) => {
-        column.setFilterValue(newValue?.isValid() ? newValue.toISOString() : undefined);
-      }}
-      slotProps={{
-        field: { clearable: true },
-        textField: {
-          size: "small",
-          sx: {
-            width: "100%",
-            minWidth: "130px",
-            "& .MuiInputBase-root": {
-              paddingRight: "8px",
-              paddingLeft: 0,
-            },
-            "& .MuiInputBase-input": {
-              fontSize: "12px",
-              padding: "6px 2px 6px 8px",
-              minWidth: 0,
-            },
-            "& .MuiInputAdornment-root": {
-              marginLeft: "2px",
-              marginRight: 0,
-              gap: "2px",
-            },
-            "& .MuiIconButton-root": {
-              padding: "3px",
-            },
-            "& .MuiSvgIcon-root": {
-              fontSize: "17px",
+    <Box sx={{ width: "100%", display: "flex", alignItems: "center", gap: "4px" }}>
+      <DatePicker
+        format="DD/MM/YYYY"
+        label={label}
+        value={pickerValue && pickerValue.isValid() ? pickerValue : null}
+        onChange={handleDateChange}
+        slotProps={{
+          field: { clearable: true },
+          textField: {
+            size: "small",
+            placeholder: isEmpty && !pickerValue ? "(Empty)" : undefined,
+            sx: {
+              width: "100%",
+              minWidth: allowEmpty ? "100px" : "110px",
+              "& .MuiInputBase-root": {
+                paddingRight: "6px",
+                paddingLeft: 0,
+                height: "28px",
+              },
+              "& .MuiInputBase-input": {
+                fontSize: "12px",
+                padding: "4px 2px 4px 6px",
+                minWidth: 0,
+                fontStyle: isEmpty && !pickerValue ? "italic" : "normal",
+                color: isEmpty && !pickerValue ? "primary.main" : "inherit",
+              },
+              "& .MuiInputAdornment-root": {
+                marginLeft: "2px",
+                marginRight: 0,
+                gap: "2px",
+              },
+              "& .MuiIconButton-root": {
+                padding: "2px",
+              },
+              "& .MuiSvgIcon-root": {
+                fontSize: "16px",
+              },
             },
           },
-        },
-      }}
-    />
+        }}
+      />
+      {allowEmpty && (
+        <Tooltip
+          title={
+            isEmpty
+              ? "Filtering empty dates (Click to clear)"
+              : "Filter empty dates (no date recorded)"
+          }
+          arrow
+        >
+          <IconButton
+            size="small"
+            onClick={handleEmptyToggle}
+            sx={{
+              width: "26px",
+              height: "26px",
+              p: 0,
+              borderRadius: "4px",
+              border: "1px solid",
+              borderColor: isEmpty ? "primary.main" : "#d0d0d0",
+              bgcolor: isEmpty ? "rgba(25, 118, 210, 0.12)" : "transparent",
+              color: isEmpty ? "primary.main" : "text.secondary",
+              flexShrink: 0,
+              transition: "all 0.15s ease",
+              "&:hover": {
+                bgcolor: isEmpty ? "rgba(25, 118, 210, 0.22)" : "rgba(0, 0, 0, 0.04)",
+                borderColor: isEmpty ? "primary.main" : "#a0a0a0",
+              },
+            }}
+          >
+            <EventBusyIcon sx={{ fontSize: 16 }} />
+          </IconButton>
+        </Tooltip>
+      )}
+    </Box>
   );
 };
 
@@ -1500,8 +1570,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     dateColCandidates.forEach((item) => {
       const dateColFilter = activeColumnFilters.find((f) => f.id === item.id)?.value;
       if (dateColFilter) {
-        const parsedDate = dayjs(dateColFilter as string | Date);
-        if (parsedDate.isValid()) {
+        const { date: parsedDate } = parseDateFilterValue(dateColFilter);
+        if (parsedDate && parsedDate.isValid()) {
           newDateFilters[item.key] = {
             from: parsedDate,
             to: null,
@@ -2798,13 +2868,14 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       {
         accessorKey: "DocumentDate",
         header: "Document Date",
-        size: 100,
-        minSize: 100,
+        size: 135,
+        minSize: 125,
         filterFn: documentDateFilter,
         Filter: ({ column }) => (
           <DateFilterControl
             column={column}
             label="Min Date"
+            allowEmpty
           />
         ),
         Cell: ({ cell }) => {
@@ -2820,13 +2891,14 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       {
         accessorKey: "ExpiryDate",
         header: "Expiry Date",
-        size: 115,
-        minSize: 100,
+        size: 135,
+        minSize: 125,
         filterFn: documentDateFilter,
         Filter: ({ column }) => (
           <DateFilterControl
             column={column}
             label="Min Date"
+            allowEmpty
           />
         ),
         Cell: ({ cell }) => {
@@ -2864,13 +2936,14 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       {
         accessorKey: "NextReviewDate",
         header: "Next Review Date",
-        size: 130,
-        minSize: 110,
+        size: 145,
+        minSize: 130,
         filterFn: documentDateFilter,
         Filter: ({ column }) => (
           <DateFilterControl
             column={column}
             label="Min Date"
+            allowEmpty
           />
         ),
         Cell: ({ cell }) => {

@@ -1,6 +1,60 @@
 import dayjs from "dayjs";
 import { doclib_AllProducts } from "../types/advanceSearchTypes";
 
+export interface IDateFilterValue {
+  date?: string | null;
+  empty?: boolean;
+}
+
+export const parseDateFilterValue = (
+  filterValue: unknown
+): { date: dayjs.Dayjs | null; empty: boolean; dateStr: string | null } => {
+  if (filterValue === undefined || filterValue === null || filterValue === "") {
+    return { date: null, empty: false, dateStr: null };
+  }
+
+  if (typeof filterValue === "string") {
+    const trimmed = filterValue.trim();
+    if (trimmed.toLowerCase() === "(empty)" || trimmed.toLowerCase() === "empty") {
+      return { date: null, empty: true, dateStr: null };
+    }
+    const d = dayjs(trimmed);
+    return { date: d.isValid() ? d : null, empty: false, dateStr: d.isValid() ? trimmed : null };
+  }
+
+  if (filterValue instanceof Date) {
+    const d = dayjs(filterValue);
+    return { date: d.isValid() ? d : null, empty: false, dateStr: d.isValid() ? d.toISOString() : null };
+  }
+
+  if (typeof filterValue === "object") {
+    const obj = filterValue as { date?: unknown; empty?: unknown };
+    const empty = Boolean(obj.empty);
+    let date: dayjs.Dayjs | null = null;
+    let dateStr: string | null = null;
+
+    if (obj.date) {
+      if (typeof obj.date === "string") {
+        const d = dayjs(obj.date);
+        if (d.isValid()) {
+          date = d;
+          dateStr = obj.date;
+        }
+      } else if (obj.date instanceof Date) {
+        const d = dayjs(obj.date);
+        if (d.isValid()) {
+          date = d;
+          dateStr = d.toISOString();
+        }
+      }
+    }
+
+    return { date, empty, dateStr };
+  }
+
+  return { date: null, empty: false, dateStr: null };
+};
+
 export const isValueEmpty = (value: unknown): boolean => {
   if (value === null || value === undefined) return true;
   if (Array.isArray(value)) {
@@ -37,6 +91,12 @@ export const isFilterActive = (filterValue: unknown): boolean => {
       const hasText = typeof textVal === "string" && textVal.trim() !== "";
       const hasTypes = Array.isArray(typesVal) && typesVal.length > 0;
       return hasText || hasTypes;
+    }
+    if ("date" in anyObj || "empty" in anyObj) {
+      const dateVal = anyObj.date;
+      const emptyVal = Boolean(anyObj.empty);
+      const hasDate = typeof dateVal === "string" && dateVal.trim() !== "";
+      return hasDate || emptyVal;
     }
     const keys = Object.keys(anyObj);
     if (keys.length === 0) return false;
@@ -95,14 +155,23 @@ export const documentDateFilter = (
   columnId: string,
   filterValue: unknown
 ): boolean => {
+  if (!isFilterActive(filterValue)) return true;
+
+  const { date: filterDate, empty: filterEmpty } = parseDateFilterValue(filterValue);
+  if (!filterDate && !filterEmpty) return true;
+
   const rowValue = row.getValue(columnId);
-  if (!rowValue || !filterValue) return true;
+  const isRowEmpty = !rowValue || !dayjs(rowValue as string | Date).isValid();
+
+  if (isRowEmpty) {
+    return filterEmpty;
+  }
+
+  if (!filterDate) {
+    return false;
+  }
 
   const rowDate = dayjs(rowValue as string | Date);
-  const filterDate = dayjs(filterValue as string);
-
-  if (!rowDate.isValid() || !filterDate.isValid()) return true;
-
   return rowDate.isSame(filterDate, "day") || rowDate.isAfter(filterDate, "day");
 };
 (documentDateFilter as { autoRemove?: (val: unknown) => boolean }).autoRemove = (val: unknown) => !isFilterActive(val);
@@ -112,14 +181,23 @@ export const exactDateFilter = (
   columnId: string,
   filterValue: unknown
 ): boolean => {
+  if (!isFilterActive(filterValue)) return true;
+
+  const { date: filterDate, empty: filterEmpty } = parseDateFilterValue(filterValue);
+  if (!filterDate && !filterEmpty) return true;
+
   const rowValue = row.getValue(columnId);
-  if (!rowValue || !filterValue) return true;
+  const isRowEmpty = !rowValue || !dayjs(rowValue as string | Date).isValid();
+
+  if (isRowEmpty) {
+    return filterEmpty;
+  }
+
+  if (!filterDate) {
+    return false;
+  }
 
   const rowDate = dayjs(rowValue as string | Date);
-  const filterDate = dayjs(filterValue as string);
-
-  if (!rowDate.isValid() || !filterDate.isValid()) return true;
-
   return rowDate.isSame(filterDate, "day");
 };
 (exactDateFilter as { autoRemove?: (val: unknown) => boolean }).autoRemove = (val: unknown) => !isFilterActive(val);
@@ -240,19 +318,37 @@ export const itemMatchesFilter = (
     return regularSelections.some((sel) => tokens.some((t) => t.includes(sel) || sel.includes(t)));
   }
   if (colId === "DocumentDate" || colId === "ExpiryDate" || colId === "NextReviewDate") {
+    if (!isFilterActive(filterValue)) return true;
+    const { date: filterDate, empty: filterEmpty } = parseDateFilterValue(filterValue);
+    if (!filterDate && !filterEmpty) return true;
+
     const rawDate = (item as any)[colId];
-    if (!rawDate) return false;
+    const isRowEmpty = !rawDate || !dayjs(rawDate).isValid();
+
+    if (isRowEmpty) {
+      return filterEmpty;
+    }
+    if (!filterDate) {
+      return false;
+    }
     const rowDate = dayjs(rawDate);
-    const filterDate = dayjs(filterValue as string);
-    if (!rowDate.isValid() || !filterDate.isValid()) return true;
     return rowDate.isSame(filterDate, "day") || rowDate.isAfter(filterDate, "day");
   }
   if (colId === "Created" || colId === "Modified") {
+    if (!isFilterActive(filterValue)) return true;
+    const { date: filterDate, empty: filterEmpty } = parseDateFilterValue(filterValue);
+    if (!filterDate && !filterEmpty) return true;
+
     const rawDate = (item as any)[colId];
-    if (!rawDate) return false;
+    const isRowEmpty = !rawDate || !dayjs(rawDate).isValid();
+
+    if (isRowEmpty) {
+      return filterEmpty;
+    }
+    if (!filterDate) {
+      return false;
+    }
     const rowDate = dayjs(rawDate);
-    const filterDate = dayjs(filterValue as string);
-    if (!rowDate.isValid() || !filterDate.isValid()) return true;
     return rowDate.isSame(filterDate, "day");
   }
 
