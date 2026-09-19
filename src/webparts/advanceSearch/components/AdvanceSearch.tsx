@@ -1835,15 +1835,60 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
   const alertsFilterFn = React.useCallback(
     (row: { original: doclib_AllProducts }, _columnId: string, filterValue: unknown): boolean => {
-      if (!filterValue) return true;
-      const search = String(filterValue).trim().toLowerCase();
-      if (!search) return true;
+      if (filterValue === undefined || filterValue === null || filterValue === "") return true;
+      if (Array.isArray(filterValue) && filterValue.length === 0) return true;
+
+      const selectedValues = (Array.isArray(filterValue) ? filterValue : [filterValue])
+        .map((v) => String(v).trim())
+        .filter((v) => v !== "");
+
+      if (selectedValues.length === 0) return true;
+
       const rowAlerts = getRowAlerts(row.original);
-      return rowAlerts.some((a) => a.toLowerCase().includes(search));
+      if (rowAlerts.length === 0) {
+        return selectedValues.some((v) => v.toLowerCase() === "(empty)");
+      }
+
+      const regularSelections = selectedValues
+        .filter((v) => v.toLowerCase() !== "(empty)")
+        .map((v) => v.toLowerCase());
+
+      if (regularSelections.length === 0) return false;
+
+      return regularSelections.some((sel) =>
+        rowAlerts.some((a) => {
+          const aLower = a.toLowerCase();
+          return aLower.includes(sel) || sel.includes(aLower);
+        })
+      );
     },
     [getRowAlerts]
   );
   (alertsFilterFn as { autoRemove?: (val: unknown) => boolean }).autoRemove = (val: unknown) => !isFilterActive(val);
+
+  const alertsOptions = useMemo(() => {
+    const items = getItemsFilteredExcluding("Alerts");
+    const unique = new Set<string>();
+    let hasEmpty = false;
+    items.forEach((item) => {
+      const alerts = getRowAlerts(item);
+      if (alerts.length === 0) {
+        hasEmpty = true;
+      } else {
+        alerts.forEach((a) => {
+          const trimmed = a.trim();
+          if (trimmed) unique.add(trimmed);
+        });
+      }
+    });
+    const result: string[] = Array.from(unique).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    );
+    if (hasEmpty) {
+      result.unshift("(Empty)");
+    }
+    return result;
+  }, [getItemsFilteredExcluding, getRowAlerts]);
 
   const clientOptions = useMemo(
     () => {
@@ -2946,9 +2991,16 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       {
         accessorKey: "Alerts",
         header: "Alerts",
+        filterFn: alertsFilterFn,
+        Filter: ({ column }) => (
+          <MultiSelectAutocompleteFilter
+            column={column}
+            options={alertsOptions}
+            placeholder="Select/type alert..."
+          />
+        ),
         size: 160,
         minSize: 140,
-        filterFn: alertsFilterFn,
         Cell: ({ row, column }) => {
           const items = getRowAlerts(row.original);
           if (items.length === 0) return "-";
@@ -3015,6 +3067,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       reviewedByOptions,
       authorOptions,
       editorOptions,
+      alertsOptions,
       fieldFormatters,
       getRowAlerts,
       personFilterFn,

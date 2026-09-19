@@ -220,7 +220,24 @@ export const itemMatchesFilter = (
     return true;
   }
   if (colId === "Alerts") {
-    return (item.Alerts || "").toLowerCase().includes(String(filterValue).toLowerCase());
+    const alertValues = (Array.isArray(filterValue) ? filterValue : [filterValue])
+      .map((v) => String(v).trim())
+      .filter(Boolean);
+    if (alertValues.length === 0) return true;
+    const rawAlerts = item.Alerts || "";
+    const empty = !rawAlerts.trim();
+    if (empty) {
+      return alertValues.some((v) => v.toLowerCase() === "(empty)");
+    }
+    const regularSelections = alertValues
+      .filter((v) => v.toLowerCase() !== "(empty)")
+      .map((v) => v.toLowerCase());
+    if (regularSelections.length === 0) return false;
+    const tokens = rawAlerts
+      .split(/[\r\n;,]+/)
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean);
+    return regularSelections.some((sel) => tokens.some((t) => t.includes(sel) || sel.includes(t)));
   }
   if (colId === "DocumentDate" || colId === "ExpiryDate" || colId === "NextReviewDate") {
     const rawDate = (item as any)[colId];
