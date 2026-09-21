@@ -30,10 +30,12 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import CheckIcon from "@mui/icons-material/Check";
 import EventBusyIcon from "@mui/icons-material/EventBusy";
+import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
+import Paper, { PaperProps } from "@mui/material/Paper";
 import FormControl from "@mui/material/FormControl";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Switch from "@mui/material/Switch";
@@ -258,6 +260,24 @@ const GenericFileTypeIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
     <rect x="5" y="7" width="6" height="1" rx="0.5" fill="#fff" />
     <rect x="5" y="9.5" width="6" height="1" rx="0.5" fill="#fff" />
     <rect x="5" y="12" width="4" height="1" rx="0.5" fill="#fff" />
+  </svg>
+);
+
+const FourDotsVerticalIcon: React.FC<{ size?: number; color?: string }> = ({
+  size = 16,
+  color = "currentColor",
+}) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 16 16"
+    fill={color}
+    style={{ flexShrink: 0, display: "inline-block", verticalAlign: "middle" }}
+  >
+    <circle cx="8" cy="2.5" r="1.25" />
+    <circle cx="8" cy="6.5" r="1.25" />
+    <circle cx="8" cy="10.5" r="1.25" />
+    <circle cx="8" cy="14.5" r="1.25" />
   </svg>
 );
 
@@ -679,6 +699,134 @@ const ProductListbox = React.forwardRef<
   );
 });
 
+const DraggablePaper = React.forwardRef<HTMLDivElement, PaperProps>(function DraggablePaper(props, ref) {
+  const paperRef = React.useRef<HTMLDivElement | null>(null);
+  const offsetRef = React.useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const dragInfoRef = React.useRef<{
+    isDragging: boolean;
+    startX: number;
+    startY: number;
+    startOffsetX: number;
+    startOffsetY: number;
+    paperRect: DOMRect | null;
+  }>({
+    isDragging: false,
+    startX: 0,
+    startY: 0,
+    startOffsetX: 0,
+    startOffsetY: 0,
+    paperRect: null,
+  });
+
+  const setRefs = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      paperRef.current = node;
+      if (typeof ref === "function") {
+        ref(node);
+      } else if (ref) {
+        (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
+      }
+    },
+    [ref]
+  );
+
+  React.useEffect(() => {
+    const paper = paperRef.current;
+    if (!paper) return;
+
+    const handle = (paper.querySelector("#draggable-search-dialog-title") ||
+      paper.querySelector(".draggable-dialog-handle")) as HTMLElement | null;
+    if (!handle) return;
+
+    handle.style.cursor = "grab";
+    handle.style.userSelect = "none";
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.button !== 0) return;
+
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        target.closest(
+          'button, input, textarea, select, a, [role="button"], .MuiButtonBase-root, .MuiSwitch-root'
+        )
+      ) {
+        return;
+      }
+
+      e.preventDefault();
+      const rect = paper.getBoundingClientRect();
+      dragInfoRef.current = {
+        isDragging: true,
+        startX: e.clientX,
+        startY: e.clientY,
+        startOffsetX: offsetRef.current.x,
+        startOffsetY: offsetRef.current.y,
+        paperRect: rect,
+      };
+
+      handle.style.cursor = "grabbing";
+      document.body.style.userSelect = "none";
+
+      const onPointerMove = (moveEvent: PointerEvent) => {
+        if (!dragInfoRef.current.isDragging || !dragInfoRef.current.paperRect) return;
+
+        const deltaX = moveEvent.clientX - dragInfoRef.current.startX;
+        const deltaY = moveEvent.clientY - dragInfoRef.current.startY;
+
+        const initialRect = dragInfoRef.current.paperRect;
+        const minDeltaX = -(initialRect.width - 120) - initialRect.left;
+        const maxDeltaX = window.innerWidth - 120 - initialRect.left;
+        const minDeltaY = -initialRect.top;
+        const maxDeltaY = window.innerHeight - 60 - initialRect.top;
+
+        const clampedDeltaX = Math.min(Math.max(deltaX, minDeltaX), maxDeltaX);
+        const clampedDeltaY = Math.min(Math.max(deltaY, minDeltaY), maxDeltaY);
+
+        const newX = dragInfoRef.current.startOffsetX + clampedDeltaX;
+        const newY = dragInfoRef.current.startOffsetY + clampedDeltaY;
+
+        offsetRef.current = { x: newX, y: newY };
+        if (paperRef.current) {
+          paperRef.current.style.transform = `translate(${newX}px, ${newY}px)`;
+        }
+      };
+
+      const onPointerUp = () => {
+        dragInfoRef.current.isDragging = false;
+        if (handle) {
+          handle.style.cursor = "grab";
+        }
+        document.body.style.userSelect = "";
+        window.removeEventListener("pointermove", onPointerMove);
+        window.removeEventListener("pointerup", onPointerUp);
+        window.removeEventListener("pointercancel", onPointerUp);
+      };
+
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", onPointerUp);
+      window.addEventListener("pointercancel", onPointerUp);
+    };
+
+    handle.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      handle.removeEventListener("pointerdown", onPointerDown);
+      document.body.style.userSelect = "";
+    };
+  }, []);
+
+  return (
+    <Paper
+      {...props}
+      ref={setRefs}
+      style={{
+        ...props.style,
+        transform: `translate(${offsetRef.current.x}px, ${offsetRef.current.y}px)`,
+      }}
+    />
+  );
+});
+
 interface ITableViewPreset {
   id: string;
   name: string;
@@ -1005,6 +1153,16 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const [fileMenuAnchorEl, setFileMenuAnchorEl] = React.useState<null | HTMLElement>(null);
   const [selectedFileForAction, setSelectedFileForAction] = React.useState<doclib_AllProducts | null>(null);
   const [editModalUrl, setEditModalUrl] = React.useState<string | null>(null);
+
+  // Action to View file in new tab (used by filename link & popup menu)
+  const handleViewFile = React.useCallback((fileItem: doclib_AllProducts | null): void => {
+    if (!fileItem) return;
+    const origin = window.location.origin;
+    const fileUrl = fileItem.fileUrl?.startsWith("http")
+      ? fileItem.fileUrl
+      : `${origin}${fileItem.fileUrl || ""}`;
+    window.open(fileUrl, "_blank", "noopener,noreferrer");
+  }, []);
 
   // Dynamic table container height to fill available vertical space cleanly
   const paperRef = React.useRef<HTMLDivElement | null>(null);
@@ -2528,45 +2686,85 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
           return (
             <Box
-              component="span"
-              onClick={(e: React.MouseEvent<HTMLElement>) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setSelectedFileForAction(row.original);
-                setFileMenuAnchorEl(e.currentTarget);
-              }}
-              title={rawName}
               sx={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: "8px",
+                gap: "4px",
                 maxWidth: "100%",
-                cursor: "pointer",
-                userSelect: "none",
-                "&:hover .sp-filename-text": {
-                  color: "#0078d4",
-                  textDecoration: "underline",
-                },
               }}
             >
-              <Box sx={{ display: "inline-flex", alignItems: "center", flexShrink: 0 }}>
-                {fileIcon}
-              </Box>
               <Box
                 component="span"
-                className="sp-filename-text"
+                onClick={(e: React.MouseEvent<HTMLElement>) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleViewFile(row.original);
+                }}
+                onDoubleClick={(e: React.MouseEvent<HTMLElement>) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                title={rawName}
                 sx={{
-                  color: "#323130",
-                  fontWeight: 500,
-                  fontSize: "12.5px",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  transition: "color 0.15s ease",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  minWidth: 0,
+                  maxWidth: "calc(100% - 26px)",
+                  cursor: "pointer",
+                  userSelect: "none",
+                  "&:hover .sp-filename-text": {
+                    color: "#0078d4",
+                    textDecoration: "underline",
+                  },
                 }}
               >
-                {displayName}
+                <Box sx={{ display: "inline-flex", alignItems: "center", flexShrink: 0 }}>
+                  {fileIcon}
+                </Box>
+                <Box
+                  component="span"
+                  className="sp-filename-text"
+                  sx={{
+                    color: "#323130",
+                    fontWeight: 500,
+                    fontSize: "12.5px",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    transition: "color 0.15s ease",
+                  }}
+                >
+                  {displayName}
+                </Box>
               </Box>
+
+              <Tooltip title="File actions" arrow>
+                <IconButton
+                  size="small"
+                  onClick={(e: React.MouseEvent<HTMLElement>) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSelectedFileForAction(row.original);
+                    setFileMenuAnchorEl(e.currentTarget);
+                  }}
+                  onDoubleClick={(e: React.MouseEvent<HTMLElement>) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  sx={{
+                    p: "3px",
+                    color: "text.secondary",
+                    flexShrink: 0,
+                    "&:hover": {
+                      color: "primary.main",
+                      backgroundColor: "rgba(0, 120, 212, 0.08)",
+                    },
+                  }}
+                >
+                  <FourDotsVerticalIcon size={14} />
+                </IconButton>
+              </Tooltip>
             </Box>
           );
         },
@@ -3593,6 +3791,25 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         cursor: "default",
       },
     },
+    muiTableBodyRowProps: ({ row }) => ({
+      onDoubleClick: (e: React.MouseEvent<HTMLTableRowElement>) => {
+        if (row.getIsGrouped && row.getIsGrouped()) return;
+
+        const target = e.target as HTMLElement | null;
+        if (
+          target &&
+          target.closest(
+            'button, input, textarea, select, a, [role="button"], [role="checkbox"], .MuiButtonBase-root, .MuiCheckbox-root'
+          )
+        ) {
+          return;
+        }
+
+        if (row.original) {
+          handleViewFile(row.original);
+        }
+      },
+    }),
     muiPaginationProps: {
       rowsPerPageOptions: [10, 50, 100, 500, 1000],
       sx: {
@@ -3825,10 +4042,13 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         <Dialog
           open={isSearchDialogOpen}
           onClose={() => setIsSearchDialogOpen(false)}
+          PaperComponent={DraggablePaper}
+          aria-labelledby="draggable-search-dialog-title"
           fullWidth
           maxWidth="md"
         >
           <DialogTitle
+            id="draggable-search-dialog-title"
             sx={{
               display: "flex",
               justifyContent: "space-between",
@@ -3836,11 +4056,17 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
               py: 1.5,
               px: 2,
               borderBottom: "1px solid #e0e0e0",
+              cursor: "grab",
+              userSelect: "none",
+              touchAction: "none",
             }}
           >
-            <Typography variant="h6" sx={{ fontSize: "16px", fontWeight: 600 }}>
-              Search Filters
-            </Typography>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <DragIndicatorIcon sx={{ color: "text.secondary", fontSize: 20, opacity: 0.6, cursor: "grab" }} />
+              <Typography variant="h6" sx={{ fontSize: "16px", fontWeight: 600 }}>
+                Search Filters
+              </Typography>
+            </Box>
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               {isSearchFormValid && (
                 <Button
@@ -4590,11 +4816,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           <MenuItem
             onClick={() => {
               if (selectedFileForAction) {
-                const origin = window.location.origin;
-                const fileUrl = selectedFileForAction.fileUrl?.startsWith("http")
-                  ? selectedFileForAction.fileUrl
-                  : `${origin}${selectedFileForAction.fileUrl || ""}`;
-                window.open(fileUrl, "_blank", "noopener,noreferrer");
+                handleViewFile(selectedFileForAction);
               }
               setFileMenuAnchorEl(null);
             }}
