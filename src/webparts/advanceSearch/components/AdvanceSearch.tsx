@@ -952,6 +952,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     country: [],
     confidentiality: [],
   });
+  const [defaultLibraryViewUrl, setDefaultLibraryViewUrl] = React.useState<string | null>(null);
 
   const [lookupLoading, setLookupLoading] = React.useState(false);
   const [resultsLoading, setResultsLoading] = React.useState(true);
@@ -1155,14 +1156,61 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const [editModalUrl, setEditModalUrl] = React.useState<string | null>(null);
 
   // Action to View file in new tab (used by filename link & popup menu)
-  const handleViewFile = React.useCallback((fileItem: doclib_AllProducts | null): void => {
-    if (!fileItem) return;
-    const origin = window.location.origin;
-    const fileUrl = fileItem.fileUrl?.startsWith("http")
-      ? fileItem.fileUrl
-      : `${origin}${fileItem.fileUrl || ""}`;
-    window.open(fileUrl, "_blank", "noopener,noreferrer");
-  }, []);
+  const handleViewFile = React.useCallback(
+    (fileItem: doclib_AllProducts | null): void => {
+      if (!fileItem) return;
+
+      const origin = window.location.origin;
+      const rawFileRef = fileItem.fileUrl || "";
+      const siteUrl = (props.urlSite?.trim() || props.context?.pageContext?.web?.absoluteUrl || origin).replace(
+        /\/$/,
+        ""
+      );
+
+      // Extract server-relative file path (e.g., /sites/PMDMS/Products/doc.pdf)
+      let serverRelativeFilePath = rawFileRef;
+      if (serverRelativeFilePath.startsWith("http://") || serverRelativeFilePath.startsWith("https://")) {
+        try {
+          const urlObj = new URL(serverRelativeFilePath);
+          serverRelativeFilePath = urlObj.pathname;
+        } catch {
+          // keep as-is
+        }
+      } else if (!serverRelativeFilePath.startsWith("/")) {
+        serverRelativeFilePath = `/${serverRelativeFilePath}`;
+      }
+
+      // If we have a file path, open SharePoint OOB viewer with details/property pane (?id=...&parent=...)
+      if (serverRelativeFilePath) {
+        const lastSlashIndex = serverRelativeFilePath.lastIndexOf("/");
+        const parentFolder = lastSlashIndex > 0 ? serverRelativeFilePath.substring(0, lastSlashIndex) : "";
+
+        // Determine the actual view URL for the library
+        let viewPageUrl: string;
+        if (defaultLibraryViewUrl) {
+          viewPageUrl = defaultLibraryViewUrl.startsWith("http")
+            ? defaultLibraryViewUrl
+            : `${origin}${defaultLibraryViewUrl.startsWith("/") ? "" : "/"}${defaultLibraryViewUrl}`;
+        } else if (parentFolder) {
+          viewPageUrl = `${origin}${parentFolder}/Forms/Product-Client-DocType.aspx`;
+        } else {
+          viewPageUrl = `${siteUrl}/Products/Forms/Product-Client-DocType.aspx`;
+        }
+
+        const oobViewerUrl = `${viewPageUrl}?id=${encodeURIComponent(
+          serverRelativeFilePath
+        )}&parent=${encodeURIComponent(parentFolder || `${siteUrl}/Products`)}`;
+
+        window.open(oobViewerUrl, "_blank", "noopener,noreferrer");
+        return;
+      }
+
+      // Fallback if file path resolution fails
+      const fallbackUrl = rawFileRef.startsWith("http") ? rawFileRef : `${origin}${rawFileRef}`;
+      window.open(fallbackUrl, "_blank", "noopener,noreferrer");
+    },
+    [props.urlSite, props.context, defaultLibraryViewUrl]
+  );
 
   // Dynamic table container height to fill available vertical space cleanly
   const paperRef = React.useRef<HTMLDivElement | null>(null);
@@ -1302,9 +1350,12 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
     const loadFieldMetadata = async (): Promise<void> => {
       try {
-        const { formatters, choices } = await loadListFieldMetadataService(activeSp);
+        const { formatters, choices, defaultViewUrl } = await loadListFieldMetadataService(activeSp);
         setFieldFormatters(formatters);
         setLibraryChoices(choices);
+        if (defaultViewUrl) {
+          setDefaultLibraryViewUrl(defaultViewUrl);
+        }
       } catch (err) {
         console.warn("loadListFieldMetadata error:", err);
       }
@@ -1520,9 +1571,12 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       const [recordsResult] = await Promise.all([
         loadRecordsBatchService(activeSp, undefined, 1000),
         loadListFieldMetadataService(activeSp)
-          .then(({ formatters, choices }) => {
+          .then(({ formatters, choices, defaultViewUrl }) => {
             setFieldFormatters(formatters);
             setLibraryChoices(choices);
+            if (defaultViewUrl) {
+              setDefaultLibraryViewUrl(defaultViewUrl);
+            }
           })
           .catch((err) => console.warn("handleRefresh metadata error:", err)),
       ]);

@@ -1,6 +1,7 @@
 import { SPFI } from "@pnp/sp";
 import "@pnp/sp/webs";
 import "@pnp/sp/lists";
+import "@pnp/sp/views/list";
 import "@pnp/sp/items";
 import "@pnp/sp/search";
 import "@pnp/sp/sharing";
@@ -206,6 +207,7 @@ export interface ILibraryColumnChoices {
 export interface IListFieldMetadata {
   formatters: IFieldFormatters;
   choices: ILibraryColumnChoices;
+  defaultViewUrl?: string;
 }
 
 export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadata> => {
@@ -217,12 +219,23 @@ export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadat
   if (!sp) return defaultResult;
 
   try {
-    const fields = await sp.web.lists
-      .getByTitle("Clients & Products")
-      .fields.select("InternalName", "CustomFormatter", "Choices")
-      .filter(
-        "InternalName eq 'Business_x0020_Line' or InternalName eq 'Country' or InternalName eq 'Confidentiality' or InternalName eq 'Alerts' or InternalName eq 'Document_x0020_Status' or InternalName eq 'Expiry_x0020_Date' or InternalName eq 'Next_x0020_Review_x0020_Date'"
-      )();
+    const list = sp.web.lists.getByTitle("Clients & Products");
+
+    const [fields, defaultView] = await Promise.all([
+      list.fields
+        .select("InternalName", "CustomFormatter", "Choices")
+        .filter(
+          "InternalName eq 'Business_x0020_Line' or InternalName eq 'Country' or InternalName eq 'Confidentiality' or InternalName eq 'Alerts' or InternalName eq 'Document_x0020_Status' or InternalName eq 'Expiry_x0020_Date' or InternalName eq 'Next_x0020_Review_x0020_Date'"
+        )(),
+      list.views
+        .filter("DefaultView eq true")
+        .select("ServerRelativeUrl")()
+        .then((views: any[]) => (views && views.length > 0 ? views[0] : null))
+        .catch((err: any) => {
+          console.warn("Could not retrieve defaultView for Clients & Products:", err);
+          return null;
+        }),
+    ]);
 
     let blFormat: Record<string, IChipStyle> = {};
     let confFormat: Record<string, IChipStyle> = {};
@@ -287,6 +300,7 @@ export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadat
           a.localeCompare(b, undefined, { sensitivity: "base" })
         ),
       },
+      defaultViewUrl: defaultView?.ServerRelativeUrl || undefined,
     };
   } catch (err) {
     console.warn("Could not load field metadata from Clients & Products:", err);
