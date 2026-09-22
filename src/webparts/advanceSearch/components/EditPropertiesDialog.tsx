@@ -4,6 +4,7 @@ import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
+import Paper, { PaperProps } from "@mui/material/Paper";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
@@ -16,6 +17,7 @@ import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
 import CloseIcon from "@mui/icons-material/Close";
 import EditNoteIcon from "@mui/icons-material/EditNote";
+import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 
 import {
   doclib_AllProducts,
@@ -75,6 +77,134 @@ const EditProductListbox = React.forwardRef<
   );
 });
 
+const DraggablePaper = React.forwardRef<HTMLDivElement, PaperProps>(function DraggablePaper(props, ref) {
+  const paperRef = React.useRef<HTMLDivElement | null>(null);
+  const offsetRef = React.useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const dragInfoRef = React.useRef<{
+    isDragging: boolean;
+    startX: number;
+    startY: number;
+    startOffsetX: number;
+    startOffsetY: number;
+    paperRect: DOMRect | null;
+  }>({
+    isDragging: false,
+    startX: 0,
+    startY: 0,
+    startOffsetX: 0,
+    startOffsetY: 0,
+    paperRect: null,
+  });
+
+  const setRefs = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      paperRef.current = node;
+      if (typeof ref === "function") {
+        ref(node);
+      } else if (ref) {
+        (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
+      }
+    },
+    [ref]
+  );
+
+  React.useEffect(() => {
+    const paper = paperRef.current;
+    if (!paper) return;
+
+    const handle = (paper.querySelector("#draggable-edit-dialog-title") ||
+      paper.querySelector(".draggable-dialog-handle")) as HTMLElement | null;
+    if (!handle) return;
+
+    handle.style.cursor = "grab";
+    handle.style.userSelect = "none";
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.button !== 0) return;
+
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        target.closest(
+          'button, input, textarea, select, a, [role="button"], .MuiButtonBase-root, .MuiSwitch-root'
+        )
+      ) {
+        return;
+      }
+
+      e.preventDefault();
+      const rect = paper.getBoundingClientRect();
+      dragInfoRef.current = {
+        isDragging: true,
+        startX: e.clientX,
+        startY: e.clientY,
+        startOffsetX: offsetRef.current.x,
+        startOffsetY: offsetRef.current.y,
+        paperRect: rect,
+      };
+
+      handle.style.cursor = "grabbing";
+      document.body.style.userSelect = "none";
+
+      const onPointerMove = (moveEvent: PointerEvent) => {
+        if (!dragInfoRef.current.isDragging || !dragInfoRef.current.paperRect) return;
+
+        const deltaX = moveEvent.clientX - dragInfoRef.current.startX;
+        const deltaY = moveEvent.clientY - dragInfoRef.current.startY;
+
+        const initialRect = dragInfoRef.current.paperRect;
+        const minDeltaX = -(initialRect.width - 120) - initialRect.left;
+        const maxDeltaX = window.innerWidth - 120 - initialRect.left;
+        const minDeltaY = -initialRect.top;
+        const maxDeltaY = window.innerHeight - 60 - initialRect.top;
+
+        const clampedDeltaX = Math.min(Math.max(deltaX, minDeltaX), maxDeltaX);
+        const clampedDeltaY = Math.min(Math.max(deltaY, minDeltaY), maxDeltaY);
+
+        const newX = dragInfoRef.current.startOffsetX + clampedDeltaX;
+        const newY = dragInfoRef.current.startOffsetY + clampedDeltaY;
+
+        offsetRef.current = { x: newX, y: newY };
+        if (paperRef.current) {
+          paperRef.current.style.transform = `translate(${newX}px, ${newY}px)`;
+        }
+      };
+
+      const onPointerUp = () => {
+        dragInfoRef.current.isDragging = false;
+        if (handle) {
+          handle.style.cursor = "grab";
+        }
+        document.body.style.userSelect = "";
+        window.removeEventListener("pointermove", onPointerMove);
+        window.removeEventListener("pointerup", onPointerUp);
+        window.removeEventListener("pointercancel", onPointerUp);
+      };
+
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", onPointerUp);
+      window.addEventListener("pointercancel", onPointerUp);
+    };
+
+    handle.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      handle.removeEventListener("pointerdown", onPointerDown);
+      document.body.style.userSelect = "";
+    };
+  }, []);
+
+  return (
+    <Paper
+      {...props}
+      ref={setRefs}
+      style={{
+        ...props.style,
+        transform: `translate(${offsetRef.current.x}px, ${offsetRef.current.y}px)`,
+      }}
+    />
+  );
+});
+
 export interface IEditPropertiesDialogProps {
   open: boolean;
   onClose: () => void;
@@ -127,6 +257,14 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
   // Initialize form state whenever dialog opens or selectedItems change
   React.useEffect(() => {
     if (!open) {
+      setSelectedProducts([]);
+      setSelectedClients([]);
+      setSelectedDocumentType(null);
+      setSelectedSubDocumentTypes([]);
+      setProductsModified(false);
+      setClientsModified(false);
+      setDocumentTypeModified(false);
+      setSubDocumentTypesModified(false);
       setErrorMessage(null);
       setIsSaving(false);
       setIsLoadingLiveItem(false);
@@ -136,12 +274,28 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
     setErrorMessage(null);
     setIsSaving(false);
 
-    if (singleItem && singleItem.id) {
+    // Explicit check: If more than 1 item is selected, ALWAYS wipe and keep empty!
+    if (selectedItems.length > 1) {
+      setSelectedProducts([]);
+      setSelectedClients([]);
+      setSelectedDocumentType(null);
+      setSelectedSubDocumentTypes([]);
+      setProductsModified(false);
+      setClientsModified(false);
+      setDocumentTypeModified(false);
+      setSubDocumentTypesModified(false);
+      setIsLoadingLiveItem(false);
+      return;
+    }
+
+    if (selectedItems.length === 1 && typeof selectedItems[0]?.id === "number") {
+      const itemToEdit = selectedItems[0];
+      const itemId = itemToEdit.id as number;
       // 1. Initial fast prepopulate from data table to avoid layout shift
-      setSelectedProducts(singleItem.PIMProduct ? [...singleItem.PIMProduct] : []);
+      setSelectedProducts(itemToEdit.PIMProduct ? [...itemToEdit.PIMProduct] : []);
       setProductsModified(true);
 
-      const clientStr = singleItem.ManufacturerSearchText || "";
+      const clientStr = itemToEdit.ManufacturerSearchText || "";
       if (clientStr.trim()) {
         const parsedClients = clientStr
           .split(/[\r\n;,]+/)
@@ -154,17 +308,17 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
       }
       setClientsModified(true);
 
-      const docTypeTitle = (singleItem.DocumentTypeSearchText || "").trim();
+      const docTypeTitle = (itemToEdit.DocumentTypeSearchText || "").trim();
       const matchedDocType = documentTypes.find(
         (d) => (d.Title || "").toLowerCase() === docTypeTitle.toLowerCase()
       ) || (docTypeTitle ? { ID: 0, Title: docTypeTitle } : null);
       setSelectedDocumentType(matchedDocType);
       setDocumentTypeModified(true);
 
-      const subDocStr = singleItem.SubDocumentTypeSearchText || "";
+      const subDocStr = itemToEdit.SubDocumentTypeSearchText || "";
       if (subDocStr.trim()) {
         const subTitles = subDocStr
-          .split(",")
+          .split(/[\r\n;,]+/)
           .map((s) => s.trim())
           .filter(Boolean);
         const matchedSubs = subTitles.map((title, idx) => {
@@ -183,7 +337,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
       let isCancelled = false;
       setIsLoadingLiveItem(true);
 
-      loadItemDetailsForEdit(sp, singleItem.id)
+      loadItemDetailsForEdit(sp, itemId)
         .then((live) => {
           if (isCancelled) return;
 
@@ -236,22 +390,8 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
       return () => {
         isCancelled = true;
       };
-    } else {
-      // Bulk Edit: Start empty; only flag as modified when user touches a control
-      setSelectedProducts([]);
-      setProductsModified(false);
-
-      setSelectedClients([]);
-      setClientsModified(false);
-
-      setSelectedDocumentType(null);
-      setDocumentTypeModified(false);
-
-      setSelectedSubDocumentTypes([]);
-      setSubDocumentTypesModified(false);
-      setIsLoadingLiveItem(false);
     }
-  }, [open, singleItem, sp, documentTypes, allSubDocumentTypes]);
+  }, [open, selectedItems, sp, documentTypes, allSubDocumentTypes]);
 
   // Product Autocomplete type-ahead
   React.useEffect(() => {
@@ -381,17 +521,13 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
     <Dialog
       open={open}
       onClose={isSaving ? undefined : onClose}
+      PaperComponent={DraggablePaper}
+      aria-labelledby="draggable-edit-dialog-title"
       fullWidth
       maxWidth="md"
-      PaperProps={{
-        sx: {
-          borderRadius: "8px",
-          display: "flex",
-          flexDirection: "column",
-        },
-      }}
     >
       <DialogTitle
+        id="draggable-edit-dialog-title"
         sx={{
           display: "flex",
           justifyContent: "space-between",
@@ -399,9 +535,13 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
           py: 1.5,
           px: 2.5,
           borderBottom: "1px solid #e0e0e0",
+          cursor: "grab",
+          userSelect: "none",
+          touchAction: "none",
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <DragIndicatorIcon sx={{ color: "text.secondary", fontSize: 20, opacity: 0.6, cursor: "grab" }} />
           <EditNoteIcon color="primary" sx={{ fontSize: 24 }} />
           <Box>
             <Typography variant="h6" sx={{ fontSize: "16px", fontWeight: 600 }}>

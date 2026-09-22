@@ -2849,31 +2849,44 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                 </Box>
               </Box>
 
-              <Tooltip title="File actions" arrow>
-                <IconButton
-                  size="small"
-                  onClick={(e: React.MouseEvent<HTMLElement>) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setSelectedFileForAction(row.original);
-                    setFileMenuAnchorEl(e.currentTarget);
-                  }}
-                  onDoubleClick={(e: React.MouseEvent<HTMLElement>) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                  }}
-                  sx={{
-                    p: "3px",
-                    color: "text.secondary",
-                    flexShrink: 0,
-                    "&:hover": {
-                      color: "primary.main",
-                      backgroundColor: "rgba(0, 120, 212, 0.08)",
-                    },
-                  }}
-                >
-                  <FourDotsVerticalIcon size={14} />
-                </IconButton>
+              <Tooltip
+                title={
+                  table.getSelectedRowModel().rows.length > 1
+                    ? "Multiple rows selected. Use top toolbar actions."
+                    : "File actions"
+                }
+                arrow
+              >
+                <span>
+                  <IconButton
+                    size="small"
+                    disabled={table.getSelectedRowModel().rows.length > 1}
+                    onClick={(e: React.MouseEvent<HTMLElement>) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setSelectedFileForAction(row.original);
+                      setFileMenuAnchorEl(e.currentTarget);
+                    }}
+                    onDoubleClick={(e: React.MouseEvent<HTMLElement>) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    sx={{
+                      p: "3px",
+                      color: "text.secondary",
+                      flexShrink: 0,
+                      "&:hover": {
+                        color: "primary.main",
+                        backgroundColor: "rgba(0, 120, 212, 0.08)",
+                      },
+                      "&.Mui-disabled": {
+                        opacity: 0.35,
+                      },
+                    }}
+                  >
+                    <FourDotsVerticalIcon size={14} />
+                  </IconButton>
+                </span>
               </Tooltip>
             </Box>
           );
@@ -3565,6 +3578,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           disabled={table.getSelectedRowModel().rows.length === 0}
           onClick={() => {
             const selectedRows = table.getSelectedRowModel().rows.map(row => row.original);
+            console.log(`[AdvanceSearch] Opening Edit Dialog for ${selectedRows.length} selected row(s):`, selectedRows.map(r => r.id));
             setSelectedItemsForEdit(selectedRows);
             setIsEditDialogOpen(true);
           }}
