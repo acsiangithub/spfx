@@ -24,6 +24,7 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import ShareIcon from "@mui/icons-material/Share";
+import EditNoteIcon from "@mui/icons-material/EditNote";
 import FilterListOffIcon from "@mui/icons-material/FilterListOff";
 import BookmarkBorderIcon from "@mui/icons-material/BookmarkBorder";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
@@ -100,9 +101,12 @@ import {
   loadListFieldMetadata as loadListFieldMetadataService,
   loadRecordsBatch as loadRecordsBatchService,
   searchRecords as searchRecordsService,
+  updateItemProperties as updateItemPropertiesService,
+  IEditPropertiesPayload,
   ILibraryColumnChoices,
 } from "../../../services/sharePointService";
 import EmailShareDialog from "./EmailShareDialog";
+import EditPropertiesDialog from "./EditPropertiesDialog";
 
 const DateFilterControl: React.FC<{
   column: { getFilterValue: () => unknown; setFilterValue: (value: unknown) => void };
@@ -346,7 +350,7 @@ const exportToExcelCsv = (items: doclib_AllProducts[], customFileName: string = 
     const productsStr = (item.PIMProduct || [])
       .map((p) => `${p.Title || ""} ${p.PIMProductName || ""}`.trim())
       .filter(Boolean)
-      .join("; ");
+      .join(", ");
 
     const row = [
       escapeCsv(item.filename),
@@ -616,7 +620,7 @@ const CollapsibleItemList: React.FC<ICollapsibleItemListProps> = ({
         ) : (
           <span key={idx}>
             {item}
-            {idx < itemsToDisplay.length - 1 ? "," : ""}
+            {idx < itemsToDisplay.length - 1 ? ", " : ""}
           </span>
         )
       )}
@@ -1150,10 +1154,11 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const [isLoadingMore, setIsLoadingMore] = React.useState<boolean>(false);
   const [isBrowseMode, setIsBrowseMode] = React.useState<boolean>(true);
 
-  // State for File Context Menu & Edit Modal Dialog
+  // State for File Context Menu & Custom Edit Properties Dialog
   const [fileMenuAnchorEl, setFileMenuAnchorEl] = React.useState<null | HTMLElement>(null);
   const [selectedFileForAction, setSelectedFileForAction] = React.useState<doclib_AllProducts | null>(null);
-  const [editModalUrl, setEditModalUrl] = React.useState<string | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = React.useState<boolean>(false);
+  const [selectedItemsForEdit, setSelectedItemsForEdit] = React.useState<doclib_AllProducts[]>([]);
 
   // Action to View file in new tab (used by filename link & popup menu)
   const handleViewFile = React.useCallback(
@@ -1282,6 +1287,57 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     }
     return sp;
   }, [props.urlSite, props.context]);
+
+  // Save handler for Single and Bulk Edit (with Optimistic UI in memory)
+  const handleSaveItemProperties = React.useCallback(
+    async (payload: IEditPropertiesPayload, itemIds: number[]): Promise<void> => {
+      // 1. Dual-write to SharePoint list (TermSets + text/lookup columns)
+      await updateItemPropertiesService(activeSp, itemIds, payload);
+
+      // 2. Optimistic UI update in items_AllProducts in memory for 0ms lag
+      setItems_AllProducts((prevItems) => {
+        const idSet = new Set(itemIds);
+        return prevItems.map((item) => {
+          if (!item.id || !idSet.has(item.id)) return item;
+
+          const updated: doclib_AllProducts = { ...item };
+
+          // 1. Products
+          if (payload.productsModified && payload.selectedProducts !== undefined) {
+            updated.PIMProduct = payload.selectedProducts;
+            updated.PIMProductSearchText = payload.selectedProducts
+              .map((p) => `${p.Title || ""} ${p.PIMProductName || ""}`.trim())
+              .filter(Boolean)
+              .join(" ");
+          }
+
+          // 2. Clients
+          if (payload.clientsModified && payload.selectedClients !== undefined) {
+            updated.ManufacturerSearchText = payload.selectedClients
+              .map((c) => c.Title || "")
+              .filter(Boolean)
+              .join("; ");
+          }
+
+          // 3. Document Type
+          if (payload.documentTypeModified) {
+            updated.DocumentTypeSearchText = payload.selectedDocumentType?.Title || "";
+          }
+
+          // 4. Sub Document Type
+          if (payload.subDocumentTypesModified && payload.selectedSubDocumentTypes !== undefined) {
+            updated.SubDocumentTypeSearchText = payload.selectedSubDocumentTypes
+              .map((s) => s.Title || "")
+              .filter(Boolean)
+              .join("; ");
+          }
+
+          return updated;
+        });
+      });
+    },
+    [activeSp]
+  );
 
   React.useEffect(() => {
     const timer = setTimeout(async () => {
@@ -2242,7 +2298,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         if (!raw || raw.trim() === "") {
           hasEmpty = true;
         } else {
-          raw.split(",").forEach((val) => {
+          raw.split(/[\r\n;,]+/).forEach((val) => {
             const trimmed = val.trim();
             if (trimmed) unique.add(trimmed);
           });
@@ -2269,7 +2325,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         if (!raw || raw.trim() === "") {
           hasEmpty = true;
         } else {
-          raw.split(",").forEach((val) => {
+          raw.split(/[\r\n;,]+/).forEach((val) => {
             const trimmed = val.trim();
             if (trimmed) unique.add(trimmed);
           });
@@ -2321,7 +2377,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         if (!raw || raw.trim() === "") {
           hasEmpty = true;
         } else {
-          raw.split(",").forEach((val) => {
+          raw.split(/[\r\n;,]+/).forEach((val) => {
             const trimmed = val.trim();
             if (trimmed) unique.add(trimmed);
           });
@@ -2348,7 +2404,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         if (!raw || raw.trim() === "") {
           hasEmpty = true;
         } else {
-          raw.split(",").forEach((val) => {
+          raw.split(/[\r\n;,]+/).forEach((val) => {
             const trimmed = val.trim();
             if (trimmed) unique.add(trimmed);
           });
@@ -2395,7 +2451,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       if (!raw || raw.trim() === "") {
         hasEmpty = true;
       } else {
-        raw.split(",").forEach((val) => {
+        raw.split(/[\r\n;,]+/).forEach((val) => {
           const trimmed = val.trim();
           if (trimmed) unique.add(trimmed);
         });
@@ -2419,7 +2475,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       if (!raw || raw.trim() === "") {
         hasEmpty = true;
       } else {
-        raw.split(",").forEach((val) => {
+        raw.split(/[\r\n;,]+/).forEach((val) => {
           const trimmed = val.trim();
           if (trimmed) unique.add(trimmed);
         });
@@ -2443,7 +2499,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       if (!raw || raw.trim() === "") {
         hasEmpty = true;
       } else {
-        raw.split(",").forEach((val) => {
+        raw.split(/[\r\n;,]+/).forEach((val) => {
           const trimmed = val.trim();
           if (trimmed) unique.add(trimmed);
         });
@@ -2885,9 +2941,19 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         filterFn: multiSelectFilterFn,
         size: 150,
         minSize: 150,
-        Cell: ({ cell }) => {
+        Cell: ({ cell, column }) => {
           const raw = String(cell.getValue() || "").trim();
-          return <span>{raw || "-"}</span>;
+          if (!raw || raw === "-") return "-";
+          const items = raw
+            .split(/[\r\n;,]+/)
+            .map((item) => item.trim())
+            .filter(Boolean);
+          return (
+            <CollapsibleItemList
+              items={items}
+              filterValues={column.getFilterValue()}
+            />
+          );
         },
       },
       {
@@ -2907,7 +2973,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           const raw = String(cell.getValue() || "").trim();
           if (!raw || raw === "-") return "-";
           const items = raw
-            .split(",")
+            .split(/[\r\n;,]+/)
             .map((item) => item.trim())
             .filter(Boolean);
           return (
@@ -2930,7 +2996,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           const raw = String(cell.getValue() || "").trim();
           if (!raw || raw === "-") return "-";
           const items = raw
-            .split(",")
+            .split(/[\r\n;,]+/)
             .map((v) => v.trim())
             .filter(Boolean);
 
@@ -2979,7 +3045,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           const raw = String(cell.getValue() || "").trim();
           if (!raw || raw === "-") return "-";
           const items = raw
-            .split(",")
+            .split(/[\r\n;,]+/)
             .map((item) => item.trim())
             .filter(Boolean);
           return (
@@ -3015,7 +3081,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           const raw = String(cell.getValue() || "").trim();
           if (!raw || raw === "-") return "-";
           const items = raw
-            .split(",")
+            .split(/[\r\n;,]+/)
             .map((v) => v.trim())
             .filter(Boolean);
 
@@ -3079,7 +3145,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           const raw = String(cell.getValue() || "").trim();
           if (!raw || raw === "-") return "-";
           const items = raw
-            .split(",")
+            .split(/[\r\n;,]+/)
             .map((v) => v.trim())
             .filter(Boolean);
 
@@ -3492,6 +3558,23 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           title="Share Selected"
         >
           <ShareIcon />
+        </IconButton>
+
+        <IconButton
+          color="primary"
+          disabled={table.getSelectedRowModel().rows.length === 0}
+          onClick={() => {
+            const selectedRows = table.getSelectedRowModel().rows.map(row => row.original);
+            setSelectedItemsForEdit(selectedRows);
+            setIsEditDialogOpen(true);
+          }}
+          title={
+            table.getSelectedRowModel().rows.length > 0
+              ? `Edit Selected (${table.getSelectedRowModel().rows.length})`
+              : "Edit Selected"
+          }
+        >
+          <EditNoteIcon />
         </IconButton>
 
         {/* --- SharePoint OOB Style View Switcher --- */}
@@ -4880,9 +4963,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           <MenuItem
             onClick={() => {
               if (selectedFileForAction) {
-                const baseUrl = props.urlSite ? props.urlSite.replace(/\/$/, "") : window.location.origin;
-                const editUrl = `${baseUrl}/Products/Forms/EditForm.aspx?ID=${selectedFileForAction.id || ""}`;
-                setEditModalUrl(editUrl);
+                setSelectedItemsForEdit([selectedFileForAction]);
+                setIsEditDialogOpen(true);
               }
               setFileMenuAnchorEl(null);
             }}
@@ -4891,65 +4973,16 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           </MenuItem>
         </Menu>
 
-        {/* In-page Modal Dialog for OOB Edit Form */}
-        <Dialog
-          open={Boolean(editModalUrl)}
-          onClose={() => setEditModalUrl(null)}
-          fullWidth
-          maxWidth="md"
-          PaperProps={{
-            sx: {
-              height: "85vh",
-              maxHeight: "850px",
-              display: "flex",
-              flexDirection: "column",
-            },
-          }}
-        >
-          <DialogTitle
-            sx={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              py: 1.5,
-              px: 2,
-              borderBottom: "1px solid #e0e0e0",
-            }}
-          >
-            <Typography variant="h6" sx={{ fontSize: "16px", fontWeight: 600 }}>
-              Edit Properties - {selectedFileForAction?.filename || "Document"}
-            </Typography>
-            <IconButton
-              size="small"
-              onClick={() => setEditModalUrl(null)}
-            >
-              <CloseIcon fontSize="small" />
-            </IconButton>
-          </DialogTitle>
-          <DialogContent
-            sx={{
-              p: 0,
-              flex: 1,
-              overflow: "auto",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            {editModalUrl && (
-              <iframe
-                src={editModalUrl}
-                title="Edit Document Form"
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  border: "none",
-                  flex: 1,
-                  display: "block",
-                }}
-              />
-            )}
-          </DialogContent>
-        </Dialog>
+        {/* Custom Edit Properties Dialog for Single & Bulk Edit */}
+        <EditPropertiesDialog
+          open={isEditDialogOpen}
+          onClose={() => setIsEditDialogOpen(false)}
+          selectedItems={selectedItemsForEdit}
+          sp={activeSp}
+          documentTypes={documentTypes}
+          allSubDocumentTypes={allSubDocumentTypes}
+          onSave={handleSaveItemProperties}
+        />
 
         {/* Modal Dialog to Name & Save Custom View */}
         <Dialog

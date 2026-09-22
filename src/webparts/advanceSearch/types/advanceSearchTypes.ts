@@ -34,11 +34,15 @@ export type IProductLookupItem = {
   Manufacturer?: string;
   BusinessLine?: string;
   ManufacturerLookupId?: number;
+  TermGuid?: string;
+  WssId?: number;
 };
 
 export type IClientLookupItem = {
   ID: number;
   Title: string;
+  TermGuid?: string;
+  WssId?: number;
 };
 
 export type IDocumentTypeItem = {

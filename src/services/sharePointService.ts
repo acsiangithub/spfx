@@ -99,13 +99,33 @@ export const searchProducts = async (
       "PIMProductName",
       "Manufacturer",
       "BusinessLine",
-      "ManufacturerLookupId"
+      "ManufacturerLookupId",
+      "PIMProductTermSet"
     )
     .filter(`substringof('${escapedText}', PIMProductName)`)
     .orderBy("PIMProductName")
     .top(5000)();
 
-  return (results as IProductLookupItem[]).sort((a, b) => {
+  return (results as any[]).map((item) => {
+    const rawTerm = item.PIMProductTermSet;
+    const termGuid = Array.isArray(rawTerm) && rawTerm.length > 0
+      ? rawTerm[0].TermGuid
+      : rawTerm?.TermGuid || undefined;
+    const wssId = Array.isArray(rawTerm) && rawTerm.length > 0
+      ? rawTerm[0].WssId
+      : rawTerm?.WssId || undefined;
+
+    return {
+      ID: item.ID,
+      Title: item.Title || "",
+      PIMProductName: item.PIMProductName || "",
+      Manufacturer: item.Manufacturer || "",
+      BusinessLine: item.BusinessLine || "",
+      ManufacturerLookupId: item.ManufacturerLookupId,
+      TermGuid: termGuid,
+      WssId: wssId,
+    };
+  }).sort((a, b) => {
     const nameA = `${a.Title || ""} ${a.PIMProductName || ""}`.trim();
     const nameB = `${b.Title || ""} ${b.PIMProductName || ""}`.trim();
     return nameA.localeCompare(nameB, undefined, { sensitivity: "base" });
@@ -120,12 +140,27 @@ export const searchClients = async (
 
   const results = await sp.web.lists
     .getByTitle("PIM Global Client")
-    .items.select("ID", "Title")
+    .items.select("ID", "Title", "GlobalClientTermSet")
     .filter(`substringof('${escapedText}', Title)`)
     .orderBy("Title")
     .top(5000)();
 
-  return (results as IClientLookupItem[]).sort((a, b) =>
+  return (results as any[]).map((item) => {
+    const rawTerm = item.GlobalClientTermSet;
+    const termGuid = Array.isArray(rawTerm) && rawTerm.length > 0
+      ? rawTerm[0].TermGuid
+      : rawTerm?.TermGuid || undefined;
+    const wssId = Array.isArray(rawTerm) && rawTerm.length > 0
+      ? rawTerm[0].WssId
+      : rawTerm?.WssId || undefined;
+
+    return {
+      ID: item.ID,
+      Title: item.Title || "",
+      TermGuid: termGuid,
+      WssId: wssId,
+    };
+  }).sort((a, b) =>
     (a.Title || "").localeCompare(b.Title || "", undefined, { sensitivity: "base" })
   );
 };
@@ -562,5 +597,448 @@ export const shareFilesByEmail = async (
     if (result && result.ErrorMessage) {
       throw new Error(result.ErrorMessage);
     }
+  }
+};
+
+export interface ILoadedItemForEdit {
+  id: number;
+  products: IProductLookupItem[];
+  clients: IClientLookupItem[];
+  documentType: IDocumentTypeItem | null;
+  subDocumentTypes: ISubDocumentTypeItem[];
+}
+
+export const loadItemDetailsForEdit = async (
+  sp: SPFI,
+  itemId: number
+): Promise<ILoadedItemForEdit> => {
+  const raw = await sp.web.lists
+    .getByTitle("Clients & Products")
+    .items.getById(itemId)
+    .select(
+      "Id",
+      "PIMProductCode/Id",
+      "PIMProductCode/Title",
+      "PIMProductCode/PIMProductName",
+      "Manufacturer",
+      "GlobalClientTermSet",
+      "PIMProductTermSet",
+      "Document_x0020_Type",
+      "Sub_x0020_Document_x0020_Type"
+    )
+    .expand("PIMProductCode")();
+
+  // 1. Products: Load directly from PIMProductTermSet (Isahang batch query!)
+  let products: IProductLookupItem[] = [];
+  const rawProductTerms = raw.PIMProductTermSet;
+  if (Array.isArray(rawProductTerms) && rawProductTerms.length > 0) {
+    const termCodeMap = new Map<string, { label: string; name: string; termGuid?: string; wssId?: number }>();
+
+    for (const t of rawProductTerms) {
+      const label = (t.Label || "").trim();
+      let code = "";
+      let name = "";
+
+      if (label.includes(" : ")) {
+        const parts = label.split(" : ");
+        code = parts[0].trim();
+        name = parts.slice(1).join(" : ").trim();
+      } else if (label.includes(":")) {
+        const parts = label.split(":");
+        code = parts[0].trim();
+        name = parts.slice(1).join(":").trim();
+      } else if (label.includes(" ")) {
+        const spaceIdx = label.indexOf(" ");
+        code = label.substring(0, spaceIdx).trim();
+        name = label.substring(spaceIdx + 1).trim();
+      } else {
+        code = label;
+      }
+
+      if (code) {
+        termCodeMap.set(code.toLowerCase(), {
+          label,
+          name,
+          termGuid: t.TermGuid,
+          wssId: t.WssId,
+        });
+      }
+    }
+
+    // Isahang batch filter query para sa lahat ng product codes sa halip na paisa-isa
+    const codes = Array.from(termCodeMap.keys());
+    if (codes.length > 0) {
+      try {
+        const filterClause = codes
+          .map((c) => `Title eq '${c.replace(/'/g, "''")}'`)
+          .join(" or ");
+
+        const masterItems = await sp.web.lists
+          .getByTitle("PIM Product")
+          .items.filter(filterClause)
+          .select("ID", "Title", "PIMProductName", "Manufacturer", "BusinessLine")
+          .top(codes.length + 10)();
+
+        masterItems.forEach((mItem: any) => {
+          const mCode = (mItem.Title || "").trim().toLowerCase();
+          const info = termCodeMap.get(mCode);
+          products.push({
+            ID: mItem.ID,
+            Title: mItem.Title,
+            PIMProductName: mItem.PIMProductName || info?.name || "",
+            Manufacturer: mItem.Manufacturer || "",
+            BusinessLine: mItem.BusinessLine || "",
+            TermGuid: info?.termGuid,
+            WssId: info?.wssId,
+          });
+          termCodeMap.delete(mCode);
+        });
+      } catch (err) {
+        console.warn("Batch resolving products failed:", err);
+      }
+    }
+
+    // Fallback for any product code not found in masterlist
+    termCodeMap.forEach((info, codeKey) => {
+      products.push({
+        ID: -(products.length + 1),
+        Title: codeKey.toUpperCase(),
+        PIMProductName: info.name,
+        TermGuid: info.termGuid,
+        WssId: info.wssId,
+      });
+    });
+  }
+
+  // Fallback if PIMProductTermSet was empty: use PIMProductCode lookup
+  if (products.length === 0 && Array.isArray(raw.PIMProductCode) && raw.PIMProductCode.length > 0) {
+    products = raw.PIMProductCode.map((p: any) => ({
+      ID: p.Id ?? p.ID ?? 0,
+      Title: p.Title ?? "",
+      PIMProductName: p.PIMProductName ?? "",
+    }));
+  }
+
+  // 2. Clients: Load directly from GlobalClientTermSet (Isahang batch query!)
+  let clients: IClientLookupItem[] = [];
+  const rawClientTerms = raw.GlobalClientTermSet;
+  if (Array.isArray(rawClientTerms) && rawClientTerms.length > 0) {
+    const clientTitleMap = new Map<string, { termGuid?: string; wssId?: number }>();
+    for (const t of rawClientTerms) {
+      const clientTitle = (t.Label || "").trim();
+      if (clientTitle) {
+        clientTitleMap.set(clientTitle.toLowerCase(), {
+          termGuid: t.TermGuid,
+          wssId: t.WssId,
+        });
+      }
+    }
+
+    const clientTitles = Array.from(clientTitleMap.keys());
+    if (clientTitles.length > 0) {
+      try {
+        const filterClause = clientTitles
+          .map((c) => `Title eq '${c.replace(/'/g, "''")}'`)
+          .join(" or ");
+
+        const masterClients = await sp.web.lists
+          .getByTitle("PIM Global Client")
+          .items.filter(filterClause)
+          .select("ID", "Title")
+          .top(clientTitles.length + 10)();
+
+        masterClients.forEach((mClient: any) => {
+          const cTitle = (mClient.Title || "").trim().toLowerCase();
+          const info = clientTitleMap.get(cTitle);
+          clients.push({
+            ID: mClient.ID,
+            Title: mClient.Title,
+            TermGuid: info?.termGuid,
+            WssId: info?.wssId,
+          });
+          clientTitleMap.delete(cTitle);
+        });
+      } catch (err) {
+        console.warn("Batch resolving clients failed:", err);
+      }
+    }
+
+    clientTitleMap.forEach((info, cTitle) => {
+      clients.push({
+        ID: -(clients.length + 1),
+        Title: cTitle,
+        TermGuid: info.termGuid,
+        WssId: info.wssId,
+      });
+    });
+  }
+
+  // Fallback: If termset was empty on document, read from Manufacturer text field
+  if (clients.length === 0 && raw.Manufacturer) {
+    const names = String(raw.Manufacturer)
+      .split(/[\r\n;,]+/)
+      .map((c) => c.trim())
+      .filter(Boolean);
+
+    for (const name of names) {
+      clients.push({ ID: -(clients.length + 1), Title: name });
+    }
+  }
+
+  // 3. Document Type from text field
+  const docType: IDocumentTypeItem | null = raw.Document_x0020_Type
+    ? {
+        ID: 0,
+        Title: String(raw.Document_x0020_Type).trim(),
+      }
+    : null;
+
+  // 4. Sub Document Type from text field
+  const subDocTypes: ISubDocumentTypeItem[] = raw.Sub_x0020_Document_x0020_Type
+    ? String(raw.Sub_x0020_Document_x0020_Type)
+        .split(/[\r\n;,]+/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((title, idx) => ({ ID: -(idx + 1), Title: title }))
+    : [];
+
+  return {
+    id: raw.Id,
+    products,
+    clients,
+    documentType: docType,
+    subDocumentTypes: subDocTypes,
+  };
+};
+
+export interface IEditPropertiesPayload {
+  productsModified?: boolean;
+  selectedProducts?: IProductLookupItem[];
+
+  clientsModified?: boolean;
+  selectedClients?: IClientLookupItem[];
+
+  documentTypeModified?: boolean;
+  selectedDocumentType?: IDocumentTypeItem | null;
+
+  subDocumentTypesModified?: boolean;
+  selectedSubDocumentTypes?: ISubDocumentTypeItem[];
+}
+
+export const updateItemProperties = async (
+  sp: SPFI,
+  itemIds: number[],
+  payload: IEditPropertiesPayload
+): Promise<void> => {
+  if (!sp || !itemIds || itemIds.length === 0) return;
+
+  const list = sp.web.lists.getByTitle("Clients & Products");
+
+  const combinedUpdatePayload: Record<string, any> = {};
+  const taxonomyValues: { FieldName: string; FieldValue: string }[] = [];
+
+  // 1. Product (multi value)
+  if (payload.productsModified) {
+    const products = payload.selectedProducts || [];
+    const longNames = products.map((p) => p.PIMProductName || "").filter(Boolean).join("; ");
+    const productCodes = products.map((p) => p.Title || "").filter(Boolean).join("; ");
+    const pIds = products.map((p) => p.ID).filter((id) => id > 0);
+
+    combinedUpdatePayload["LongProductName"] = longNames;
+    combinedUpdatePayload["PIM_x0020_Product_x0020_Code"] = productCodes;
+    combinedUpdatePayload["PIMProductCodeId"] = pIds;
+
+    // Resolve any missing TermGuids from PIM Product masterlist
+    for (const p of products) {
+      if (!p.TermGuid && p.Title) {
+        try {
+          const found = await sp.web.lists
+            .getByTitle("PIM Product")
+            .items.filter(`Title eq '${p.Title.replace(/'/g, "''")}'`)
+            .select("ID", "Title", "PIMProductTermSet")
+            .top(1)();
+          if (found && found.length > 0 && found[0].PIMProductTermSet) {
+            const rawTerm = found[0].PIMProductTermSet;
+            p.TermGuid = Array.isArray(rawTerm) && rawTerm.length > 0
+              ? rawTerm[0].TermGuid
+              : rawTerm?.TermGuid || undefined;
+          }
+        } catch (err) {
+          console.warn(`Could not resolve TermGuid for product ${p.Title}:`, err);
+        }
+      }
+    }
+
+    const termSetParts = products.map((p) => {
+      const code = (p.Title || "").trim();
+      const name = (p.PIMProductName || "").trim();
+      const label = code && name ? `${code} : ${name}` : code || name;
+      if (p.TermGuid) {
+        return `${label}|${p.TermGuid}`;
+      }
+      return "";
+    }).filter(Boolean);
+
+    const termSetVal = termSetParts.join(";");
+    if (termSetVal) {
+      taxonomyValues.push({ FieldName: "PIMProductTermSet", FieldValue: termSetVal });
+    }
+  }
+
+  // 2. Client (multi value)
+  if (payload.clientsModified) {
+    const clients = payload.selectedClients || [];
+    const clientTitles = clients.map((c) => c.Title || "").filter(Boolean).join("; ");
+    combinedUpdatePayload["Manufacturer"] = clientTitles;
+
+    const resolvedClientIds: number[] = [];
+    for (const c of clients) {
+      if (c.ID && c.ID > 0) {
+        resolvedClientIds.push(c.ID);
+      } else if (c.Title) {
+        try {
+          const found = await sp.web.lists
+            .getByTitle("PIM Global Client")
+            .items.filter(`Title eq '${c.Title.replace(/'/g, "''")}'`)
+            .select("ID", "Title", "GlobalClientTermSet")
+            .top(1)();
+          if (found && found.length > 0) {
+            resolvedClientIds.push(found[0].ID);
+            if (!c.TermGuid && found[0].GlobalClientTermSet) {
+              const rawTerm = found[0].GlobalClientTermSet;
+              c.TermGuid = Array.isArray(rawTerm) && rawTerm.length > 0
+                ? rawTerm[0].TermGuid
+                : rawTerm?.TermGuid || undefined;
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      // Also ensure TermGuid is populated if still missing
+      if (!c.TermGuid && c.Title) {
+        try {
+          const found = await sp.web.lists
+            .getByTitle("PIM Global Client")
+            .items.filter(`Title eq '${c.Title.replace(/'/g, "''")}'`)
+            .select("ID", "Title", "GlobalClientTermSet")
+            .top(1)();
+          if (found && found.length > 0 && found[0].GlobalClientTermSet) {
+            const rawTerm = found[0].GlobalClientTermSet;
+            c.TermGuid = Array.isArray(rawTerm) && rawTerm.length > 0
+              ? rawTerm[0].TermGuid
+              : rawTerm?.TermGuid || undefined;
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+    if (resolvedClientIds.length > 0) {
+      combinedUpdatePayload["ManufacturerLookupId"] = resolvedClientIds;
+    }
+
+    const termSetParts = clients.map((c) => {
+      const label = (c.Title || "").trim();
+      if (c.TermGuid) {
+        return `${label}|${c.TermGuid}`;
+      }
+      return "";
+    }).filter(Boolean);
+
+    const termSetVal = termSetParts.join(";");
+    if (termSetVal) {
+      taxonomyValues.push({ FieldName: "GlobalClientTermSet", FieldValue: termSetVal });
+    }
+  }
+
+  // 3. Document Type (single value)
+  if (payload.documentTypeModified) {
+    const docType = payload.selectedDocumentType;
+    combinedUpdatePayload["Document_x0020_Type"] = docType?.Title || "";
+    if (docType?.ID && docType.ID > 0) {
+      combinedUpdatePayload["DocumentTypeId"] = docType.ID;
+    }
+  }
+
+  // 4. Sub Document Type (multi value)
+  if (payload.subDocumentTypesModified) {
+    const subTypes = payload.selectedSubDocumentTypes || [];
+    const subTitles = subTypes.map((s) => s.Title || "").filter(Boolean).join("; ");
+    const sIds = subTypes.map((s) => s.ID).filter((id) => id > 0);
+
+    combinedUpdatePayload["Sub_x0020_Document_x0020_Type"] = subTitles;
+    if (sIds.length > 0) {
+      combinedUpdatePayload["SubDocumentTypeId"] = sIds;
+    }
+  }
+
+  console.log("Saving item properties to SharePoint (unified payload):", {
+    itemIds,
+    combinedUpdatePayload,
+    taxonomyValues,
+  });
+
+  const CHUNK_SIZE = 10;
+  for (let i = 0; i < itemIds.length; i += CHUNK_SIZE) {
+    const chunk = itemIds.slice(i, i + CHUNK_SIZE);
+    await Promise.all(
+      chunk.map(async (id) => {
+        const item = list.items.getById(id);
+
+        // Unified Step 1: Isahang POST update para sa lahat ng Text at Lookup columns
+        if (Object.keys(combinedUpdatePayload).length > 0) {
+          try {
+            await item.update(combinedUpdatePayload);
+            console.log(`item.update succeeded with unified payload for item ${id}`);
+          } catch (updateErr: any) {
+            console.warn(`item.update error for item ${id}, trying results-object format fallback:`, updateErr);
+            const resultsPayload: Record<string, any> = { ...combinedUpdatePayload };
+            if (Array.isArray(resultsPayload.PIMProductCodeId)) {
+              resultsPayload.PIMProductCodeId = { results: resultsPayload.PIMProductCodeId };
+            }
+            if (Array.isArray(resultsPayload.ManufacturerLookupId)) {
+              resultsPayload.ManufacturerLookupId = { results: resultsPayload.ManufacturerLookupId };
+            }
+            if (Array.isArray(resultsPayload.SubDocumentTypeId)) {
+              resultsPayload.SubDocumentTypeId = { results: resultsPayload.SubDocumentTypeId };
+            }
+            try {
+              await item.update(resultsPayload);
+              console.log(`item.update resultsPayload succeeded for item ${id}`);
+            } catch (updateErr2) {
+              console.warn(`item.update fallback failed, saving text fields only:`, updateErr2);
+              const textOnlyPayload = { ...combinedUpdatePayload };
+              delete textOnlyPayload.PIMProductCodeId;
+              delete textOnlyPayload.ManufacturerLookupId;
+              delete textOnlyPayload.DocumentTypeId;
+              delete textOnlyPayload.SubDocumentTypeId;
+              await item.update(textOnlyPayload);
+              console.log(`item.update textOnlyPayload succeeded for item ${id}`);
+            }
+          }
+        }
+
+        // Step 2: Update Managed Metadata TermSets via validateUpdateListItem
+        if (taxonomyValues.length > 0) {
+          try {
+            const results = await item.validateUpdateListItem(taxonomyValues);
+            console.log(`validateUpdateListItem result for item ${id}:`, results);
+
+            // Check if validateUpdateListItem reported any field validation errors
+            if (Array.isArray(results)) {
+              results.forEach((r: any) => {
+                if (r.HasException) {
+                  console.error(`Taxonomy validation exception on field ${r.FieldName}: ${r.ErrorMessage}`);
+                }
+              });
+            }
+          } catch (taxErr) {
+            console.warn(`Taxonomy update notice for item ${id}:`, taxErr);
+          }
+        }
+      })
+    );
   }
 };
