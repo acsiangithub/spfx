@@ -955,6 +955,9 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     businessLine: [],
     country: [],
     confidentiality: [],
+    issuedBy: [],
+    documentStatus: [],
+    documentLanguage: [],
   });
   const [defaultLibraryViewUrl, setDefaultLibraryViewUrl] = React.useState<string | null>(null);
 
@@ -1330,6 +1333,61 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
               .map((s) => s.Title || "")
               .filter(Boolean)
               .join("; ");
+          }
+
+          // 5. Issued by
+          if (payload.issuedByModified && payload.issuedBy !== undefined) {
+            updated.IssuedBy = payload.issuedBy;
+          }
+
+          // 6. Issuer Name (Supplier)
+          if (payload.supplierModified && payload.supplier !== undefined) {
+            updated.Supplier = payload.supplier;
+          }
+
+          // 7. Document Provider Email
+          if (payload.supplierEmailModified && payload.supplierEmail !== undefined) {
+            updated.SupplierEmail = payload.supplierEmail;
+          }
+
+          // 8. Confidentiality
+          if (payload.confidentialityModified && payload.confidentiality !== undefined) {
+            updated.Confidentiality = payload.confidentiality;
+          }
+
+          // 9. Document Date
+          if (payload.documentDateModified) {
+            updated.DocumentDate = payload.documentDate || null;
+          }
+
+          // 10. Expiry Date
+          if (payload.expiryDateModified) {
+            updated.ExpiryDate = payload.expiryDate || null;
+          }
+
+          // 11. Next Review Date
+          if (payload.nextReviewDateModified) {
+            updated.NextReviewDate = payload.nextReviewDate || null;
+          }
+
+          // 12. Document Language
+          if (payload.documentLanguageModified && payload.documentLanguage !== undefined) {
+            updated.DocumentLanguage = payload.documentLanguage.join("; ");
+          }
+
+          // 13. Document Status
+          if (payload.documentStatusModified && payload.documentStatus !== undefined) {
+            updated.DocumentStatus = payload.documentStatus;
+          }
+
+          // 14. Customer Name
+          if (payload.customerNameModified && payload.customerName !== undefined) {
+            updated.CustomerName = payload.customerName;
+          }
+
+          // 15. Batch Number
+          if (payload.batchNumberModified && payload.batchNumber !== undefined) {
+            updated.BatchNumber = payload.batchNumber;
           }
 
           return updated;
@@ -4995,6 +5053,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           sp={activeSp}
           documentTypes={documentTypes}
           allSubDocumentTypes={allSubDocumentTypes}
+          libraryChoices={libraryChoices}
           onSave={handleSaveItemProperties}
         />
 

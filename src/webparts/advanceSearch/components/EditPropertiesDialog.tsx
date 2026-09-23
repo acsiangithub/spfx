@@ -11,6 +11,12 @@ import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import TextField from "@mui/material/TextField";
 import Autocomplete from "@mui/material/Autocomplete";
+import FormControl from "@mui/material/FormControl";
+import Select from "@mui/material/Select";
+import MenuItem from "@mui/material/MenuItem";
+import OutlinedInput from "@mui/material/OutlinedInput";
+import Checkbox from "@mui/material/Checkbox";
+import ListItemText from "@mui/material/ListItemText";
 import CircularProgress from "@mui/material/CircularProgress";
 import LinearProgress from "@mui/material/LinearProgress";
 import Alert from "@mui/material/Alert";
@@ -18,6 +24,10 @@ import Chip from "@mui/material/Chip";
 import CloseIcon from "@mui/icons-material/Close";
 import EditNoteIcon from "@mui/icons-material/EditNote";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import dayjs, { Dayjs } from "dayjs";
 
 import {
   doclib_AllProducts,
@@ -31,6 +41,7 @@ import {
   searchClients as searchClientsService,
   loadItemDetailsForEdit,
   IEditPropertiesPayload,
+  ILibraryColumnChoices,
 } from "../../../services/sharePointService";
 
 const EditProductListbox = React.forwardRef<
@@ -212,6 +223,7 @@ export interface IEditPropertiesDialogProps {
   sp: SPFI;
   documentTypes: IDocumentTypeItem[];
   allSubDocumentTypes: ISubDocumentTypeItem[];
+  libraryChoices?: ILibraryColumnChoices;
   onSave: (payload: IEditPropertiesPayload, itemIds: number[]) => Promise<void>;
 }
 
@@ -222,6 +234,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
   sp,
   documentTypes,
   allSubDocumentTypes,
+  libraryChoices,
   onSave,
 }) => {
   const isBulkEdit = selectedItems.length > 1;
@@ -240,6 +253,40 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
   const [selectedSubDocumentTypes, setSelectedSubDocumentTypes] = React.useState<ISubDocumentTypeItem[]>([]);
   const [subDocumentTypesModified, setSubDocumentTypesModified] = React.useState<boolean>(false);
 
+  // Additional 11 Fields
+  const [issuedBy, setIssuedBy] = React.useState<string>("");
+  const [issuedByModified, setIssuedByModified] = React.useState<boolean>(false);
+
+  const [supplier, setSupplier] = React.useState<string>("");
+  const [supplierModified, setSupplierModified] = React.useState<boolean>(false);
+
+  const [supplierEmail, setSupplierEmail] = React.useState<string>("");
+  const [supplierEmailModified, setSupplierEmailModified] = React.useState<boolean>(false);
+
+  const [confidentiality, setConfidentiality] = React.useState<string>("");
+  const [confidentialityModified, setConfidentialityModified] = React.useState<boolean>(false);
+
+  const [documentDate, setDocumentDate] = React.useState<Dayjs | null>(null);
+  const [documentDateModified, setDocumentDateModified] = React.useState<boolean>(false);
+
+  const [expiryDate, setExpiryDate] = React.useState<Dayjs | null>(null);
+  const [expiryDateModified, setExpiryDateModified] = React.useState<boolean>(false);
+
+  const [nextReviewDate, setNextReviewDate] = React.useState<Dayjs | null>(null);
+  const [nextReviewDateModified, setNextReviewDateModified] = React.useState<boolean>(false);
+
+  const [documentLanguage, setDocumentLanguage] = React.useState<string[]>([]);
+  const [documentLanguageModified, setDocumentLanguageModified] = React.useState<boolean>(false);
+
+  const [documentStatus, setDocumentStatus] = React.useState<string>("");
+  const [documentStatusModified, setDocumentStatusModified] = React.useState<boolean>(false);
+
+  const [customerName, setCustomerName] = React.useState<string>("");
+  const [customerNameModified, setCustomerNameModified] = React.useState<boolean>(false);
+
+  const [batchNumber, setBatchNumber] = React.useState<string>("");
+  const [batchNumberModified, setBatchNumberModified] = React.useState<boolean>(false);
+
   // Type-ahead lookup state
   const [productSearchText, setProductSearchText] = React.useState("");
   const [productOptions, setProductOptions] = React.useState<IProductLookupItem[]>([]);
@@ -253,6 +300,51 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
   const [isSaving, setIsSaving] = React.useState<boolean>(false);
   const [isLoadingLiveItem, setIsLoadingLiveItem] = React.useState<boolean>(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+
+  // Choices lists
+  const availableIssuedBy = libraryChoices?.issuedBy || [];
+  const availableConfidentiality = libraryChoices?.confidentiality || [];
+  const availableDocStatus = libraryChoices?.documentStatus || [];
+  const availableDocLanguage = libraryChoices?.documentLanguage || [];
+
+  // Reset form
+  const resetForm = React.useCallback(() => {
+    setSelectedProducts([]);
+    setSelectedClients([]);
+    setSelectedDocumentType(null);
+    setSelectedSubDocumentTypes([]);
+    setIssuedBy("");
+    setSupplier("");
+    setSupplierEmail("");
+    setConfidentiality("");
+    setDocumentDate(null);
+    setExpiryDate(null);
+    setNextReviewDate(null);
+    setDocumentLanguage([]);
+    setDocumentStatus("");
+    setCustomerName("");
+    setBatchNumber("");
+
+    setProductsModified(false);
+    setClientsModified(false);
+    setDocumentTypeModified(false);
+    setSubDocumentTypesModified(false);
+    setIssuedByModified(false);
+    setSupplierModified(false);
+    setSupplierEmailModified(false);
+    setConfidentialityModified(false);
+    setDocumentDateModified(false);
+    setExpiryDateModified(false);
+    setNextReviewDateModified(false);
+    setDocumentLanguageModified(false);
+    setDocumentStatusModified(false);
+    setCustomerNameModified(false);
+    setBatchNumberModified(false);
+
+    setErrorMessage(null);
+    setIsSaving(false);
+    setIsLoadingLiveItem(false);
+  }, []);
 
   // Initialize form state whenever dialog opens or selectedItems change
   React.useEffect(() => {
@@ -377,6 +469,18 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
           } else {
             setSelectedSubDocumentTypes([]);
           }
+
+          if (live.issuedBy !== undefined) setIssuedBy(live.issuedBy || "");
+          if (live.supplier !== undefined) setSupplier(live.supplier || "");
+          if (live.supplierEmail !== undefined) setSupplierEmail(live.supplierEmail || "");
+          if (live.confidentiality !== undefined) setConfidentiality(live.confidentiality || "");
+          if (live.documentDate !== undefined) setDocumentDate(live.documentDate ? dayjs(live.documentDate) : null);
+          if (live.expiryDate !== undefined) setExpiryDate(live.expiryDate ? dayjs(live.expiryDate) : null);
+          if (live.nextReviewDate !== undefined) setNextReviewDate(live.nextReviewDate ? dayjs(live.nextReviewDate) : null);
+          if (live.documentLanguage !== undefined) setDocumentLanguage(live.documentLanguage || []);
+          if (live.documentStatus !== undefined) setDocumentStatus(live.documentStatus || "");
+          if (live.customerName !== undefined) setCustomerName(live.customerName || "");
+          if (live.batchNumber !== undefined) setBatchNumber(live.batchNumber || "");
         })
         .catch((err) => {
           console.warn("Could not load live details, using table data fallback:", err);
@@ -390,8 +494,10 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
       return () => {
         isCancelled = true;
       };
+    } else {
+      resetForm();
     }
-  }, [open, selectedItems, sp, documentTypes, allSubDocumentTypes]);
+  }, [open, selectedItems, sp, documentTypes, allSubDocumentTypes, resetForm]);
 
   // Product Autocomplete type-ahead
   React.useEffect(() => {
@@ -480,7 +586,24 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
       return;
     }
 
-    if (isBulkEdit && !productsModified && !clientsModified && !documentTypeModified && !subDocumentTypesModified) {
+    if (
+      isBulkEdit &&
+      !productsModified &&
+      !clientsModified &&
+      !documentTypeModified &&
+      !subDocumentTypesModified &&
+      !issuedByModified &&
+      !supplierModified &&
+      !supplierEmailModified &&
+      !confidentialityModified &&
+      !documentDateModified &&
+      !expiryDateModified &&
+      !nextReviewDateModified &&
+      !documentLanguageModified &&
+      !documentStatusModified &&
+      !customerNameModified &&
+      !batchNumberModified
+    ) {
       setErrorMessage("Please modify at least one field to apply changes to the selected items.");
       return;
     }
@@ -501,6 +624,39 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
 
         subDocumentTypesModified,
         selectedSubDocumentTypes: subDocumentTypesModified ? selectedSubDocumentTypes : undefined,
+
+        issuedByModified,
+        issuedBy: issuedByModified ? issuedBy : undefined,
+
+        supplierModified,
+        supplier: supplierModified ? supplier : undefined,
+
+        supplierEmailModified,
+        supplierEmail: supplierEmailModified ? supplierEmail : undefined,
+
+        confidentialityModified,
+        confidentiality: confidentialityModified ? confidentiality || undefined : undefined,
+
+        documentDateModified,
+        documentDate: documentDateModified ? (documentDate ? documentDate.toDate() : null) : undefined,
+
+        expiryDateModified,
+        expiryDate: expiryDateModified ? (expiryDate ? expiryDate.toDate() : null) : undefined,
+
+        nextReviewDateModified,
+        nextReviewDate: nextReviewDateModified ? (nextReviewDate ? nextReviewDate.toDate() : null) : undefined,
+
+        documentLanguageModified,
+        documentLanguage: documentLanguageModified ? documentLanguage : undefined,
+
+        documentStatusModified,
+        documentStatus: documentStatusModified ? documentStatus || undefined : undefined,
+
+        customerNameModified,
+        customerName: customerNameModified ? customerName : undefined,
+
+        batchNumberModified,
+        batchNumber: batchNumberModified ? batchNumber : undefined,
       };
 
       await onSave(payload, itemIds);
@@ -514,7 +670,21 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
   };
 
   const hasModifications = isBulkEdit
-    ? productsModified || clientsModified || documentTypeModified || subDocumentTypesModified
+    ? productsModified ||
+      clientsModified ||
+      documentTypeModified ||
+      subDocumentTypesModified ||
+      issuedByModified ||
+      supplierModified ||
+      supplierEmailModified ||
+      confidentialityModified ||
+      documentDateModified ||
+      expiryDateModified ||
+      nextReviewDateModified ||
+      documentLanguageModified ||
+      documentStatusModified ||
+      customerNameModified ||
+      batchNumberModified
     : true;
 
   return (
@@ -823,6 +993,357 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
                   }
                 />
               )}
+            />
+          </Box>
+        </Box>
+
+        {/* --- 11 Additional Fields --- */}
+
+        {/* Row 1: Issued by, Issuer Name (Supplier), Document Provider Email */}
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr 1fr" },
+            gap: 2,
+          }}
+        >
+          {/* Issued by */}
+          <Box>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
+              <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                Issued by
+              </Typography>
+              {isBulkEdit && issuedByModified && (
+                <Chip size="small" label="Modified" color="primary" variant="outlined" sx={{ height: "18px", fontSize: "10px" }} />
+              )}
+            </Box>
+            <FormControl fullWidth size="small">
+              <Select
+                value={issuedBy}
+                displayEmpty
+                onChange={(e) => {
+                  setIssuedBy(e.target.value);
+                  setIssuedByModified(true);
+                }}
+                input={<OutlinedInput />}
+                renderValue={(selected) => {
+                  if (!selected) {
+                    return <span style={{ color: "#aaa" }}>{isBulkEdit && !issuedByModified ? "(Unchanged)" : "Select..."}</span>;
+                  }
+                  return selected;
+                }}
+              >
+                <MenuItem value=""><em>None / Clear</em></MenuItem>
+                {availableIssuedBy.map((opt) => (
+                  <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+
+          {/* Issuer Name (Supplier) */}
+          <Box>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
+              <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                Issuer Name
+              </Typography>
+              {isBulkEdit && supplierModified && (
+                <Chip size="small" label="Modified" color="primary" variant="outlined" sx={{ height: "18px", fontSize: "10px" }} />
+              )}
+            </Box>
+            <TextField
+              fullWidth
+              size="small"
+              value={supplier}
+              placeholder={isBulkEdit && !supplierModified ? "(Unchanged)" : "Enter issuer name..."}
+              onChange={(e) => {
+                setSupplier(e.target.value);
+                setSupplierModified(true);
+              }}
+            />
+          </Box>
+
+          {/* Document Provider Email (Supplier_x0020_Email) */}
+          <Box>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
+              <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                Document Provider Email
+              </Typography>
+              {isBulkEdit && supplierEmailModified && (
+                <Chip size="small" label="Modified" color="primary" variant="outlined" sx={{ height: "18px", fontSize: "10px" }} />
+              )}
+            </Box>
+            <TextField
+              fullWidth
+              size="small"
+              value={supplierEmail}
+              placeholder={isBulkEdit && !supplierEmailModified ? "(Unchanged)" : "Enter provider email..."}
+              onChange={(e) => {
+                setSupplierEmail(e.target.value);
+                setSupplierEmailModified(true);
+              }}
+            />
+          </Box>
+        </Box>
+
+        {/* Row 2: Confidentiality, Document Status, Document Language */}
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr 1fr" },
+            gap: 2,
+          }}
+        >
+          {/* Confidentiality */}
+          <Box>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
+              <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                Confidentiality
+              </Typography>
+              {isBulkEdit && confidentialityModified && (
+                <Chip size="small" label="Modified" color="primary" variant="outlined" sx={{ height: "18px", fontSize: "10px" }} />
+              )}
+            </Box>
+            <FormControl fullWidth size="small">
+              <Select
+                value={confidentiality}
+                displayEmpty
+                onChange={(e) => {
+                  setConfidentiality(e.target.value);
+                  setConfidentialityModified(true);
+                }}
+                input={<OutlinedInput />}
+                renderValue={(selected) => {
+                  if (!selected) {
+                    return <span style={{ color: "#aaa" }}>{isBulkEdit && !confidentialityModified ? "(Unchanged)" : "Select..."}</span>;
+                  }
+                  return selected;
+                }}
+              >
+                <MenuItem value=""><em>None / Clear</em></MenuItem>
+                {availableConfidentiality.map((opt) => (
+                  <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+
+          {/* Document Status */}
+          <Box>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
+              <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                Document Status
+              </Typography>
+              {isBulkEdit && documentStatusModified && (
+                <Chip size="small" label="Modified" color="primary" variant="outlined" sx={{ height: "18px", fontSize: "10px" }} />
+              )}
+            </Box>
+            <FormControl fullWidth size="small">
+              <Select
+                value={documentStatus}
+                displayEmpty
+                onChange={(e) => {
+                  setDocumentStatus(e.target.value);
+                  setDocumentStatusModified(true);
+                }}
+                input={<OutlinedInput />}
+                renderValue={(selected) => {
+                  if (!selected) {
+                    return <span style={{ color: "#aaa" }}>{isBulkEdit && !documentStatusModified ? "(Unchanged)" : "Select..."}</span>;
+                  }
+                  return selected;
+                }}
+              >
+                <MenuItem value=""><em>None / Clear</em></MenuItem>
+                {availableDocStatus.map((opt) => (
+                  <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+
+          {/* Document Language (Multi-select) */}
+          <Box>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
+              <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                Document Language
+              </Typography>
+              {isBulkEdit && documentLanguageModified && (
+                <Chip size="small" label="Modified" color="primary" variant="outlined" sx={{ height: "18px", fontSize: "10px" }} />
+              )}
+            </Box>
+            <FormControl fullWidth size="small">
+              <Select
+                multiple
+                value={documentLanguage}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setDocumentLanguage(typeof val === "string" ? val.split(",") : val);
+                  setDocumentLanguageModified(true);
+                }}
+                input={<OutlinedInput />}
+                renderValue={(selected) => {
+                  if (!selected || (selected as string[]).length === 0) {
+                    return <span style={{ color: "#aaa" }}>{isBulkEdit && !documentLanguageModified ? "(Unchanged)" : "Select language(s)..."}</span>;
+                  }
+                  return (selected as string[]).join(", ");
+                }}
+              >
+                {availableDocLanguage.map((opt) => (
+                  <MenuItem key={opt} value={opt}>
+                    <Checkbox size="small" checked={documentLanguage.indexOf(opt) > -1} />
+                    <ListItemText primary={opt} />
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+        </Box>
+
+        {/* Row 3: Document Date, Expiry Date, Next Review Date */}
+        <LocalizationProvider dateAdapter={AdapterDayjs}>
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr 1fr" },
+              gap: 2,
+            }}
+          >
+            {/* Document Date */}
+            <Box>
+              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
+                <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                  Document Date
+                </Typography>
+                {isBulkEdit && documentDateModified && (
+                  <Chip size="small" label="Modified" color="primary" variant="outlined" sx={{ height: "18px", fontSize: "10px" }} />
+                )}
+              </Box>
+              <DatePicker
+                format="DD/MM/YYYY"
+                value={documentDate}
+                onChange={(newValue) => {
+                  setDocumentDate(newValue);
+                  setDocumentDateModified(true);
+                }}
+                slotProps={{
+                  textField: {
+                    size: "small",
+                    fullWidth: true,
+                    placeholder: isBulkEdit && !documentDateModified ? "(Unchanged)" : "DD/MM/YYYY",
+                  },
+                  field: { clearable: true },
+                }}
+              />
+            </Box>
+
+            {/* Expiry Date */}
+            <Box>
+              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
+                <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                  Expiry Date
+                </Typography>
+                {isBulkEdit && expiryDateModified && (
+                  <Chip size="small" label="Modified" color="primary" variant="outlined" sx={{ height: "18px", fontSize: "10px" }} />
+                )}
+              </Box>
+              <DatePicker
+                format="DD/MM/YYYY"
+                value={expiryDate}
+                onChange={(newValue) => {
+                  setExpiryDate(newValue);
+                  setExpiryDateModified(true);
+                }}
+                slotProps={{
+                  textField: {
+                    size: "small",
+                    fullWidth: true,
+                    placeholder: isBulkEdit && !expiryDateModified ? "(Unchanged)" : "DD/MM/YYYY",
+                  },
+                  field: { clearable: true },
+                }}
+              />
+            </Box>
+
+            {/* Next Review Date */}
+            <Box>
+              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
+                <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                  Next Review Date
+                </Typography>
+                {isBulkEdit && nextReviewDateModified && (
+                  <Chip size="small" label="Modified" color="primary" variant="outlined" sx={{ height: "18px", fontSize: "10px" }} />
+                )}
+              </Box>
+              <DatePicker
+                format="DD/MM/YYYY"
+                value={nextReviewDate}
+                onChange={(newValue) => {
+                  setNextReviewDate(newValue);
+                  setNextReviewDateModified(true);
+                }}
+                slotProps={{
+                  textField: {
+                    size: "small",
+                    fullWidth: true,
+                    placeholder: isBulkEdit && !nextReviewDateModified ? "(Unchanged)" : "DD/MM/YYYY",
+                  },
+                  field: { clearable: true },
+                }}
+              />
+            </Box>
+          </Box>
+        </LocalizationProvider>
+
+        {/* Row 4: Customer Name, Batch Number */}
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+            gap: 2,
+          }}
+        >
+          {/* Customer Name */}
+          <Box>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
+              <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                Customer Name
+              </Typography>
+              {isBulkEdit && customerNameModified && (
+                <Chip size="small" label="Modified" color="primary" variant="outlined" sx={{ height: "18px", fontSize: "10px" }} />
+              )}
+            </Box>
+            <TextField
+              fullWidth
+              size="small"
+              value={customerName}
+              placeholder={isBulkEdit && !customerNameModified ? "(Unchanged)" : "Enter customer name..."}
+              onChange={(e) => {
+                setCustomerName(e.target.value);
+                setCustomerNameModified(true);
+              }}
+            />
+          </Box>
+
+          {/* Batch Number */}
+          <Box>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
+              <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                Batch Number
+              </Typography>
+              {isBulkEdit && batchNumberModified && (
+                <Chip size="small" label="Modified" color="primary" variant="outlined" sx={{ height: "18px", fontSize: "10px" }} />
+              )}
+            </Box>
+            <TextField
+              fullWidth
+              size="small"
+              value={batchNumber}
+              placeholder={isBulkEdit && !batchNumberModified ? "(Unchanged)" : "Enter batch number..."}
+              onChange={(e) => {
+                setBatchNumber(e.target.value);
+                setBatchNumberModified(true);
+              }}
             />
           </Box>
         </Box>

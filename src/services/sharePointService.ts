@@ -237,6 +237,9 @@ export interface ILibraryColumnChoices {
   businessLine: string[];
   country: string[];
   confidentiality: string[];
+  issuedBy: string[];
+  documentStatus: string[];
+  documentLanguage: string[];
 }
 
 export interface IListFieldMetadata {
@@ -248,7 +251,14 @@ export interface IListFieldMetadata {
 export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadata> => {
   const defaultResult: IListFieldMetadata = {
     formatters: { businessLine: {}, confidentiality: {}, alerts: null, documentStatus: {} },
-    choices: { businessLine: [], country: [], confidentiality: [] },
+    choices: {
+      businessLine: [],
+      country: [],
+      confidentiality: [],
+      issuedBy: [],
+      documentStatus: [],
+      documentLanguage: [],
+    },
   };
 
   if (!sp) return defaultResult;
@@ -260,7 +270,7 @@ export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadat
       list.fields
         .select("InternalName", "CustomFormatter", "Choices")
         .filter(
-          "InternalName eq 'Business_x0020_Line' or InternalName eq 'Country' or InternalName eq 'Confidentiality' or InternalName eq 'Alerts' or InternalName eq 'Document_x0020_Status' or InternalName eq 'Expiry_x0020_Date' or InternalName eq 'Next_x0020_Review_x0020_Date'"
+          "InternalName eq 'Business_x0020_Line' or InternalName eq 'Country' or InternalName eq 'Confidentiality' or InternalName eq 'Alerts' or InternalName eq 'Document_x0020_Status' or InternalName eq 'Expiry_x0020_Date' or InternalName eq 'Next_x0020_Review_x0020_Date' or InternalName eq 'Issued_x0020_By' or InternalName eq 'Document_x0020_Language'"
         )(),
       list.views
         .filter("DefaultView eq true")
@@ -281,6 +291,9 @@ export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadat
     let businessLineChoices: string[] = [];
     let countryChoices: string[] = [];
     let confidentialityChoices: string[] = [];
+    let issuedByChoices: string[] = [];
+    let docStatusChoices: string[] = [];
+    let docLangChoices: string[] = [];
 
     fields.forEach((f: any) => {
       const choices: string[] = Array.isArray(f.Choices) ? f.Choices : [];
@@ -304,6 +317,11 @@ export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadat
         if (f.CustomFormatter) {
           docStatusFormat = parseSpCustomFormatter(f.CustomFormatter);
         }
+        docStatusChoices = choices;
+      } else if (f.InternalName === "Issued_x0020_By") {
+        issuedByChoices = choices;
+      } else if (f.InternalName === "Document_x0020_Language") {
+        docLangChoices = choices;
       } else if (f.InternalName === "Expiry_x0020_Date") {
         if (f.CustomFormatter) {
           expiryDateFormatter = f.CustomFormatter;
@@ -332,6 +350,15 @@ export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadat
           a.localeCompare(b, undefined, { sensitivity: "base" })
         ),
         confidentiality: confidentialityChoices.sort((a, b) =>
+          a.localeCompare(b, undefined, { sensitivity: "base" })
+        ),
+        issuedBy: issuedByChoices.sort((a, b) =>
+          a.localeCompare(b, undefined, { sensitivity: "base" })
+        ),
+        documentStatus: docStatusChoices.sort((a, b) =>
+          a.localeCompare(b, undefined, { sensitivity: "base" })
+        ),
+        documentLanguage: docLangChoices.sort((a, b) =>
           a.localeCompare(b, undefined, { sensitivity: "base" })
         ),
       },
@@ -606,6 +633,17 @@ export interface ILoadedItemForEdit {
   clients: IClientLookupItem[];
   documentType: IDocumentTypeItem | null;
   subDocumentTypes: ISubDocumentTypeItem[];
+  issuedBy?: string;
+  supplier?: string;
+  supplierEmail?: string;
+  confidentiality?: string;
+  documentDate?: Date | null;
+  expiryDate?: Date | null;
+  nextReviewDate?: Date | null;
+  documentLanguage?: string[];
+  documentStatus?: string;
+  customerName?: string;
+  batchNumber?: string;
 }
 
 export const loadItemDetailsForEdit = async (
@@ -624,7 +662,18 @@ export const loadItemDetailsForEdit = async (
       "GlobalClientTermSet",
       "PIMProductTermSet",
       "Document_x0020_Type",
-      "Sub_x0020_Document_x0020_Type"
+      "Sub_x0020_Document_x0020_Type",
+      "Issued_x0020_By",
+      "Supplier",
+      "Supplier_x0020_Email",
+      "Confidentiality",
+      "Document_x0020_Date",
+      "Expiry_x0020_Date",
+      "Next_x0020_Review_x0020_Date",
+      "Document_x0020_Language",
+      "Document_x0020_Status",
+      "Customer_x0020_Name",
+      "Batch_x0020_Number"
     )
     .expand("PIMProductCode")();
 
@@ -802,12 +851,33 @@ export const loadItemDetailsForEdit = async (
         .map((title, idx) => ({ ID: -(idx + 1), Title: title }))
     : [];
 
+  const parseDateOrNull = (dateVal: any): Date | null => {
+    if (!dateVal) return null;
+    const d = new Date(dateVal);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
   return {
     id: raw.Id,
     products,
     clients,
     documentType: docType,
     subDocumentTypes: subDocTypes,
+    issuedBy: choiceToString(raw.Issued_x0020_By),
+    supplier: raw.Supplier || "",
+    supplierEmail: raw.Supplier_x0020_Email || "",
+    confidentiality: choiceToString(raw.Confidentiality),
+    documentDate: parseDateOrNull(raw.Document_x0020_Date),
+    expiryDate: parseDateOrNull(raw.Expiry_x0020_Date),
+    nextReviewDate: parseDateOrNull(raw.Next_x0020_Review_x0020_Date),
+    documentLanguage: Array.isArray(raw.Document_x0020_Language)
+      ? raw.Document_x0020_Language
+      : raw.Document_x0020_Language
+      ? String(raw.Document_x0020_Language).split(/[\r\n;,]+/).map((s) => s.trim()).filter(Boolean)
+      : [],
+    documentStatus: choiceToString(raw.Document_x0020_Status),
+    customerName: raw.Customer_x0020_Name || "",
+    batchNumber: raw.Batch_x0020_Number || "",
   };
 };
 
@@ -823,6 +893,39 @@ export interface IEditPropertiesPayload {
 
   subDocumentTypesModified?: boolean;
   selectedSubDocumentTypes?: ISubDocumentTypeItem[];
+
+  issuedByModified?: boolean;
+  issuedBy?: string;
+
+  supplierModified?: boolean;
+  supplier?: string;
+
+  supplierEmailModified?: boolean;
+  supplierEmail?: string;
+
+  confidentialityModified?: boolean;
+  confidentiality?: string;
+
+  documentDateModified?: boolean;
+  documentDate?: Date | null;
+
+  expiryDateModified?: boolean;
+  expiryDate?: Date | null;
+
+  nextReviewDateModified?: boolean;
+  nextReviewDate?: Date | null;
+
+  documentLanguageModified?: boolean;
+  documentLanguage?: string[];
+
+  documentStatusModified?: boolean;
+  documentStatus?: string;
+
+  customerNameModified?: boolean;
+  customerName?: string;
+
+  batchNumberModified?: boolean;
+  batchNumber?: string;
 }
 
 export const updateItemProperties = async (
@@ -972,6 +1075,70 @@ export const updateItemProperties = async (
     if (sIds.length > 0) {
       combinedUpdatePayload["SubDocumentTypeId"] = sIds;
     }
+  }
+
+  // 5. Issued by (choice)
+  if (payload.issuedByModified) {
+    combinedUpdatePayload["Issued_x0020_By"] = payload.issuedBy || null;
+  }
+
+  // 6. Issuer Name (Supplier - text)
+  if (payload.supplierModified) {
+    combinedUpdatePayload["Supplier"] = payload.supplier || "";
+  }
+
+  // 7. Document Provider Email (Supplier_x0020_Email - text)
+  if (payload.supplierEmailModified) {
+    combinedUpdatePayload["Supplier_x0020_Email"] = payload.supplierEmail || "";
+  }
+
+  // 8. Confidentiality (choice)
+  if (payload.confidentialityModified) {
+    combinedUpdatePayload["Confidentiality"] = payload.confidentiality || null;
+  }
+
+  // 9. Document Date (date)
+  if (payload.documentDateModified) {
+    combinedUpdatePayload["Document_x0020_Date"] = payload.documentDate
+      ? payload.documentDate.toISOString()
+      : null;
+  }
+
+  // 10. Expiry Date (date)
+  if (payload.expiryDateModified) {
+    combinedUpdatePayload["Expiry_x0020_Date"] = payload.expiryDate
+      ? payload.expiryDate.toISOString()
+      : null;
+  }
+
+  // 11. Next Review Date (date)
+  if (payload.nextReviewDateModified) {
+    combinedUpdatePayload["Next_x0020_Review_x0020_Date"] = payload.nextReviewDate
+      ? payload.nextReviewDate.toISOString()
+      : null;
+  }
+
+  // 12. Document Language (multi choice)
+  if (payload.documentLanguageModified) {
+    combinedUpdatePayload["Document_x0020_Language"] =
+      payload.documentLanguage && payload.documentLanguage.length > 0
+        ? payload.documentLanguage
+        : null;
+  }
+
+  // 13. Document Status (choice)
+  if (payload.documentStatusModified) {
+    combinedUpdatePayload["Document_x0020_Status"] = payload.documentStatus || null;
+  }
+
+  // 14. Customer Name (text)
+  if (payload.customerNameModified) {
+    combinedUpdatePayload["Customer_x0020_Name"] = payload.customerName || "";
+  }
+
+  // 15. Batch Number (text)
+  if (payload.batchNumberModified) {
+    combinedUpdatePayload["Batch_x0020_Number"] = payload.batchNumber || "";
   }
 
   console.log("Saving item properties to SharePoint (unified payload):", {

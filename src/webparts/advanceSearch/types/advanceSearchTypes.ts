@@ -19,6 +19,10 @@ export type doclib_AllProducts = {
   AuthorEmail?: string;
   AuthorTitle?: string;
   IssuedBy?: string;
+  Supplier?: string;
+  SupplierEmail?: string;
+  CustomerName?: string;
+  BatchNumber?: string;
   DocumentStatus?: string;
   ReviewedByTitle?: string;
   ReviewedByEmail?: string;
