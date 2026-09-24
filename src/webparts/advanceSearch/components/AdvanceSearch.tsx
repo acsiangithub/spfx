@@ -100,6 +100,7 @@ import {
   loadSharingConfiguration as loadSharingConfigService,
   loadListFieldMetadata as loadListFieldMetadataService,
   loadRecordsBatch as loadRecordsBatchService,
+  fetchSingleProductItem as fetchSingleProductItemService,
   searchRecords as searchRecordsService,
   updateItemProperties as updateItemPropertiesService,
   IEditPropertiesPayload,
@@ -107,6 +108,7 @@ import {
 } from "../../../services/sharePointService";
 import EmailShareDialog from "./EmailShareDialog";
 import EditPropertiesDialog from "./EditPropertiesDialog";
+import FilePreviewDialog from "./FilePreviewDialog";
 
 const DateFilterControl: React.FC<{
   column: { getFilterValue: () => unknown; setFilterValue: (value: unknown) => void };
@@ -976,6 +978,15 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     props.context?.pageContext?.user?.email ||
     props.context?.pageContext?.user?.loginName ||
     "";
+
+  const activeSp: SPFI = React.useMemo(() => {
+    if (sp) return sp;
+    const initialWebUrl = props.urlSite?.trim() || props.context?.pageContext?.web?.absoluteUrl;
+    if (initialWebUrl && props.context) {
+      return spfi(initialWebUrl).using(SPFx(props.context));
+    }
+    return sp;
+  }, [props.urlSite, props.context]);
   const currentUserName = props.context?.pageContext?.user?.displayName || "";
 
   const [fieldFormatters, setFieldFormatters] = React.useState<IFieldFormatters>({
@@ -1163,10 +1174,19 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const [isEditDialogOpen, setIsEditDialogOpen] = React.useState<boolean>(false);
   const [selectedItemsForEdit, setSelectedItemsForEdit] = React.useState<doclib_AllProducts[]>([]);
 
-  // Action to View file in new tab (used by filename link & popup menu)
+  // State for File Preview Pop Dialog
+  const [isPreviewDialogOpen, setIsPreviewDialogOpen] = React.useState<boolean>(false);
+  const [previewFileItem, setPreviewFileItem] = React.useState<doclib_AllProducts | null>(null);
+  const [previewUrl, setPreviewUrl] = React.useState<string>("");
+  const lastViewedItemIdRef = React.useRef<number | null>(null);
+
+  // Action to View file in pop dialog (used by filename link & popup menu)
   const handleViewFile = React.useCallback(
     (fileItem: doclib_AllProducts | null): void => {
       if (!fileItem) return;
+      if (typeof fileItem.id === "number") {
+        lastViewedItemIdRef.current = fileItem.id;
+      }
 
       const origin = window.location.origin;
       const rawFileRef = fileItem.fileUrl || "";
@@ -1188,7 +1208,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         serverRelativeFilePath = `/${serverRelativeFilePath}`;
       }
 
-      // If we have a file path, open SharePoint OOB viewer with details/property pane (?id=...&parent=...)
+      // If we have a file path, open SharePoint OOB viewer in pop dialog (?id=...&parent=...)
       if (serverRelativeFilePath) {
         const lastSlashIndex = serverRelativeFilePath.lastIndexOf("/");
         const parentFolder = lastSlashIndex > 0 ? serverRelativeFilePath.substring(0, lastSlashIndex) : "";
@@ -1209,16 +1229,67 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           serverRelativeFilePath
         )}&parent=${encodeURIComponent(parentFolder || `${siteUrl}/Products`)}`;
 
-        window.open(oobViewerUrl, "_blank", "noopener,noreferrer");
+        setPreviewFileItem(fileItem);
+        setPreviewUrl(oobViewerUrl);
+        setIsPreviewDialogOpen(true);
         return;
       }
 
       // Fallback if file path resolution fails
       const fallbackUrl = rawFileRef.startsWith("http") ? rawFileRef : `${origin}${rawFileRef}`;
-      window.open(fallbackUrl, "_blank", "noopener,noreferrer");
+      setPreviewFileItem(fileItem);
+      setPreviewUrl(fallbackUrl);
+      setIsPreviewDialogOpen(true);
     },
     [props.urlSite, props.context, defaultLibraryViewUrl]
   );
+
+  // Close preview dialog and automatically perform targeted 1-item in-place refresh
+  const handleClosePreviewDialog = React.useCallback(async () => {
+    const targetItemId = lastViewedItemIdRef.current || previewFileItem?.id;
+    setIsPreviewDialogOpen(false);
+    setPreviewFileItem(null);
+    setPreviewUrl("");
+
+    if (targetItemId && targetItemId > 0 && activeSp) {
+      try {
+        console.log(`[AdvanceSearch] Reloading item ${targetItemId} after preview closed...`);
+        const latestItem = await fetchSingleProductItemService(activeSp, targetItemId);
+        if (latestItem) {
+          console.log(`[AdvanceSearch] Successfully reloaded item ${targetItemId}:`, latestItem);
+          setItems_AllProducts((prev) =>
+            prev.map((it) => (it.id === latestItem.id ? { ...it, ...latestItem } : it))
+          );
+        }
+      } catch (err) {
+        console.warn("Could not refresh item after preview close:", err);
+      }
+    }
+  }, [previewFileItem, activeSp]);
+
+  // Tab focus listener: also re-fetch the last viewed item if user opened it in a new window and returned
+  React.useEffect(() => {
+    const handleTabFocus = async (): Promise<void> => {
+      const targetItemId = lastViewedItemIdRef.current;
+      if (targetItemId && targetItemId > 0 && activeSp && document.visibilityState === "visible") {
+        try {
+          const latestItem = await fetchSingleProductItemService(activeSp, targetItemId);
+          if (latestItem) {
+            setItems_AllProducts((prev) =>
+              prev.map((it) => (it.id === latestItem.id ? { ...it, ...latestItem } : it))
+            );
+          }
+        } catch (err) {
+          console.warn("Could not refresh item on tab focus:", err);
+        }
+      }
+    };
+
+    window.addEventListener("focus", handleTabFocus);
+    return () => {
+      window.removeEventListener("focus", handleTabFocus);
+    };
+  }, [activeSp]);
 
   // Dynamic table container height to fill available vertical space cleanly
   const paperRef = React.useRef<HTMLDivElement | null>(null);
@@ -1281,15 +1352,6 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       clearTimeout(timer);
     };
   }, []);
-
-  const activeSp: SPFI = React.useMemo(() => {
-    if (sp) return sp;
-    const initialWebUrl = props.urlSite?.trim() || props.context?.pageContext?.web?.absoluteUrl;
-    if (initialWebUrl && props.context) {
-      return spfi(initialWebUrl).using(SPFx(props.context));
-    }
-    return sp;
-  }, [props.urlSite, props.context]);
 
   // Save handler for Single and Bulk Edit (with Optimistic UI in memory)
   const handleSaveItemProperties = React.useCallback(
@@ -5055,6 +5117,14 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           allSubDocumentTypes={allSubDocumentTypes}
           libraryChoices={libraryChoices}
           onSave={handleSaveItemProperties}
+        />
+
+        {/* File Preview Pop Dialog */}
+        <FilePreviewDialog
+          open={isPreviewDialogOpen}
+          onClose={handleClosePreviewDialog}
+          item={previewFileItem}
+          previewUrl={previewUrl}
         />
 
         {/* Modal Dialog to Name & Save Custom View */}

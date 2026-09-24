@@ -45,22 +45,50 @@ export const mapSharePointItemsToProducts = (
     const expiryDate = item.Expiry_x0020_Date ? new Date(item.Expiry_x0020_Date) : null;
     const nextReviewDate = item.Next_x0020_Review_x0020_Date ? new Date(item.Next_x0020_Review_x0020_Date) : null;
 
+    // Resolve Client / Manufacturer: Check GlobalClientTermSet first, then fallback to text field Manufacturer
+    let clientNames = item.Manufacturer ?? "";
+    if (Array.isArray(item.GlobalClientTermSet) && item.GlobalClientTermSet.length > 0) {
+      const termLabels = item.GlobalClientTermSet
+        .map((t: any) => t.Label || "")
+        .filter(Boolean);
+      if (termLabels.length > 0) {
+        clientNames = termLabels.join("; ");
+      }
+    } else if (item.GlobalClientTermSet?.Label) {
+      clientNames = item.GlobalClientTermSet.Label;
+    }
+
+    // Resolve Products: Extract from lookup PIMProductCode or taxonomy PIMProductTermSet
+    const pimProducts = (item.PIMProductCode ?? []).map((p: any) => ({
+      ID: p.ID ?? p.Id ?? 0,
+      Title: p.Title ?? "",
+      PIMProductName: p.PIMProductName ?? "",
+      Manufacturer: p.Manufacturer ?? "",
+      BusinessLine: p.BusinessLine ?? "",
+      ManufacturerLookupId: p.ManufacturerLookupId,
+    }));
+
+    let pimProductSearchText = (item.PIMProductCode ?? [])
+      .map((p: any) => `${p.Title} ${p.PIMProductName}`.trim())
+      .filter(Boolean)
+      .join(" ");
+
+    if (Array.isArray(item.PIMProductTermSet) && item.PIMProductTermSet.length > 0) {
+      const termLabels = item.PIMProductTermSet
+        .map((t: any) => t.Label || "")
+        .filter(Boolean);
+      if (termLabels.length > 0) {
+        pimProductSearchText = termLabels.join(" ");
+      }
+    }
+
     return {
       id: item.Id,
       filename: item.FileLeafRef ?? "",
       fileUrl: item.FileRef,
-      PIMProduct: (item.PIMProductCode ?? []).map((p: any) => ({
-        ID: p.ID ?? p.Id ?? 0,
-        Title: p.Title ?? "",
-        PIMProductName: p.PIMProductName ?? "",
-        Manufacturer: p.Manufacturer ?? "",
-        BusinessLine: p.BusinessLine ?? "",
-        ManufacturerLookupId: p.ManufacturerLookupId,
-      })),
-      PIMProductSearchText: (item.PIMProductCode ?? [])
-        .map((p: any) => `${p.Title} ${p.PIMProductName}`)
-        .join(" "),
-      ManufacturerSearchText: item.Manufacturer ?? "",
+      PIMProduct: pimProducts,
+      PIMProductSearchText: pimProductSearchText,
+      ManufacturerSearchText: clientNames,
       BusinessLine: choiceToString(item.Business_x0020_Line),
       CountrySoldTo: choiceToString(item.Country),
       DocumentTypeSearchText: item.Document_x0020_Type ?? "",
@@ -77,6 +105,10 @@ export const mapSharePointItemsToProducts = (
       AuthorEmail: authorEmail,
       AuthorTitle: authorTitle,
       IssuedBy: choiceToString(item.Issued_x0020_By),
+      Supplier: choiceToString(item.Supplier) || item.Supplier || "",
+      SupplierEmail: item.Supplier_x0020_Email ?? "",
+      CustomerName: item.Customer_x0020_Name ?? "",
+      BatchNumber: item.Batch_x0020_Number ?? "",
       DocumentStatus: choiceToString(item.Document_x0020_Status),
       ReviewedByTitle: reviewedByTitle,
       ReviewedByEmail: reviewedByEmail,
@@ -442,6 +474,66 @@ export const loadRecordsBatch = async (
     nextSkipId: lowestId,
     hasMore: batch.length >= pageSize,
   };
+};
+
+export const fetchSingleProductItem = async (
+  sp: SPFI,
+  itemId: number
+): Promise<doclib_AllProducts | null> => {
+  if (!sp || !itemId || itemId <= 0) return null;
+  try {
+    const raw = await sp.web.lists
+      .getByTitle("Clients & Products")
+      .items.getById(itemId)
+      .select(
+        "*",
+        "Id",
+        "Title",
+        "FileLeafRef",
+        "FileRef",
+        "Country",
+        "Business_x0020_Line",
+        "PIMProductCode/Id",
+        "PIMProductCode/Title",
+        "PIMProductCode/PIMProductName",
+        "Manufacturer",
+        "GlobalClientTermSet",
+        "PIMProductTermSet",
+        "Document_x0020_Type",
+        "Sub_x0020_Document_x0020_Type",
+        "Document_x0020_Date",
+        "Alerts",
+        "Confidentiality",
+        "Modified",
+        "Editor/Id",
+        "Editor/Title",
+        "Editor/EMail",
+        "Created",
+        "Author/Id",
+        "Author/Title",
+        "Author/EMail",
+        "Issued_x0020_By",
+        "Supplier",
+        "Supplier_x0020_Email",
+        "Customer_x0020_Name",
+        "Batch_x0020_Number",
+        "Document_x0020_Status",
+        "ReviewActionTakenBy/Id",
+        "ReviewActionTakenBy/Title",
+        "ReviewActionTakenBy/EMail",
+        "Document_x0020_Language",
+        "Expiry_x0020_Date",
+        "Next_x0020_Review_x0020_Date"
+      )
+      .expand("PIMProductCode", "Editor", "Author", "ReviewActionTakenBy")();
+
+    if (!raw) return null;
+    const mapped = mapSharePointItemsToProducts([raw]);
+    return mapped && mapped.length > 0 ? mapped[0] : null;
+  } catch (err) {
+    console.warn(`fetchSingleProductItem error for item ${itemId}:`, err);
+    return null;
+  }
 };
 
 export const searchRecords = async (
