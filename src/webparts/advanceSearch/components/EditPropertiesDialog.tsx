@@ -40,6 +40,7 @@ import {
   searchProducts as searchProductsService,
   searchClients as searchClientsService,
   loadItemDetailsForEdit,
+  checkUserWritePermissions,
   IEditPropertiesPayload,
   ILibraryColumnChoices,
 } from "../../../services/sharePointService";
@@ -301,6 +302,10 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
   const [isLoadingLiveItem, setIsLoadingLiveItem] = React.useState<boolean>(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
 
+  // Permission state
+  const [hasWritePermission, setHasWritePermission] = React.useState<boolean>(true);
+  const [isCheckingPermissions, setIsCheckingPermissions] = React.useState<boolean>(false);
+
   // Choices lists
   const availableIssuedBy = libraryChoices?.issuedBy || [];
   const availableConfidentiality = libraryChoices?.confidentiality || [];
@@ -344,22 +349,14 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
     setErrorMessage(null);
     setIsSaving(false);
     setIsLoadingLiveItem(false);
+    setHasWritePermission(true);
+    setIsCheckingPermissions(false);
   }, []);
 
   // Initialize form state whenever dialog opens or selectedItems change
   React.useEffect(() => {
     if (!open) {
-      setSelectedProducts([]);
-      setSelectedClients([]);
-      setSelectedDocumentType(null);
-      setSelectedSubDocumentTypes([]);
-      setProductsModified(false);
-      setClientsModified(false);
-      setDocumentTypeModified(false);
-      setSubDocumentTypesModified(false);
-      setErrorMessage(null);
-      setIsSaving(false);
-      setIsLoadingLiveItem(false);
+      resetForm();
       return;
     }
 
@@ -368,15 +365,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
 
     // Explicit check: If more than 1 item is selected, ALWAYS wipe and keep empty!
     if (selectedItems.length > 1) {
-      setSelectedProducts([]);
-      setSelectedClients([]);
-      setSelectedDocumentType(null);
-      setSelectedSubDocumentTypes([]);
-      setProductsModified(false);
-      setClientsModified(false);
-      setDocumentTypeModified(false);
-      setSubDocumentTypesModified(false);
-      setIsLoadingLiveItem(false);
+      resetForm();
       return;
     }
 
@@ -424,6 +413,42 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
         setSelectedSubDocumentTypes([]);
       }
       setSubDocumentTypesModified(true);
+
+      setIssuedBy(itemToEdit.IssuedBy || "");
+      setIssuedByModified(true);
+
+      setSupplier(itemToEdit.Supplier || "");
+      setSupplierModified(true);
+
+      setSupplierEmail(itemToEdit.SupplierEmail || "");
+      setSupplierEmailModified(true);
+
+      setConfidentiality(itemToEdit.Confidentiality || "");
+      setConfidentialityModified(true);
+
+      setDocumentDate(itemToEdit.DocumentDate ? dayjs(itemToEdit.DocumentDate) : null);
+      setDocumentDateModified(true);
+
+      setExpiryDate(itemToEdit.ExpiryDate ? dayjs(itemToEdit.ExpiryDate) : null);
+      setExpiryDateModified(true);
+
+      setNextReviewDate(itemToEdit.NextReviewDate ? dayjs(itemToEdit.NextReviewDate) : null);
+      setNextReviewDateModified(true);
+
+      const langList = itemToEdit.DocumentLanguage
+        ? itemToEdit.DocumentLanguage.split(/[\r\n;,]+/).map((s) => s.trim()).filter(Boolean)
+        : [];
+      setDocumentLanguage(langList);
+      setDocumentLanguageModified(true);
+
+      setDocumentStatus(itemToEdit.DocumentStatus || "");
+      setDocumentStatusModified(true);
+
+      setCustomerName(itemToEdit.CustomerName || "");
+      setCustomerNameModified(true);
+
+      setBatchNumber(itemToEdit.BatchNumber || "");
+      setBatchNumberModified(true);
 
       // 2. Fetch authoritative live metadata directly from SharePoint List
       let isCancelled = false;
@@ -498,6 +523,44 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
       resetForm();
     }
   }, [open, selectedItems, sp, documentTypes, allSubDocumentTypes, resetForm]);
+
+  // Check user write permissions whenever dialog opens or selectedItems change
+  React.useEffect(() => {
+    if (!open || !sp) {
+      setHasWritePermission(true);
+      setIsCheckingPermissions(false);
+      return;
+    }
+
+    let isCancelled = false;
+    setIsCheckingPermissions(true);
+
+    const itemIds = selectedItems
+      .map((item) => item.id)
+      .filter((id): id is number => typeof id === "number" && id > 0);
+
+    checkUserWritePermissions(sp, "Clients & Products", itemIds)
+      .then((hasPermission) => {
+        if (!isCancelled) {
+          setHasWritePermission(hasPermission);
+        }
+      })
+      .catch((err) => {
+        console.warn("checkUserWritePermissions error in EditPropertiesDialog:", err);
+        if (!isCancelled) {
+          setHasWritePermission(false);
+        }
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setIsCheckingPermissions(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [open, sp, selectedItems]);
 
   // Product Autocomplete type-ahead
   React.useEffect(() => {
@@ -580,6 +643,11 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
   };
 
   const handleSave = async (): Promise<void> => {
+    if (!hasWritePermission) {
+      setErrorMessage("You do not have write permission to update items in this library.");
+      return;
+    }
+
     const itemIds = selectedItems.map((item) => item.id).filter((id): id is number => typeof id === "number" && id > 0);
     if (itemIds.length === 0) {
       setErrorMessage("No valid item IDs selected.");
@@ -730,12 +798,18 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
           <CloseIcon fontSize="small" />
         </IconButton>
       </DialogTitle>
-      {isLoadingLiveItem && <LinearProgress sx={{ height: "2.5px" }} />}
+      {(isLoadingLiveItem || isCheckingPermissions) && <LinearProgress sx={{ height: "2.5px" }} />}
 
       <DialogContent sx={{ p: 2.5, display: "flex", flexDirection: "column", gap: 2.5 }}>
         {errorMessage && (
           <Alert severity="error" onClose={() => setErrorMessage(null)}>
             {errorMessage}
+          </Alert>
+        )}
+
+        {!hasWritePermission && !isCheckingPermissions && (
+          <Alert severity="warning">
+            You do not have write permission to edit items in the <strong>Clients &amp; Products</strong> library. The Save button is disabled.
           </Alert>
         )}
 
@@ -1358,7 +1432,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
           color="primary"
           size="small"
           onClick={handleSave}
-          disabled={isSaving || !hasModifications}
+          disabled={isSaving || isCheckingPermissions || !hasWritePermission || !hasModifications}
           sx={{ textTransform: "none", fontWeight: 600, minWidth: "90px" }}
         >
           {isSaving ? <CircularProgress size={16} color="inherit" /> : "Save"}

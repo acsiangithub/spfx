@@ -6,7 +6,9 @@ import "@pnp/sp/items";
 import "@pnp/sp/search";
 import "@pnp/sp/sharing";
 import "@pnp/sp/fields/list";
+import "@pnp/sp/security";
 import { SharingRole } from "@pnp/sp/sharing";
+import { PermissionKind } from "@pnp/sp/security";
 import {
   doclib_AllProducts,
   IProductLookupItem,
@@ -627,6 +629,47 @@ export const shareFilesByEmail = async (
   }
 };
 
+export const checkUserWritePermissions = async (
+  sp: SPFI,
+  listTitle: string = "Clients & Products",
+  itemIds?: number[]
+): Promise<boolean> => {
+  if (!sp) return false;
+  try {
+    const list = sp.web.lists.getByTitle(listTitle);
+
+    // 1. Check list/library-level EditListItems permission
+    const hasListPermission = await list.currentUserHasPermissions(PermissionKind.EditListItems);
+    if (!hasListPermission) {
+      return false;
+    }
+
+    // 2. If specific item IDs are provided, verify item-level EditListItems permissions
+    if (itemIds && itemIds.length > 0) {
+      const targetIds = itemIds.slice(0, 10);
+      const itemChecks = await Promise.all(
+        targetIds.map(async (id) => {
+          try {
+            return await list.items.getById(id).currentUserHasPermissions(PermissionKind.EditListItems);
+          } catch (itemErr) {
+            console.warn(`Could not check permissions for item ${id}:`, itemErr);
+            return false;
+          }
+        })
+      );
+
+      if (itemChecks.some((canEdit) => !canEdit)) {
+        return false;
+      }
+    }
+
+    return true;
+  } catch (error) {
+    console.warn(`checkUserWritePermissions failed for "${listTitle}":`, error);
+    return false;
+  }
+};
+
 export interface ILoadedItemForEdit {
   id: number;
   products: IProductLookupItem[];
@@ -714,36 +757,40 @@ export const loadItemDetailsForEdit = async (
       }
     }
 
-    // Isahang batch filter query para sa lahat ng product codes sa halip na paisa-isa
+    // Isahang batch filter query para sa lahat ng product codes sa halip na paisa-isa (chunked into slices of 25)
     const codes = Array.from(termCodeMap.keys());
     if (codes.length > 0) {
-      try {
-        const filterClause = codes
-          .map((c) => `Title eq '${c.replace(/'/g, "''")}'`)
-          .join(" or ");
+      const CHUNK = 25;
+      for (let i = 0; i < codes.length; i += CHUNK) {
+        const slice = codes.slice(i, i + CHUNK);
+        try {
+          const filterClause = slice
+            .map((c) => `Title eq '${c.replace(/'/g, "''")}'`)
+            .join(" or ");
 
-        const masterItems = await sp.web.lists
-          .getByTitle("PIM Product")
-          .items.filter(filterClause)
-          .select("ID", "Title", "PIMProductName", "Manufacturer", "BusinessLine")
-          .top(codes.length + 10)();
+          const masterItems = await sp.web.lists
+            .getByTitle("PIM Product")
+            .items.filter(filterClause)
+            .select("ID", "Title", "PIMProductName", "Manufacturer", "BusinessLine")
+            .top(slice.length + 10)();
 
-        masterItems.forEach((mItem: any) => {
-          const mCode = (mItem.Title || "").trim().toLowerCase();
-          const info = termCodeMap.get(mCode);
-          products.push({
-            ID: mItem.ID,
-            Title: mItem.Title,
-            PIMProductName: mItem.PIMProductName || info?.name || "",
-            Manufacturer: mItem.Manufacturer || "",
-            BusinessLine: mItem.BusinessLine || "",
-            TermGuid: info?.termGuid,
-            WssId: info?.wssId,
+          masterItems.forEach((mItem: any) => {
+            const mCode = (mItem.Title || "").trim().toLowerCase();
+            const info = termCodeMap.get(mCode);
+            products.push({
+              ID: mItem.ID,
+              Title: mItem.Title,
+              PIMProductName: mItem.PIMProductName || info?.name || "",
+              Manufacturer: mItem.Manufacturer || "",
+              BusinessLine: mItem.BusinessLine || "",
+              TermGuid: info?.termGuid,
+              WssId: info?.wssId,
+            });
+            termCodeMap.delete(mCode);
           });
-          termCodeMap.delete(mCode);
-        });
-      } catch (err) {
-        console.warn("Batch resolving products failed:", err);
+        } catch (err) {
+          console.warn("Batch resolving products failed:", err);
+        }
       }
     }
 
@@ -785,30 +832,34 @@ export const loadItemDetailsForEdit = async (
 
     const clientTitles = Array.from(clientTitleMap.keys());
     if (clientTitles.length > 0) {
-      try {
-        const filterClause = clientTitles
-          .map((c) => `Title eq '${c.replace(/'/g, "''")}'`)
-          .join(" or ");
+      const CHUNK = 25;
+      for (let i = 0; i < clientTitles.length; i += CHUNK) {
+        const slice = clientTitles.slice(i, i + CHUNK);
+        try {
+          const filterClause = slice
+            .map((c) => `Title eq '${c.replace(/'/g, "''")}'`)
+            .join(" or ");
 
-        const masterClients = await sp.web.lists
-          .getByTitle("PIM Global Client")
-          .items.filter(filterClause)
-          .select("ID", "Title")
-          .top(clientTitles.length + 10)();
+          const masterClients = await sp.web.lists
+            .getByTitle("PIM Global Client")
+            .items.filter(filterClause)
+            .select("ID", "Title")
+            .top(slice.length + 10)();
 
-        masterClients.forEach((mClient: any) => {
-          const cTitle = (mClient.Title || "").trim().toLowerCase();
-          const info = clientTitleMap.get(cTitle);
-          clients.push({
-            ID: mClient.ID,
-            Title: mClient.Title,
-            TermGuid: info?.termGuid,
-            WssId: info?.wssId,
+          masterClients.forEach((mClient: any) => {
+            const cTitle = (mClient.Title || "").trim().toLowerCase();
+            const info = clientTitleMap.get(cTitle);
+            clients.push({
+              ID: mClient.ID,
+              Title: mClient.Title,
+              TermGuid: info?.termGuid,
+              WssId: info?.wssId,
+            });
+            clientTitleMap.delete(cTitle);
           });
-          clientTitleMap.delete(cTitle);
-        });
-      } catch (err) {
-        console.warn("Batch resolving clients failed:", err);
+        } catch (err) {
+          console.warn("Batch resolving clients failed:", err);
+        }
       }
     }
 
@@ -928,6 +979,13 @@ export interface IEditPropertiesPayload {
   batchNumber?: string;
 }
 
+const safeText = (val: string | undefined | null, maxLen: number = 255): string | null => {
+  if (val === undefined || val === null) return null;
+  const trimmed = String(val).trim();
+  if (!trimmed) return null;
+  return trimmed.length > maxLen ? trimmed.substring(0, maxLen) : trimmed;
+};
+
 export const updateItemProperties = async (
   sp: SPFI,
   itemIds: number[],
@@ -947,27 +1005,35 @@ export const updateItemProperties = async (
     const productCodes = products.map((p) => p.Title || "").filter(Boolean).join("; ");
     const pIds = products.map((p) => p.ID).filter((id) => id > 0);
 
-    combinedUpdatePayload["LongProductName"] = longNames;
-    combinedUpdatePayload["PIM_x0020_Product_x0020_Code"] = productCodes;
+    // Limit text fields to max 255 characters to avoid SPException -2130575336 on Single Line Text fields
+    combinedUpdatePayload["LongProductName"] = safeText(longNames);
+    combinedUpdatePayload["PIM_x0020_Product_x0020_Code"] = safeText(productCodes);
     combinedUpdatePayload["PIMProductCodeId"] = pIds;
 
-    // Resolve any missing TermGuids from PIM Product masterlist
-    for (const p of products) {
-      if (!p.TermGuid && p.Title) {
+    // Resolve any missing TermGuids from PIM Product masterlist in chunked batches
+    const missingTermProducts = products.filter((p) => !p.TermGuid && p.Title);
+    if (missingTermProducts.length > 0) {
+      const CHUNK = 25;
+      for (let i = 0; i < missingTermProducts.length; i += CHUNK) {
+        const slice = missingTermProducts.slice(i, i + CHUNK);
+        const filterClause = slice.map((p) => `Title eq '${p.Title.replace(/'/g, "''")}'`).join(" or ");
         try {
           const found = await sp.web.lists
             .getByTitle("PIM Product")
-            .items.filter(`Title eq '${p.Title.replace(/'/g, "''")}'`)
+            .items.filter(filterClause)
             .select("ID", "Title", "PIMProductTermSet")
-            .top(1)();
-          if (found && found.length > 0 && found[0].PIMProductTermSet) {
-            const rawTerm = found[0].PIMProductTermSet;
-            p.TermGuid = Array.isArray(rawTerm) && rawTerm.length > 0
-              ? rawTerm[0].TermGuid
-              : rawTerm?.TermGuid || undefined;
-          }
+            .top(slice.length + 5)();
+          found.forEach((mItem: any) => {
+            const match = slice.find((p) => (p.Title || "").toLowerCase() === (mItem.Title || "").toLowerCase());
+            if (match && mItem.PIMProductTermSet) {
+              const rawTerm = mItem.PIMProductTermSet;
+              match.TermGuid = Array.isArray(rawTerm) && rawTerm.length > 0
+                ? rawTerm[0].TermGuid
+                : rawTerm?.TermGuid || undefined;
+            }
+          });
         } catch (err) {
-          console.warn(`Could not resolve TermGuid for product ${p.Title}:`, err);
+          console.warn("Could not batch resolve TermGuids for products:", err);
         }
       }
     }
@@ -982,65 +1048,53 @@ export const updateItemProperties = async (
       return "";
     }).filter(Boolean);
 
-    const termSetVal = termSetParts.join(";");
-    if (termSetVal) {
-      taxonomyValues.push({ FieldName: "PIMProductTermSet", FieldValue: termSetVal });
-    }
+    taxonomyValues.push({ FieldName: "PIMProductTermSet", FieldValue: termSetParts.join(";") });
   }
 
   // 2. Client (multi value)
   if (payload.clientsModified) {
     const clients = payload.selectedClients || [];
     const clientTitles = clients.map((c) => c.Title || "").filter(Boolean).join("; ");
-    combinedUpdatePayload["Manufacturer"] = clientTitles;
+    combinedUpdatePayload["Manufacturer"] = safeText(clientTitles);
 
     const resolvedClientIds: number[] = [];
-    for (const c of clients) {
+    const missingClients = clients.filter((c) => (!c.ID || c.ID <= 0 || !c.TermGuid) && c.Title);
+    if (missingClients.length > 0) {
+      const CHUNK = 25;
+      for (let i = 0; i < missingClients.length; i += CHUNK) {
+        const slice = missingClients.slice(i, i + CHUNK);
+        const filterClause = slice.map((c) => `Title eq '${c.Title.replace(/'/g, "''")}'`).join(" or ");
+        try {
+          const found = await sp.web.lists
+            .getByTitle("PIM Global Client")
+            .items.filter(filterClause)
+            .select("ID", "Title", "GlobalClientTermSet")
+            .top(slice.length + 5)();
+          found.forEach((mClient: any) => {
+            const match = slice.find((c) => (c.Title || "").toLowerCase() === (mClient.Title || "").toLowerCase());
+            if (match) {
+              if (!match.ID || match.ID <= 0) match.ID = mClient.ID;
+              if (!match.TermGuid && mClient.GlobalClientTermSet) {
+                const rawTerm = mClient.GlobalClientTermSet;
+                match.TermGuid = Array.isArray(rawTerm) && rawTerm.length > 0
+                  ? rawTerm[0].TermGuid
+                  : rawTerm?.TermGuid || undefined;
+              }
+            }
+          });
+        } catch (err) {
+          console.warn("Could not batch resolve clients:", err);
+        }
+      }
+    }
+
+    clients.forEach((c) => {
       if (c.ID && c.ID > 0) {
         resolvedClientIds.push(c.ID);
-      } else if (c.Title) {
-        try {
-          const found = await sp.web.lists
-            .getByTitle("PIM Global Client")
-            .items.filter(`Title eq '${c.Title.replace(/'/g, "''")}'`)
-            .select("ID", "Title", "GlobalClientTermSet")
-            .top(1)();
-          if (found && found.length > 0) {
-            resolvedClientIds.push(found[0].ID);
-            if (!c.TermGuid && found[0].GlobalClientTermSet) {
-              const rawTerm = found[0].GlobalClientTermSet;
-              c.TermGuid = Array.isArray(rawTerm) && rawTerm.length > 0
-                ? rawTerm[0].TermGuid
-                : rawTerm?.TermGuid || undefined;
-            }
-          }
-        } catch {
-          // ignore
-        }
       }
+    });
 
-      // Also ensure TermGuid is populated if still missing
-      if (!c.TermGuid && c.Title) {
-        try {
-          const found = await sp.web.lists
-            .getByTitle("PIM Global Client")
-            .items.filter(`Title eq '${c.Title.replace(/'/g, "''")}'`)
-            .select("ID", "Title", "GlobalClientTermSet")
-            .top(1)();
-          if (found && found.length > 0 && found[0].GlobalClientTermSet) {
-            const rawTerm = found[0].GlobalClientTermSet;
-            c.TermGuid = Array.isArray(rawTerm) && rawTerm.length > 0
-              ? rawTerm[0].TermGuid
-              : rawTerm?.TermGuid || undefined;
-          }
-        } catch {
-          // ignore
-        }
-      }
-    }
-    if (resolvedClientIds.length > 0) {
-      combinedUpdatePayload["ManufacturerLookupId"] = resolvedClientIds;
-    }
+    combinedUpdatePayload["ManufacturerLookupId"] = resolvedClientIds;
 
     const termSetParts = clients.map((c) => {
       const label = (c.Title || "").trim();
@@ -1050,19 +1104,14 @@ export const updateItemProperties = async (
       return "";
     }).filter(Boolean);
 
-    const termSetVal = termSetParts.join(";");
-    if (termSetVal) {
-      taxonomyValues.push({ FieldName: "GlobalClientTermSet", FieldValue: termSetVal });
-    }
+    taxonomyValues.push({ FieldName: "GlobalClientTermSet", FieldValue: termSetParts.join(";") });
   }
 
   // 3. Document Type (single value)
   if (payload.documentTypeModified) {
     const docType = payload.selectedDocumentType;
-    combinedUpdatePayload["Document_x0020_Type"] = docType?.Title || "";
-    if (docType?.ID && docType.ID > 0) {
-      combinedUpdatePayload["DocumentTypeId"] = docType.ID;
-    }
+    combinedUpdatePayload["Document_x0020_Type"] = safeText(docType?.Title);
+    combinedUpdatePayload["DocumentTypeId"] = docType?.ID && docType.ID > 0 ? docType.ID : null;
   }
 
   // 4. Sub Document Type (multi value)
@@ -1071,30 +1120,28 @@ export const updateItemProperties = async (
     const subTitles = subTypes.map((s) => s.Title || "").filter(Boolean).join("; ");
     const sIds = subTypes.map((s) => s.ID).filter((id) => id > 0);
 
-    combinedUpdatePayload["Sub_x0020_Document_x0020_Type"] = subTitles;
-    if (sIds.length > 0) {
-      combinedUpdatePayload["SubDocumentTypeId"] = sIds;
-    }
+    combinedUpdatePayload["Sub_x0020_Document_x0020_Type"] = safeText(subTitles);
+    combinedUpdatePayload["SubDocumentTypeId"] = sIds;
   }
 
   // 5. Issued by (choice)
   if (payload.issuedByModified) {
-    combinedUpdatePayload["Issued_x0020_By"] = payload.issuedBy || null;
+    combinedUpdatePayload["Issued_x0020_By"] = safeText(payload.issuedBy);
   }
 
   // 6. Issuer Name (Supplier - text)
   if (payload.supplierModified) {
-    combinedUpdatePayload["Supplier"] = payload.supplier || "";
+    combinedUpdatePayload["Supplier"] = safeText(payload.supplier);
   }
 
   // 7. Document Provider Email (Supplier_x0020_Email - text)
   if (payload.supplierEmailModified) {
-    combinedUpdatePayload["Supplier_x0020_Email"] = payload.supplierEmail || "";
+    combinedUpdatePayload["Supplier_x0020_Email"] = safeText(payload.supplierEmail);
   }
 
   // 8. Confidentiality (choice)
   if (payload.confidentialityModified) {
-    combinedUpdatePayload["Confidentiality"] = payload.confidentiality || null;
+    combinedUpdatePayload["Confidentiality"] = safeText(payload.confidentiality);
   }
 
   // 9. Document Date (date)
@@ -1120,25 +1167,25 @@ export const updateItemProperties = async (
 
   // 12. Document Language (multi choice)
   if (payload.documentLanguageModified) {
-    combinedUpdatePayload["Document_x0020_Language"] =
-      payload.documentLanguage && payload.documentLanguage.length > 0
-        ? payload.documentLanguage
-        : null;
+    const langs = payload.documentLanguage && payload.documentLanguage.length > 0
+      ? payload.documentLanguage
+      : [];
+    combinedUpdatePayload["Document_x0020_Language"] = langs;
   }
 
   // 13. Document Status (choice)
   if (payload.documentStatusModified) {
-    combinedUpdatePayload["Document_x0020_Status"] = payload.documentStatus || null;
+    combinedUpdatePayload["Document_x0020_Status"] = safeText(payload.documentStatus);
   }
 
   // 14. Customer Name (text)
   if (payload.customerNameModified) {
-    combinedUpdatePayload["Customer_x0020_Name"] = payload.customerName || "";
+    combinedUpdatePayload["Customer_x0020_Name"] = safeText(payload.customerName);
   }
 
   // 15. Batch Number (text)
   if (payload.batchNumberModified) {
-    combinedUpdatePayload["Batch_x0020_Number"] = payload.batchNumber || "";
+    combinedUpdatePayload["Batch_x0020_Number"] = safeText(payload.batchNumber);
   }
 
   console.log("Saving item properties to SharePoint (unified payload):", {
@@ -1154,36 +1201,14 @@ export const updateItemProperties = async (
       chunk.map(async (id) => {
         const item = list.items.getById(id);
 
-        // Unified Step 1: Isahang POST update para sa lahat ng Text at Lookup columns
+        // Step 1: Update Text, Date, Choice and Lookup columns via item.update
         if (Object.keys(combinedUpdatePayload).length > 0) {
           try {
             await item.update(combinedUpdatePayload);
             console.log(`item.update succeeded with unified payload for item ${id}`);
           } catch (updateErr: any) {
-            console.warn(`item.update error for item ${id}, trying results-object format fallback:`, updateErr);
-            const resultsPayload: Record<string, any> = { ...combinedUpdatePayload };
-            if (Array.isArray(resultsPayload.PIMProductCodeId)) {
-              resultsPayload.PIMProductCodeId = { results: resultsPayload.PIMProductCodeId };
-            }
-            if (Array.isArray(resultsPayload.ManufacturerLookupId)) {
-              resultsPayload.ManufacturerLookupId = { results: resultsPayload.ManufacturerLookupId };
-            }
-            if (Array.isArray(resultsPayload.SubDocumentTypeId)) {
-              resultsPayload.SubDocumentTypeId = { results: resultsPayload.SubDocumentTypeId };
-            }
-            try {
-              await item.update(resultsPayload);
-              console.log(`item.update resultsPayload succeeded for item ${id}`);
-            } catch (updateErr2) {
-              console.warn(`item.update fallback failed, saving text fields only:`, updateErr2);
-              const textOnlyPayload = { ...combinedUpdatePayload };
-              delete textOnlyPayload.PIMProductCodeId;
-              delete textOnlyPayload.ManufacturerLookupId;
-              delete textOnlyPayload.DocumentTypeId;
-              delete textOnlyPayload.SubDocumentTypeId;
-              await item.update(textOnlyPayload);
-              console.log(`item.update textOnlyPayload succeeded for item ${id}`);
-            }
+            console.error(`item.update error for item ${id}:`, updateErr);
+            throw updateErr;
           }
         }
 
