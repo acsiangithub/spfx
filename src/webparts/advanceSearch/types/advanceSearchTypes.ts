@@ -23,6 +23,10 @@ export type doclib_AllProducts = {
   SupplierEmail?: string;
   CustomerName?: string;
   BatchNumber?: string;
+  OriginalFilename?: string;
+  OData__dlc_DocId?: string;
+  DocVersion?: number | string | null;
+  LongProductName?: string;
   DocumentStatus?: string;
   ReviewedByTitle?: string;
   ReviewedByEmail?: string;

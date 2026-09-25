@@ -45,20 +45,7 @@ export const mapSharePointItemsToProducts = (
     const expiryDate = item.Expiry_x0020_Date ? new Date(item.Expiry_x0020_Date) : null;
     const nextReviewDate = item.Next_x0020_Review_x0020_Date ? new Date(item.Next_x0020_Review_x0020_Date) : null;
 
-    // Resolve Client / Manufacturer: Check GlobalClientTermSet first, then fallback to text field Manufacturer
-    let clientNames = item.Manufacturer ?? "";
-    if (Array.isArray(item.GlobalClientTermSet) && item.GlobalClientTermSet.length > 0) {
-      const termLabels = item.GlobalClientTermSet
-        .map((t: any) => t.Label || "")
-        .filter(Boolean);
-      if (termLabels.length > 0) {
-        clientNames = termLabels.join("; ");
-      }
-    } else if (item.GlobalClientTermSet?.Label) {
-      clientNames = item.GlobalClientTermSet.Label;
-    }
-
-    // Resolve Products: Extract from lookup PIMProductCode or taxonomy PIMProductTermSet
+    // Resolve Products from lookup PIMProductCode
     const pimProducts = (item.PIMProductCode ?? []).map((p: any) => ({
       ID: p.ID ?? p.Id ?? 0,
       Title: p.Title ?? "",
@@ -68,19 +55,15 @@ export const mapSharePointItemsToProducts = (
       ManufacturerLookupId: p.ManufacturerLookupId,
     }));
 
-    let pimProductSearchText = (item.PIMProductCode ?? [])
-      .map((p: any) => `${p.Title} ${p.PIMProductName}`.trim())
+    const pimProductSearchText = (item.PIMProductCode ?? [])
+      .map((p: any) => `${p.Title || ""} ${p.PIMProductName || ""}`.trim())
       .filter(Boolean)
       .join(" ");
 
-    if (Array.isArray(item.PIMProductTermSet) && item.PIMProductTermSet.length > 0) {
-      const termLabels = item.PIMProductTermSet
-        .map((t: any) => t.Label || "")
-        .filter(Boolean);
-      if (termLabels.length > 0) {
-        pimProductSearchText = termLabels.join(" ");
-      }
-    }
+    const longProductNames = pimProducts
+      .map((p: IProductLookupItem) => p.PIMProductName || "")
+      .filter(Boolean)
+      .join("; ");
 
     return {
       id: item.Id,
@@ -88,7 +71,7 @@ export const mapSharePointItemsToProducts = (
       fileUrl: item.FileRef,
       PIMProduct: pimProducts,
       PIMProductSearchText: pimProductSearchText,
-      ManufacturerSearchText: clientNames,
+      ManufacturerSearchText: item.Manufacturer ?? "",
       BusinessLine: choiceToString(item.Business_x0020_Line),
       CountrySoldTo: choiceToString(item.Country),
       DocumentTypeSearchText: item.Document_x0020_Type ?? "",
@@ -109,6 +92,15 @@ export const mapSharePointItemsToProducts = (
       SupplierEmail: item.Supplier_x0020_Email ?? "",
       CustomerName: item.Customer_x0020_Name ?? "",
       BatchNumber: item.Batch_x0020_Number ?? "",
+      OriginalFilename: item.Original_x0020_Filename ?? item.OriginalFilename ?? "",
+      OData__dlc_DocId:
+        (typeof item.OData__dlc_DocId === "string" ? item.OData__dlc_DocId : "") ||
+        (item.OData__dlc_DocIdUrl?.Description || item.OData__dlc_DocIdUrl?.Url || "") ||
+        (typeof item._dlc_DocId === "string" ? item._dlc_DocId : "") ||
+        (item._dlc_DocIdUrl?.Description || item._dlc_DocIdUrl?.Url || "") ||
+        "",
+      DocVersion: item.DocVersion !== undefined && item.DocVersion !== null ? item.DocVersion : (item.OData__UIVersionString ?? null),
+      LongProductName: longProductNames || item.LongProductName || "",
       DocumentStatus: choiceToString(item.Document_x0020_Status),
       ReviewedByTitle: reviewedByTitle,
       ReviewedByEmail: reviewedByEmail,
@@ -449,6 +441,13 @@ export const loadRecordsBatch = async (
       "Author/Title",
       "Author/EMail",
       "Issued_x0020_By",
+      "Supplier",
+      "Supplier_x0020_Email",
+      "Customer_x0020_Name",
+      "Batch_x0020_Number",
+      "Original_x0020_Filename",
+      "OData__dlc_DocId",
+      "DocVersion",
       "Document_x0020_Status",
       "ReviewActionTakenBy/Id",
       "ReviewActionTakenBy/Title",
@@ -486,7 +485,6 @@ export const fetchSingleProductItem = async (
       .getByTitle("Clients & Products")
       .items.getById(itemId)
       .select(
-        "*",
         "Id",
         "Title",
         "FileLeafRef",
@@ -497,8 +495,6 @@ export const fetchSingleProductItem = async (
         "PIMProductCode/Title",
         "PIMProductCode/PIMProductName",
         "Manufacturer",
-        "GlobalClientTermSet",
-        "PIMProductTermSet",
         "Document_x0020_Type",
         "Sub_x0020_Document_x0020_Type",
         "Document_x0020_Date",
@@ -517,6 +513,9 @@ export const fetchSingleProductItem = async (
         "Supplier_x0020_Email",
         "Customer_x0020_Name",
         "Batch_x0020_Number",
+        "Original_x0020_Filename",
+        "OData__dlc_DocId",
+        "DocVersion",
         "Document_x0020_Status",
         "ReviewActionTakenBy/Id",
         "ReviewActionTakenBy/Title",
@@ -540,56 +539,93 @@ export const searchRecords = async (
   sp: SPFI,
   queryText: string,
   startRow: number = 0,
-  pageSize: number = 1000
+  pageSize: number = 1000,
+  existingIds?: Set<number>
 ): Promise<ISearchBatchResult> => {
   let currentRow = startRow;
   let totalRows: number | undefined = undefined;
   const allOrderedItems: doclib_AllProducts[] = [];
-  const seenIds = new Set<number>();
+  const seenIds = new Set<number>(existingIds);
   let hitEnd = false;
+
+  const selectProperties = [
+    "Title",
+    "ListItemID",
+    "Path",
+    "DocumentDateOWSTDATE",
+    "ExpiryDateOWSTDATE",
+    "CreatedOWSDATE",
+    "Created",
+    "LastModifiedTime",
+    "BusinessLineOWSCHCM",
+    "CountryOWSCHCM",
+    "ManufacturerOWSTEXT", // Client
+    "LongProductNameOWSMTXT",
+    "DocumentTypeOWSTEXT",
+    "SubDocumentTypeOWSMTXT",
+    "PIMProductCodeOWSTEXT",
+    "ConfidentialityOWSCHCS",
+    "AlertsOWSMTXT",
+  ];
 
   while (allOrderedItems.length < pageSize && !hitEnd) {
     const needed = pageSize - allOrderedItems.length;
-    // Fetch up to 500 at a time (SharePoint REST Search limit per request) or what is needed
-    const currentLimit = Math.min(500, needed);
+    let currentResults: any[] = [];
 
-    const results = await sp.search({
-      Querytext: queryText,
-      RowLimit: currentLimit,
-      StartRow: currentRow,
-      TrimDuplicates: false,
-      SelectProperties: [
-        "Title",
-        "ListItemID",
-        "Path",
-        "DocumentDateOWSTDATE",
-        "ExpiryDateOWSTDATE",
-        "CreatedOWSDATE",
-        "Created",
-        //"ModifiedOWSDate",
-        "LastModifiedTime",
-        "BusinessLineOWSCHCM",
-        "CountryOWSCHCM",
-        //"CountryOWSCHM",
-        "ManufacturerOWSTEXT",  //Client
-        "LongProductNameOWSMTXT",
-        "DocumentTypeOWSTEXT",
-        "SubDocumentTypeOWSMTXT",        
-        "PIMProductCodeOWSTEXT",
-        "ConfidentialityOWSCHCS",
-        "AlertsOWSMTXT",
-      ],
-    });
+    if (needed > 500) {
+      // Parallelize into 2 concurrent search requests (500 each)
+      const [res1, res2] = await Promise.all([
+        sp.search({
+          Querytext: queryText,
+          RowLimit: 500,
+          StartRow: currentRow,
+          TrimDuplicates: false,
+          SelectProperties: selectProperties,
+        }),
+        sp.search({
+          Querytext: queryText,
+          RowLimit: 500,
+          StartRow: currentRow + 500,
+          TrimDuplicates: false,
+          SelectProperties: selectProperties,
+        }),
+      ]);
 
-    if (results && typeof results.TotalRows === "number") {
-      totalRows = results.TotalRows;
-    }
+      if (res1 && typeof res1.TotalRows === "number") {
+        totalRows = res1.TotalRows;
+      } else if (res2 && typeof res2.TotalRows === "number") {
+        totalRows = res2.TotalRows;
+      }
 
-    const currentResults = results?.PrimarySearchResults ?? [];
-    currentRow += currentResults.length;
+      const list1 = res1?.PrimarySearchResults ?? [];
+      const list2 = res2?.PrimarySearchResults ?? [];
 
-    if (currentResults.length < currentLimit) {
-      hitEnd = true;
+      currentResults = [...list1, ...list2];
+      currentRow += list1.length + list2.length;
+
+      if (list1.length < 500 || list2.length < 500) {
+        hitEnd = true;
+      }
+    } else {
+      const currentLimit = Math.min(500, Math.max(needed, 50));
+      const results = await sp.search({
+        Querytext: queryText,
+        RowLimit: currentLimit,
+        StartRow: currentRow,
+        TrimDuplicates: false,
+        SelectProperties: selectProperties,
+      });
+
+      if (results && typeof results.TotalRows === "number") {
+        totalRows = results.TotalRows;
+      }
+
+      currentResults = results?.PrimarySearchResults ?? [];
+      currentRow += currentResults.length;
+
+      if (currentResults.length < currentLimit) {
+        hitEnd = true;
+      }
     }
 
     const chunkIds: number[] = [];
@@ -602,8 +638,8 @@ export const searchRecords = async (
     });
 
     if (chunkIds.length > 0) {
-      const CHUNK_SIZE = 40;
-      const CONCURRENCY_LIMIT = 8;
+      const CHUNK_SIZE = 60;
+      const CONCURRENCY_LIMIT = 10;
       const chunkSlices: number[][] = [];
       for (let i = 0; i < chunkIds.length; i += CHUNK_SIZE) {
         chunkSlices.push(chunkIds.slice(i, i + CHUNK_SIZE));
@@ -640,6 +676,13 @@ export const searchRecords = async (
               "Author/Title",
               "Author/EMail",
               "Issued_x0020_By",
+              "Supplier",
+              "Supplier_x0020_Email",
+              "Customer_x0020_Name",
+              "Batch_x0020_Number",
+              "Original_x0020_Filename",
+              "OData__dlc_DocId",
+              "DocVersion",
               "Document_x0020_Status",
               "ReviewActionTakenBy/Id",
               "ReviewActionTakenBy/Title",

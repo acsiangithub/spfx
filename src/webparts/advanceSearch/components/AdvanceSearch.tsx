@@ -317,18 +317,26 @@ const exportToExcelCsv = (items: doclib_AllProducts[], customFileName: string = 
     "Business Line",
     "Country Sold To",
     "Issued By",
+    "Issuer Name",
     "Document Status",
-    "Document Language",
     "Confidentiality",
     "Document Date",
     "Expiry Date",
     "Next Review Date",
+    "Document Provider Email",
+    "Customer Name",
+    "Batch Number",
+    "Original Filename",
+    "Document ID",
+    "Document Version",
     "Created",
     "Created by",
     "Modified",
     "Modified by",
     "Reviewed By",
+    "Document Language",
     "Alerts",
+    "Product Name",
     "File URL",
     "ID",
   ];
@@ -363,18 +371,26 @@ const exportToExcelCsv = (items: doclib_AllProducts[], customFileName: string = 
       escapeCsv(item.BusinessLine),
       escapeCsv(item.CountrySoldTo),
       escapeCsv(item.IssuedBy),
+      escapeCsv(item.Supplier),
       escapeCsv(item.DocumentStatus),
-      escapeCsv(item.DocumentLanguage),
       escapeCsv(item.Confidentiality),
       escapeCsv(item.DocumentDate),
       escapeCsv(item.ExpiryDate),
       escapeCsv(item.NextReviewDate),
+      escapeCsv(item.SupplierEmail),
+      escapeCsv(item.CustomerName),
+      escapeCsv(item.BatchNumber),
+      escapeCsv(item.OriginalFilename),
+      escapeCsv(item.OData__dlc_DocId),
+      escapeCsv(item.DocVersion),
       escapeCsv(item.Created),
       escapeCsv(item.AuthorTitle),
       escapeCsv(item.Modified),
       escapeCsv(item.EditorTitle),
       escapeCsv(item.ReviewedByTitle),
+      escapeCsv(item.DocumentLanguage),
       escapeCsv(item.Alerts),
+      escapeCsv(item.LongProductName),
       escapeCsv(item.fileUrl),
       escapeCsv(item.id),
     ];
@@ -658,6 +674,194 @@ const CollapsibleItemList: React.FC<ICollapsibleItemListProps> = ({
         </button>
       )}
     </div>
+  );
+};
+
+interface ICollapsibleTextCellProps {
+  text: string;
+  maxLength?: number;
+  maxWidth?: string | number;
+}
+
+const CollapsibleTextCell: React.FC<ICollapsibleTextCellProps> = ({
+  text,
+  maxLength = 22,
+  maxWidth = "100%",
+}) => {
+  const [expanded, setExpanded] = React.useState(false);
+
+  const cleanText = (text || "").trim();
+  if (!cleanText || cleanText === "-") return <span>-</span>;
+
+  const isLong = cleanText.length > maxLength;
+
+  if (!isLong) {
+    return (
+      <span
+        style={{
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          display: "inline-block",
+          maxWidth: "100%",
+        }}
+        title={cleanText}
+      >
+        {cleanText}
+      </span>
+    );
+  }
+
+  return (
+    <Box
+      sx={{
+        display: "inline-flex",
+        alignItems: "center",
+        maxWidth: maxWidth,
+        minWidth: 0,
+        width: "100%",
+        gap: 0.5,
+      }}
+    >
+      <Tooltip title={cleanText} arrow placement="top">
+        <Typography
+          variant="body2"
+          component="span"
+          sx={{
+            fontSize: "12.5px",
+            color: "text.primary",
+            whiteSpace: expanded ? "normal" : "nowrap",
+            overflow: expanded ? "visible" : "hidden",
+            textOverflow: expanded ? "clip" : "ellipsis",
+            wordBreak: expanded ? "break-word" : "normal",
+            minWidth: 0,
+            flex: 1,
+          }}
+        >
+          {cleanText}
+        </Typography>
+      </Tooltip>
+      <button
+        type="button"
+        onClick={(e: React.MouseEvent) => {
+          e.stopPropagation();
+          setExpanded(!expanded);
+        }}
+        title={expanded ? "Show less" : `Expand full text: ${cleanText}`}
+        style={{
+          cursor: "pointer",
+          border: "1px solid #c0c0c0",
+          backgroundColor: expanded ? "#e3f2fd" : "#f5f5f5",
+          color: "#1976d2",
+          borderRadius: "10px",
+          padding: "0 6px",
+          fontSize: "10px",
+          fontWeight: 700,
+          lineHeight: "16px",
+          height: "16px",
+          display: "inline-flex",
+          alignItems: "center",
+          flexShrink: 0,
+        }}
+      >
+        {expanded ? "▴ less" : "..."}
+      </button>
+    </Box>
+  );
+};
+
+interface ICollapsibleProductNamesCellProps {
+  raw: string;
+}
+
+const CollapsibleProductNamesCell: React.FC<ICollapsibleProductNamesCellProps> = ({ raw }) => {
+  const [expanded, setExpanded] = React.useState(false);
+
+  const clean = (raw || "").trim();
+  if (!clean || clean === "-") return <span>-</span>;
+
+  const parts = clean.split(/;\s*/).map((p) => p.trim()).filter(Boolean);
+  if (parts.length === 0) return <span>-</span>;
+
+  if (parts.length === 1) {
+    return <CollapsibleTextCell text={parts[0]} maxLength={24} />;
+  }
+
+  // Multiple parts (delimiter "; ")
+  const firstPart = parts[0];
+  const remainingCount = parts.length - 1;
+
+  return (
+    <Box
+      sx={{
+        display: "inline-flex",
+        alignItems: "center",
+        maxWidth: "100%",
+        minWidth: 0,
+        width: "100%",
+        gap: 0.5,
+      }}
+    >
+      <Tooltip
+        title={
+          <Box sx={{ p: 0.5, maxWidth: 360 }}>
+            <Typography variant="caption" sx={{ fontWeight: 600, display: "block", mb: 0.5 }}>
+              All Products ({parts.length}):
+            </Typography>
+            {parts.map((p, idx) => (
+              <Typography key={idx} variant="caption" sx={{ display: "block", fontSize: "11px" }}>
+                • {p}
+              </Typography>
+            ))}
+          </Box>
+        }
+        arrow
+        placement="top"
+      >
+        <Typography
+          variant="body2"
+          component="span"
+          sx={{
+            fontSize: "12.5px",
+            color: "text.primary",
+            whiteSpace: expanded ? "normal" : "nowrap",
+            overflow: expanded ? "visible" : "hidden",
+            textOverflow: expanded ? "clip" : "ellipsis",
+            wordBreak: expanded ? "break-word" : "normal",
+            minWidth: 0,
+            flex: 1,
+          }}
+        >
+          {expanded ? parts.join("; ") : `${firstPart}...`}
+        </Typography>
+      </Tooltip>
+
+      <button
+        type="button"
+        onClick={(e: React.MouseEvent) => {
+          e.stopPropagation();
+          setExpanded(!expanded);
+        }}
+        title={expanded ? "Show less" : `Show ${remainingCount} more products`}
+        style={{
+          cursor: "pointer",
+          border: "1px solid #c0c0c0",
+          backgroundColor: expanded ? "#e3f2fd" : "#f5f5f5",
+          color: "#1976d2",
+          borderRadius: "10px",
+          padding: "0 6px",
+          fontSize: "10px",
+          fontWeight: 700,
+          lineHeight: "16px",
+          height: "16px",
+          display: "inline-flex",
+          alignItems: "center",
+          flexShrink: 0,
+        }}
+      >
+        {expanded ? "▴ less" : `... +${remainingCount}`}
+      </button>
+    </Box>
   );
 };
 
@@ -1374,6 +1578,10 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
               .map((p) => `${p.Title || ""} ${p.PIMProductName || ""}`.trim())
               .filter(Boolean)
               .join(" ");
+            updated.LongProductName = payload.selectedProducts
+              .map((p) => p.PIMProductName || "")
+              .filter(Boolean)
+              .join("; ");
           }
 
           // 2. Clients
@@ -1782,15 +1990,21 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         setNextSkipId(result.nextSkipId);
         setHasMoreRecords(result.hasMore);
       } else {
+        const existingIds = new Set<number>(
+          items_AllProducts
+            .map((p) => p.id)
+            .filter((id): id is number => typeof id === "number" && id > 0)
+        );
         const result = await searchRecordsService(
           activeSp,
           currentSearchQuery,
           nextSearchStartRow ?? 0,
-          1000
+          1000,
+          existingIds
         );
         setItems_AllProducts((prev) => {
-          const existingIds = new Set(prev.map((p) => p.id));
-          const newUnique = result.items.filter((item) => !existingIds.has(item.id));
+          const currentExistingIds = new Set(prev.map((p) => p.id));
+          const newUnique = result.items.filter((item) => !currentExistingIds.has(item.id));
           return [...prev, ...newUnique];
         });
         setNextSearchStartRow(result.nextStartRow);
@@ -2029,7 +2243,42 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     } else {
       setKeywordInput("");
     }
-    setAdditionalKeywords([]);
+
+    // 10. Additional column filters (Issuer Name, Customer, Batch, Document Language, etc.) into Search Keywords
+    const extraKeywords: string[] = [];
+    const extraFilterCols = [
+      "Supplier",
+      "SupplierEmail",
+      "CustomerName",
+      "BatchNumber",
+      "OriginalFilename",
+      "OData__dlc_DocId",
+      "DocVersion",
+      "LongProductName",
+      "DocumentLanguage",
+      "IssuedBy",
+      "DocumentStatus",
+    ];
+
+    extraFilterCols.forEach((colId) => {
+      const fVal = activeColumnFilters.find((f) => f.id === colId)?.value;
+      if (fVal) {
+        if (Array.isArray(fVal)) {
+          fVal.forEach((v) => {
+            const s = String(v).trim();
+            if (s && s.toLowerCase() !== "(empty)" && s !== "-") {
+              extraKeywords.push(s);
+            }
+          });
+        } else if (typeof fVal === "string") {
+          const s = fVal.trim();
+          if (s && s.toLowerCase() !== "(empty)" && s !== "-") {
+            extraKeywords.push(s);
+          }
+        }
+      }
+    });
+    setAdditionalKeywords(Array.from(new Set(extraKeywords)));
   };
 
   const handleOpenSearchDialog = (): void => {
@@ -2705,6 +2954,54 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     return result;
   }, [getItemsFilteredExcluding]);
 
+  const supplierOptions = useMemo(() => {
+    const items = getItemsFilteredExcluding("Supplier");
+    const unique = new Set<string>();
+    let hasEmpty = false;
+    items.forEach((item) => {
+      const raw = item.Supplier;
+      if (!raw || raw.trim() === "") {
+        hasEmpty = true;
+      } else {
+        raw.split(/[\r\n;,]+/).forEach((val) => {
+          const trimmed = val.trim();
+          if (trimmed) unique.add(trimmed);
+        });
+      }
+    });
+    const result: string[] = Array.from(unique).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    );
+    if (hasEmpty) {
+      result.unshift("(Empty)");
+    }
+    return result;
+  }, [getItemsFilteredExcluding]);
+
+  const customerNameOptions = useMemo(() => {
+    const items = getItemsFilteredExcluding("CustomerName");
+    const unique = new Set<string>();
+    let hasEmpty = false;
+    items.forEach((item) => {
+      const raw = item.CustomerName;
+      if (!raw || raw.trim() === "") {
+        hasEmpty = true;
+      } else {
+        raw.split(/[\r\n;,]+/).forEach((val) => {
+          const trimmed = val.trim();
+          if (trimmed) unique.add(trimmed);
+        });
+      }
+    });
+    const result: string[] = Array.from(unique).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    );
+    if (hasEmpty) {
+      result.unshift("(Empty)");
+    }
+    return result;
+  }, [getItemsFilteredExcluding]);
+
   const columns_AllProducts = useMemo<MRT_ColumnDef<doclib_AllProducts>[]>(
     () => [
       {
@@ -3203,6 +3500,34 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         },
       },
       {
+        accessorKey: "Supplier",
+        header: "Issuer Name",
+        filterFn: multiSelectFilterFn,
+        Filter: ({ column }) => (
+          <MultiSelectAutocompleteFilter
+            column={column}
+            options={supplierOptions}
+            placeholder="Select/type issuer name..."
+          />
+        ),
+        size: 160,
+        minSize: 140,
+        Cell: ({ cell, column }) => {
+          const raw = String(cell.getValue() || "").trim();
+          if (!raw || raw === "-") return "-";
+          const items = raw
+            .split(/[\r\n;,]+/)
+            .map((item) => item.trim())
+            .filter(Boolean);
+          return (
+            <CollapsibleItemList
+              items={items}
+              filterValues={column.getFilterValue()}
+            />
+          );
+        },
+      },
+      {
         accessorKey: "DocumentStatus",
         header: "Document Status",
         filterVariant: "multi-select",
@@ -3251,19 +3576,6 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
               }}
             />
           );
-        },
-      },
-      {
-        accessorKey: "DocumentLanguage",
-        header: "Document Language",
-        filterVariant: "multi-select",
-        filterSelectOptions: documentLanguageOptions,
-        filterFn: multiSelectFilterFn,
-        size: 140,
-        minSize: 130,
-        Cell: ({ cell }) => {
-          const raw = String(cell.getValue() || "").trim();
-          return <span>{raw || "-"}</span>;
         },
       },
       {
@@ -3430,6 +3742,89 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         },
       },
       {
+        accessorKey: "SupplierEmail",
+        header: "Document Provider Email",
+        size: 180,
+        minSize: 150,
+        filterFn: "contains",
+        Cell: ({ cell }) => {
+          const raw = String(cell.getValue() || "").trim();
+          return <span>{raw || "-"}</span>;
+        },
+      },
+      {
+        accessorKey: "CustomerName",
+        header: "Customer Name",
+        filterFn: multiSelectFilterFn,
+        Filter: ({ column }) => (
+          <MultiSelectAutocompleteFilter
+            column={column}
+            options={customerNameOptions}
+            placeholder="Select/type customer..."
+          />
+        ),
+        size: 160,
+        minSize: 140,
+        Cell: ({ cell, column }) => {
+          const raw = String(cell.getValue() || "").trim();
+          if (!raw || raw === "-") return "-";
+          const items = raw
+            .split(/[\r\n;,]+/)
+            .map((item) => item.trim())
+            .filter(Boolean);
+          return (
+            <CollapsibleItemList
+              items={items}
+              filterValues={column.getFilterValue()}
+            />
+          );
+        },
+      },
+      {
+        accessorKey: "BatchNumber",
+        header: "Batch Number",
+        size: 130,
+        minSize: 110,
+        filterFn: "contains",
+        Cell: ({ cell }) => {
+          const raw = String(cell.getValue() || "").trim();
+          return <span>{raw || "-"}</span>;
+        },
+      },
+      {
+        accessorKey: "OriginalFilename",
+        header: "Original Filename",
+        size: 180,
+        minSize: 140,
+        filterFn: "contains",
+        Cell: ({ cell }) => {
+          const raw = String(cell.getValue() || "").trim();
+          return <CollapsibleTextCell text={raw} maxLength={22} />;
+        },
+      },
+      {
+        accessorKey: "OData__dlc_DocId",
+        header: "Document ID",
+        size: 150,
+        minSize: 130,
+        filterFn: "contains",
+        Cell: ({ cell }) => {
+          const raw = String(cell.getValue() || "").trim();
+          return <span>{raw || "-"}</span>;
+        },
+      },
+      {
+        accessorKey: "DocVersion",
+        header: "Document Version",
+        size: 130,
+        minSize: 100,
+        filterFn: "contains",
+        Cell: ({ cell }) => {
+          const raw = cell.getValue();
+          return <span>{raw !== undefined && raw !== null ? String(raw) : "-"}</span>;
+        },
+      },
+      {
         accessorKey: "Created",
         header: "Created",
         size: 110,
@@ -3513,6 +3908,19 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         },
       },
       {
+        accessorKey: "DocumentLanguage",
+        header: "Document Language",
+        filterVariant: "multi-select",
+        filterSelectOptions: documentLanguageOptions,
+        filterFn: multiSelectFilterFn,
+        size: 150,
+        minSize: 130,
+        Cell: ({ cell }) => {
+          const raw = String(cell.getValue() || "").trim();
+          return <span>{raw || "-"}</span>;
+        },
+      },
+      {
         accessorKey: "Alerts",
         header: "Alerts",
         filterFn: alertsFilterFn,
@@ -3565,6 +3973,17 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         },
       },
       {
+        accessorKey: "LongProductName",
+        header: "Product Name",
+        size: 180,
+        minSize: 150,
+        filterFn: "contains",
+        Cell: ({ cell }) => {
+          const raw = String(cell.getValue() || "").trim();
+          return <CollapsibleProductNamesCell raw={raw} />;
+        },
+      },
+      {
         accessorKey: "id",
         header: "ID",
         size: 70,
@@ -3586,6 +4005,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       subDocumentTypeOptions,
       confidentialityOptions,
       issuedByOptions,
+      supplierOptions,
+      customerNameOptions,
       documentStatusOptions,
       documentLanguageOptions,
       reviewedByOptions,
@@ -3930,10 +4351,10 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
               {isLoadingMore ? (
                 <Box sx={{ display: "flex", alignItems: "center", gap: "6px" }}>
                   <CircularProgress size={14} color="inherit" />
-                  <span>Loading next 1,000...</span>
+                  <span>Loading more...</span>
                 </Box>
               ) : (
-                "+ Load Next 1,000"
+                "+ Load More"
               )}
             </Button>
           )}

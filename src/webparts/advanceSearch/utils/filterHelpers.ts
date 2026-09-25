@@ -418,7 +418,16 @@ export const itemMatchesFilter = (
   return regularSelections.some((sel) => {
     const selLower = sel.toLowerCase();
     if (tokens.includes(selLower)) return true;
-    if (colId === "PIMProductSearchText") {
+    if (
+      colId === "PIMProductSearchText" ||
+      colId === "SupplierEmail" ||
+      colId === "BatchNumber" ||
+      colId === "OriginalFilename" ||
+      colId === "OData__dlc_DocId" ||
+      colId === "DocVersion" ||
+      colId === "LongProductName" ||
+      typeof filterValue === "string"
+    ) {
       return rowStr.toLowerCase().includes(selLower);
     }
     return false;
