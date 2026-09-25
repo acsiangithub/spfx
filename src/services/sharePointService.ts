@@ -412,7 +412,7 @@ export interface ISearchBatchResult {
 export const loadRecordsBatch = async (
   sp: SPFI,
   lastId?: number,
-  pageSize: number = 1000
+  pageSize: number = 500
 ): Promise<IBatchLoadResult> => {
   let itemsQuery = sp.web.lists
     .getByTitle("Clients & Products")
@@ -539,7 +539,7 @@ export const searchRecords = async (
   sp: SPFI,
   queryText: string,
   startRow: number = 0,
-  pageSize: number = 1000,
+  pageSize: number = 500,
   existingIds?: Set<number>
 ): Promise<ISearchBatchResult> => {
   let currentRow = startRow;

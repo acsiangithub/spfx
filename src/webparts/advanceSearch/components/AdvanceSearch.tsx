@@ -110,6 +110,8 @@ import EmailShareDialog from "./EmailShareDialog";
 import EditPropertiesDialog from "./EditPropertiesDialog";
 import FilePreviewDialog from "./FilePreviewDialog";
 
+const BATCH_SIZE = 500;
+
 const DateFilterControl: React.FC<{
   column: { getFilterValue: () => unknown; setFilterValue: (value: unknown) => void };
   label?: string;
@@ -1748,7 +1750,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     const loadInitialRecords = async (): Promise<void> => {
       try {
         setResultsLoading(true);
-        const result = await loadRecordsBatchService(activeSp, undefined, 1000);
+        const result = await loadRecordsBatchService(activeSp, undefined, BATCH_SIZE);
         setItems_AllProducts(result.items);
         setNextSkipId(result.nextSkipId);
         setHasMoreRecords(result.hasMore);
@@ -1932,7 +1934,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       setNextSearchStartRow(undefined);
       setCurrentSearchQuery("");
 
-      const result = await loadRecordsBatchService(activeSp, undefined, 1000);
+      const result = await loadRecordsBatchService(activeSp, undefined, BATCH_SIZE);
       setItems_AllProducts(result.items);
       setNextSkipId(result.nextSkipId);
       setHasMoreRecords(result.hasMore);
@@ -1953,7 +1955,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       setCurrentSearchQuery("");
 
       const [recordsResult] = await Promise.all([
-        loadRecordsBatchService(activeSp, undefined, 1000),
+        loadRecordsBatchService(activeSp, undefined, BATCH_SIZE),
         loadListFieldMetadataService(activeSp)
           .then(({ formatters, choices, defaultViewUrl }) => {
             setFieldFormatters(formatters);
@@ -1981,7 +1983,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     try {
       setIsLoadingMore(true);
       if (isBrowseMode) {
-        const result = await loadRecordsBatchService(activeSp, nextSkipId, 1000);
+        const result = await loadRecordsBatchService(activeSp, nextSkipId, BATCH_SIZE);
         setItems_AllProducts((prev) => {
           const existingIds = new Set(prev.map((p) => p.id));
           const newUnique = result.items.filter((item) => !existingIds.has(item.id));
@@ -1999,7 +2001,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           activeSp,
           currentSearchQuery,
           nextSearchStartRow ?? 0,
-          1000,
+          BATCH_SIZE,
           existingIds
         );
         setItems_AllProducts((prev) => {
@@ -2438,7 +2440,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       }
 
       setCurrentSearchQuery(queryText);
-      const result = await searchRecordsService(activeSp, queryText, 0, 1000);
+      const result = await searchRecordsService(activeSp, queryText, 0, BATCH_SIZE);
       setItems_AllProducts(result.items);
       setNextSearchStartRow(result.nextStartRow);
       setHasMoreRecords(result.hasMore);
