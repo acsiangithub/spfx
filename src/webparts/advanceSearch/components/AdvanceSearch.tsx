@@ -1200,6 +1200,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     confidentiality: {},
     alerts: null,
     documentStatus: {},
+    issuedBy: {},
   });
 
   const getRowAlerts = React.useCallback(
@@ -2246,41 +2247,76 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       setKeywordInput("");
     }
 
-    // 10. Additional column filters (Issuer Name, Customer, Batch, Document Language, etc.) into Search Keywords
-    const extraKeywords: string[] = [];
-    const extraFilterCols = [
-      "Supplier",
-      "SupplierEmail",
-      "CustomerName",
-      "BatchNumber",
-      "OriginalFilename",
-      "OData__dlc_DocId",
-      "DocVersion",
-      "LongProductName",
-      "DocumentLanguage",
-      "IssuedBy",
-      "DocumentStatus",
-    ];
+    // 10. Automatically route any active column filters that are NOT dedicated controls in the Search dialog into Additional Keywords (excluding date columns)
+    const directDialogColIds = new Set<string>([
+      "ManufacturerSearchText",
+      "PIMProductSearchText",
+      "DocumentTypeSearchText",
+      "SubDocumentTypeSearchText",
+      "BusinessLine",
+      "CountrySoldTo",
+      "Confidentiality",
+      "filename",
+      "DocumentDate",
+      "ExpiryDate",
+      "NextReviewDate",
+      "Created",
+      "Modified",
+    ]);
 
-    extraFilterCols.forEach((colId) => {
-      const fVal = activeColumnFilters.find((f) => f.id === colId)?.value;
-      if (fVal) {
-        if (Array.isArray(fVal)) {
-          fVal.forEach((v) => {
-            const s = String(v).trim();
-            if (s && s.toLowerCase() !== "(empty)" && s !== "-") {
-              extraKeywords.push(s);
-            }
+    const columnGroups: string[][] = [];
+
+    activeColumnFilters.forEach((filter) => {
+      if (directDialogColIds.has(filter.id)) {
+        return;
+      }
+
+      const fVal = filter.value;
+      if (fVal === null || fVal === undefined) return;
+
+      const extractStringValues = (val: any): string[] => {
+        if (Array.isArray(val)) {
+          const res: string[] = [];
+          val.forEach((v: any) => {
+            res.push(...extractStringValues(v));
           });
-        } else if (typeof fVal === "string") {
-          const s = fVal.trim();
-          if (s && s.toLowerCase() !== "(empty)" && s !== "-") {
-            extraKeywords.push(s);
+          return res;
+        }
+        if (typeof val === "string" || typeof val === "number" || typeof val === "boolean") {
+          const s = String(val).trim();
+          return s && s.toLowerCase() !== "(empty)" && s !== "-" ? [s] : [];
+        }
+        if (typeof val === "object" && val !== null) {
+          // In case of custom filter objects like { text: 'xyz' }
+          if (typeof val.text === "string") {
+            const s = val.text.trim();
+            return s && s.toLowerCase() !== "(empty)" && s !== "-" ? [s] : [];
           }
         }
+        return [];
+      };
+
+      const extracted = Array.from(new Set(extractStringValues(fVal)));
+      if (extracted.length > 0) {
+        columnGroups.push(extracted);
       }
     });
-    setAdditionalKeywords(Array.from(new Set(extraKeywords)));
+
+    const extraKeywords: string[] = [];
+
+    columnGroups.forEach((group, groupIdx) => {
+      if (groupIdx > 0) {
+        extraKeywords.push("AND");
+      }
+      group.forEach((item, itemIdx) => {
+        if (itemIdx > 0) {
+          extraKeywords.push("OR");
+        }
+        extraKeywords.push(item);
+      });
+    });
+
+    setAdditionalKeywords(extraKeywords);
   };
 
   const handleOpenSearchDialog = (): void => {
@@ -3496,9 +3532,46 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         filterFn: multiSelectFilterFn,
         size: 140,
         minSize: 130,
-        Cell: ({ cell }) => {
+        Cell: ({ cell, column }) => {
           const raw = String(cell.getValue() || "").trim();
-          return <span>{raw || "-"}</span>;
+          if (!raw || raw === "-") return "-";
+          const items = raw
+            .split(/[\r\n;,]+/)
+            .map((v) => v.trim())
+            .filter(Boolean);
+
+          return (
+            <CollapsibleItemList
+              items={items}
+              filterValues={column.getFilterValue()}
+              renderItem={(item, idx) => {
+                const style =
+                  (fieldFormatters.issuedBy &&
+                    fieldFormatters.issuedBy[item.toLowerCase()]) ||
+                  getDynamicChipStyle(item);
+
+                return (
+                  <span
+                    key={idx}
+                    style={{
+                      backgroundColor: style.bg,
+                      color: style.text,
+                      border: `1px solid ${style.border}`,
+                      borderRadius: "12px",
+                      padding: "1px 8px",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      lineHeight: "18px",
+                      display: "inline-block",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {item}
+                  </span>
+                );
+              }}
+            />
+          );
         },
       },
       {
@@ -4404,6 +4477,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       </Box>
     ),
     enableGrouping: true,
+    positionToolbarDropZone: "none",
     enableColumnDragging: true,
     enableColumnOrdering: true,
     enableColumnResizing: true,
@@ -4568,8 +4642,10 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           if (typeof val === "string") {
             val.split(",").forEach((item) => {
               const trimmed = item.trim();
-              if (trimmed && cleaned.indexOf(trimmed) === -1) {
-                cleaned.push(trimmed);
+              const upper = trimmed.toUpperCase();
+              const isOp = upper === "AND" || upper === "OR" || upper === "NOT";
+              if (trimmed && (isOp || cleaned.indexOf(trimmed) === -1)) {
+                cleaned.push(isOp ? upper : trimmed);
               }
             });
           }

@@ -86,6 +86,7 @@ export interface IFieldFormatters {
   confidentiality: Record<string, IChipStyle>;
   alerts?: IAlertRule | null;
   documentStatus: Record<string, IChipStyle>;
+  issuedBy: Record<string, IChipStyle>;
   expiryDateCustomFormatter?: string;
   nextReviewDateCustomFormatter?: string;
 }

@@ -276,7 +276,7 @@ export interface IListFieldMetadata {
 
 export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadata> => {
   const defaultResult: IListFieldMetadata = {
-    formatters: { businessLine: {}, confidentiality: {}, alerts: null, documentStatus: {} },
+    formatters: { businessLine: {}, confidentiality: {}, alerts: null, documentStatus: {}, issuedBy: {} },
     choices: {
       businessLine: [],
       country: [],
@@ -311,6 +311,7 @@ export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadat
     let blFormat: Record<string, IChipStyle> = {};
     let confFormat: Record<string, IChipStyle> = {};
     let docStatusFormat: Record<string, IChipStyle> = {};
+    let issuedByFormat: Record<string, IChipStyle> = {};
     let expiryDateFormatter: string | undefined = undefined;
     let nextReviewDateFormatter: string | undefined = undefined;
     let alertsRule: IAlertRule | null = null;
@@ -345,6 +346,9 @@ export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadat
         }
         docStatusChoices = choices;
       } else if (f.InternalName === "Issued_x0020_By") {
+        if (f.CustomFormatter) {
+          issuedByFormat = parseSpCustomFormatter(f.CustomFormatter);
+        }
         issuedByChoices = choices;
       } else if (f.InternalName === "Document_x0020_Language") {
         docLangChoices = choices;
@@ -365,6 +369,7 @@ export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadat
         confidentiality: confFormat,
         alerts: alertsRule,
         documentStatus: docStatusFormat,
+        issuedBy: issuedByFormat,
         expiryDateCustomFormatter: expiryDateFormatter,
         nextReviewDateCustomFormatter: nextReviewDateFormatter,
       },
