@@ -137,6 +137,9 @@ export const searchProducts = async (
     const termGuid = Array.isArray(rawTerm) && rawTerm.length > 0
       ? rawTerm[0].TermGuid
       : rawTerm?.TermGuid || undefined;
+    const termLabel = Array.isArray(rawTerm) && rawTerm.length > 0
+      ? rawTerm[0].Label
+      : rawTerm?.Label || undefined;
     const wssId = Array.isArray(rawTerm) && rawTerm.length > 0
       ? rawTerm[0].WssId
       : rawTerm?.WssId || undefined;
@@ -149,6 +152,7 @@ export const searchProducts = async (
       BusinessLine: item.BusinessLine || "",
       ManufacturerLookupId: item.ManufacturerLookupId,
       TermGuid: termGuid,
+      TermLabel: termLabel,
       WssId: wssId,
     };
   }).sort((a, b) => {
@@ -176,6 +180,9 @@ export const searchClients = async (
     const termGuid = Array.isArray(rawTerm) && rawTerm.length > 0
       ? rawTerm[0].TermGuid
       : rawTerm?.TermGuid || undefined;
+    const termLabel = Array.isArray(rawTerm) && rawTerm.length > 0
+      ? rawTerm[0].Label
+      : rawTerm?.Label || undefined;
     const wssId = Array.isArray(rawTerm) && rawTerm.length > 0
       ? rawTerm[0].WssId
       : rawTerm?.WssId || undefined;
@@ -184,6 +191,7 @@ export const searchClients = async (
       ID: item.ID,
       Title: item.Title || "",
       TermGuid: termGuid,
+      TermLabel: termLabel,
       WssId: wssId,
     };
   }).sort((a, b) =>
@@ -1173,6 +1181,119 @@ const safeText = (val: string | undefined | null, maxLen: number = 255): string 
   return trimmed.length > maxLen ? trimmed.substring(0, maxLen) : trimmed;
 };
 
+const getTermFromField = (rawTerm: any): { TermGuid?: string; Label?: string; WssId?: number } | undefined => {
+  if (!rawTerm) return undefined;
+  if (Array.isArray(rawTerm) && rawTerm.length > 0) return rawTerm[0];
+  if (Array.isArray(rawTerm?.results) && rawTerm.results.length > 0) return rawTerm.results[0];
+  if (rawTerm.TermGuid) return rawTerm;
+  return undefined;
+};
+
+export const resolveProductsBatch = async (
+  sp: SPFI,
+  items: { ID?: number; Title?: string; PIMProductName?: string; TermGuid?: string; TermLabel?: string; WssId?: number; Manufacturer?: string; BusinessLine?: string }[]
+): Promise<IProductLookupItem[]> => {
+  if (!sp || !items || items.length === 0) return [];
+
+  const itemsWithCode = items.filter((p) => Boolean((p.Title || "").trim()));
+  const itemsWithoutCode = items.filter((p) => !(p.Title || "").trim() && Boolean((p.PIMProductName || "").trim()));
+
+  // 1. Resolve items with Product Code using indexed "Title eq '...'" in small chunks of 15
+  if (itemsWithCode.length > 0) {
+    const CHUNK = 15;
+    for (let i = 0; i < itemsWithCode.length; i += CHUNK) {
+      const slice = itemsWithCode.slice(i, i + CHUNK);
+      // ONLY filter by Title (which is indexed) - NEVER filter by unindexed PIMProductName to avoid List View Threshold
+      const filterClause = slice
+        .map((p) => `Title eq '${(p.Title || "").trim().replace(/'/g, "''")}'`)
+        .filter(Boolean)
+        .join(" or ");
+
+      if (!filterClause) continue;
+
+      try {
+        const found = await sp.web.lists
+          .getByTitle("PIM Product")
+          .items.filter(filterClause)
+          .select(
+            "ID",
+            "Title",
+            "PIMProductName",
+            "Manufacturer",
+            "BusinessLine",
+            "PIMProductTermSet"
+          )
+          .top(slice.length + 10)();
+
+        found.forEach((mItem: any) => {
+          const mTitle = (mItem.Title || "").trim().toLowerCase();
+
+          // Match ALL items in the slice with this exact Title/Code
+          const matches = slice.filter((p) => {
+            const pTitle = (p.Title || "").trim().toLowerCase();
+            return pTitle && pTitle === mTitle;
+          });
+
+          matches.forEach((match) => {
+            match.ID = mItem.ID;
+            match.Title = mItem.Title || match.Title;
+            match.PIMProductName = mItem.PIMProductName || match.PIMProductName;
+            if (mItem.Manufacturer) match.Manufacturer = mItem.Manufacturer;
+            if (mItem.BusinessLine) match.BusinessLine = mItem.BusinessLine;
+            if (mItem.PIMProductTermSet) {
+              const firstTerm = getTermFromField(mItem.PIMProductTermSet);
+              if (firstTerm) {
+                match.TermGuid = firstTerm.TermGuid || match.TermGuid;
+                match.TermLabel = firstTerm.Label || match.TermLabel;
+                match.WssId = firstTerm.WssId || match.WssId;
+              }
+            }
+          });
+        });
+      } catch (err) {
+        console.warn("Could not batch resolve products by Title:", err);
+      }
+    }
+  }
+
+  // 2. If any items only had a Product Name (no code), resolve them individually
+  if (itemsWithoutCode.length > 0) {
+    for (const item of itemsWithoutCode) {
+      const name = (item.PIMProductName || "").trim();
+      if (!name) continue;
+      try {
+        const escaped = name.replace(/'/g, "''");
+        const found = await sp.web.lists
+          .getByTitle("PIM Product")
+          .items.filter(`PIMProductName eq '${escaped}'`)
+          .select("ID", "Title", "PIMProductName", "Manufacturer", "BusinessLine", "PIMProductTermSet")
+          .top(5)();
+
+        if (found && found.length > 0) {
+          const mItem = found[0];
+          item.ID = mItem.ID;
+          item.Title = mItem.Title || item.Title;
+          item.PIMProductName = mItem.PIMProductName || item.PIMProductName;
+          if (mItem.Manufacturer) item.Manufacturer = mItem.Manufacturer;
+          if (mItem.BusinessLine) item.BusinessLine = mItem.BusinessLine;
+          if (mItem.PIMProductTermSet) {
+            const firstTerm = getTermFromField(mItem.PIMProductTermSet);
+            if (firstTerm) {
+              item.TermGuid = firstTerm.TermGuid || item.TermGuid;
+              item.TermLabel = firstTerm.Label || item.TermLabel;
+              item.WssId = firstTerm.WssId || item.WssId;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn(`Could not resolve product by name "${name}":`, err);
+      }
+    }
+  }
+
+  return items as IProductLookupItem[];
+};
+
 export const updateItemProperties = async (
   sp: SPFI,
   itemIds: number[],
@@ -1188,51 +1309,41 @@ export const updateItemProperties = async (
   // 1. Product (multi value)
   if (payload.productsModified) {
     const products = payload.selectedProducts || [];
-    const longNames = products.map((p) => p.PIMProductName || "").filter(Boolean).join("; ");
-    const productCodes = products.map((p) => p.Title || "").filter(Boolean).join("; ");
-    const pIds = products.map((p) => p.ID).filter((id) => id > 0);
 
-    // Limit text fields to max 255 characters to avoid SPException -2130575336 on Single Line Text fields
-    combinedUpdatePayload["LongProductName"] = safeText(longNames);
-    combinedUpdatePayload["PIM_x0020_Product_x0020_Code"] = safeText(productCodes);
-    combinedUpdatePayload["PIMProductCodeId"] = pIds;
-
-    // Resolve any missing TermGuids from PIM Product masterlist in chunked batches
-    const missingTermProducts = products.filter((p) => !p.TermGuid && p.Title);
-    if (missingTermProducts.length > 0) {
-      const CHUNK = 25;
-      for (let i = 0; i < missingTermProducts.length; i += CHUNK) {
-        const slice = missingTermProducts.slice(i, i + CHUNK);
-        const filterClause = slice.map((p) => `Title eq '${p.Title.replace(/'/g, "''")}'`).join(" or ");
-        try {
-          const found = await sp.web.lists
-            .getByTitle("PIM Product")
-            .items.filter(filterClause)
-            .select("ID", "Title", "PIMProductTermSet")
-            .top(slice.length + 5)();
-          found.forEach((mItem: any) => {
-            const match = slice.find((p) => (p.Title || "").toLowerCase() === (mItem.Title || "").toLowerCase());
-            if (match && mItem.PIMProductTermSet) {
-              const rawTerm = mItem.PIMProductTermSet;
-              match.TermGuid = Array.isArray(rawTerm) && rawTerm.length > 0
-                ? rawTerm[0].TermGuid
-                : rawTerm?.TermGuid || undefined;
-            }
-          });
-        } catch (err) {
-          console.warn("Could not batch resolve TermGuids for products:", err);
-        }
-      }
+    // Step A: Resolve any missing ID, missing TermGuid, or missing PIMProductName from PIM Product masterlist
+    const missingProducts = products.filter(
+      (p) => (!p.ID || p.ID <= 0 || !p.TermGuid || !p.PIMProductName) && (p.Title || p.PIMProductName)
+    );
+    if (missingProducts.length > 0) {
+      await resolveProductsBatch(sp, missingProducts);
     }
 
+    // Step B: Now that IDs and names are resolved, build lookup array and texts
+    const resolvedProductIds: number[] = [];
+    products.forEach((p) => {
+      if (p.ID && p.ID > 0) {
+        resolvedProductIds.push(p.ID);
+      }
+    });
+
+    const longNames = products.map((p) => p.PIMProductName || "").filter(Boolean).join("; ");
+    const productCodes = products.map((p) => p.Title || "").filter(Boolean).join("; ");
+
+    // LongProductName is Note (OWSMTXT), do not truncate to 255 chars
+    combinedUpdatePayload["LongProductName"] = longNames || null;
+    combinedUpdatePayload["PIM_x0020_Product_x0020_Code"] = safeText(productCodes);
+    combinedUpdatePayload["PIMProductCodeId"] = resolvedProductIds;
+
+    // Step C: Build TermSet values using the authoritative TermLabel and TermGuid
     const termSetParts = products.map((p) => {
+      if (!p.TermGuid) {
+        console.warn(`[AdvanceSearch] Product without TermGuid skipped from TermSet:`, p);
+        return "";
+      }
       const code = (p.Title || "").trim();
       const name = (p.PIMProductName || "").trim();
-      const label = code && name ? `${code} : ${name}` : code || name;
-      if (p.TermGuid) {
-        return `${label}|${p.TermGuid}`;
-      }
-      return "";
+      const label = p.TermLabel || (code && name ? `${code} : ${name}` : code || name);
+      return `${label}|${p.TermGuid}`;
     }).filter(Boolean);
 
     taxonomyValues.push({ FieldName: "PIMProductTermSet", FieldValue: termSetParts.join(";") });
@@ -1241,10 +1352,7 @@ export const updateItemProperties = async (
   // 2. Client (multi value)
   if (payload.clientsModified) {
     const clients = payload.selectedClients || [];
-    const clientTitles = clients.map((c) => c.Title || "").filter(Boolean).join("; ");
-    combinedUpdatePayload["Manufacturer"] = safeText(clientTitles);
 
-    const resolvedClientIds: number[] = [];
     const missingClients = clients.filter((c) => (!c.ID || c.ID <= 0 || !c.TermGuid) && c.Title);
     if (missingClients.length > 0) {
       const CHUNK = 25;
@@ -1261,11 +1369,14 @@ export const updateItemProperties = async (
             const match = slice.find((c) => (c.Title || "").toLowerCase() === (mClient.Title || "").toLowerCase());
             if (match) {
               if (!match.ID || match.ID <= 0) match.ID = mClient.ID;
-              if (!match.TermGuid && mClient.GlobalClientTermSet) {
+              if (mClient.GlobalClientTermSet) {
                 const rawTerm = mClient.GlobalClientTermSet;
-                match.TermGuid = Array.isArray(rawTerm) && rawTerm.length > 0
-                  ? rawTerm[0].TermGuid
-                  : rawTerm?.TermGuid || undefined;
+                const firstTerm = Array.isArray(rawTerm) && rawTerm.length > 0 ? rawTerm[0] : rawTerm;
+                if (firstTerm) {
+                  match.TermGuid = firstTerm.TermGuid || match.TermGuid;
+                  match.TermLabel = firstTerm.Label || match.TermLabel;
+                  match.WssId = firstTerm.WssId || match.WssId;
+                }
               }
             }
           });
@@ -1275,16 +1386,19 @@ export const updateItemProperties = async (
       }
     }
 
+    const resolvedClientIds: number[] = [];
     clients.forEach((c) => {
       if (c.ID && c.ID > 0) {
         resolvedClientIds.push(c.ID);
       }
     });
 
+    const clientTitles = clients.map((c) => c.Title || "").filter(Boolean).join("; ");
+    combinedUpdatePayload["Manufacturer"] = safeText(clientTitles);
     combinedUpdatePayload["ManufacturerLookupId"] = resolvedClientIds;
 
     const termSetParts = clients.map((c) => {
-      const label = (c.Title || "").trim();
+      const label = c.TermLabel || (c.Title || "").trim();
       if (c.TermGuid) {
         return `${label}|${c.TermGuid}`;
       }

@@ -43,6 +43,7 @@ export type IProductLookupItem = {
   BusinessLine?: string;
   ManufacturerLookupId?: number;
   TermGuid?: string;
+  TermLabel?: string;
   WssId?: number;
 };
 
@@ -50,6 +51,7 @@ export type IClientLookupItem = {
   ID: number;
   Title: string;
   TermGuid?: string;
+  TermLabel?: string;
   WssId?: number;
 };
 

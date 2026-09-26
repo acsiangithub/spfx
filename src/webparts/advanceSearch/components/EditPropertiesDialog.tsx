@@ -21,9 +21,13 @@ import CircularProgress from "@mui/material/CircularProgress";
 import LinearProgress from "@mui/material/LinearProgress";
 import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
+import Tooltip from "@mui/material/Tooltip";
 import CloseIcon from "@mui/icons-material/Close";
 import EditNoteIcon from "@mui/icons-material/EditNote";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import ContentPasteIcon from "@mui/icons-material/ContentPaste";
+import CheckIcon from "@mui/icons-material/Check";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
@@ -41,6 +45,7 @@ import {
   searchClients as searchClientsService,
   loadItemDetailsForEdit,
   checkUserWritePermissions,
+  resolveProductsBatch,
   IEditPropertiesPayload,
   ILibraryColumnChoices,
 } from "../../../services/sharePointService";
@@ -216,6 +221,253 @@ const DraggablePaper = React.forwardRef<HTMLDivElement, PaperProps>(function Dra
     />
   );
 });
+
+const copyToClipboard = async (text: string): Promise<boolean> => {
+  if (!text) return false;
+  if (navigator?.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fall through to textarea execCommand fallback
+    }
+  }
+  try {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed";
+    textArea.style.left = "-9999px";
+    textArea.style.top = "0";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    const success = document.execCommand("copy");
+    document.body.removeChild(textArea);
+    return success;
+  } catch (err) {
+    console.warn("Failed to copy value:", err);
+    return false;
+  }
+};
+
+const parseDelimitedText = (text: string): string[] => {
+  const clean = (text || "").trim();
+  if (!clean) return [];
+
+  // 1. If text contains ';' or newline, split ONLY by semicolon/newline so commas inside product names (e.g. "OIL, REFINED") are NOT split!
+  if (clean.includes(";") || clean.includes("\n")) {
+    return clean
+      .split(/[\r\n;]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  // 2. Only if NO semicolon/newline exists, check if comma is used as delimiter
+  if (clean.includes(",")) {
+    return clean
+      .split(/,+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  return [clean];
+};
+
+const parseDelimitedPaste = (
+  e: React.ClipboardEvent<HTMLInputElement | HTMLDivElement>
+): string[] | null => {
+  const pasteData = e.clipboardData?.getData("text");
+  if (!pasteData) return null;
+
+  if (pasteData.includes(";") || pasteData.includes(",") || pasteData.includes("\n")) {
+    e.preventDefault();
+    return parseDelimitedText(pasteData);
+  }
+  return null;
+};
+
+interface ICopyFieldValueButtonProps {
+  value: unknown;
+  label?: string;
+  formatValue?: (val: any) => string;
+}
+
+const CopyFieldValueButton: React.FC<ICopyFieldValueButtonProps> = ({
+  value,
+  label = "value",
+  formatValue,
+}) => {
+  const [copied, setCopied] = React.useState(false);
+
+  const textToCopy = React.useMemo(() => {
+    if (formatValue) return formatValue(value);
+    if (value === null || value === undefined) return "";
+    if (typeof value === "string") return value.trim();
+    if (typeof value === "number") return String(value);
+
+    // Dayjs date objects
+    if (dayjs.isDayjs(value)) {
+      return value.isValid() ? value.format("DD/MM/YYYY") : "";
+    }
+
+    // Array (e.g. Products, Clients, SubDocTypes, Languages)
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => {
+          if (!item) return "";
+          if (typeof item === "string") return item.trim();
+          if (item.Title && item.PIMProductName) {
+            return `${item.Title} ${item.PIMProductName}`.trim();
+          }
+          return item.Title || item.name || String(item);
+        })
+        .filter(Boolean)
+        .join("; ");
+    }
+
+    // Single object (e.g. DocumentType)
+    if (typeof value === "object") {
+      const obj = value as any;
+      if (obj.Title && obj.PIMProductName) {
+        return `${obj.Title} ${obj.PIMProductName}`.trim();
+      }
+      return obj.Title || obj.name || "";
+    }
+
+    return String(value);
+  }, [value, formatValue]);
+
+  const hasValue = Boolean(textToCopy && textToCopy.trim().length > 0);
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!hasValue) return;
+
+    const ok = await copyToClipboard(textToCopy);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
+  };
+
+  return (
+    <Tooltip
+      title={
+        !hasValue
+          ? `No ${label} to copy`
+          : copied
+          ? "Copied!"
+          : `Copy ${label}`
+      }
+      arrow
+      placement="top"
+    >
+      <span>
+        <IconButton
+          size="small"
+          onClick={handleCopy}
+          disabled={!hasValue}
+          sx={{
+            p: "2px",
+            color: copied ? "success.main" : "text.secondary",
+            opacity: hasValue ? 0.75 : 0.3,
+            transition: "all 0.15s ease",
+            "&:hover": {
+              opacity: 1,
+              color: copied ? "success.main" : "primary.main",
+              backgroundColor: "rgba(0, 120, 212, 0.08)",
+            },
+          }}
+        >
+          {copied ? (
+            <CheckIcon sx={{ fontSize: 13 }} />
+          ) : (
+            <ContentCopyIcon sx={{ fontSize: 13 }} />
+          )}
+        </IconButton>
+      </span>
+    </Tooltip>
+  );
+};
+
+interface IPasteFieldValueButtonProps {
+  label?: string;
+  onPasteText: (text: string) => void | Promise<void>;
+  disabled?: boolean;
+}
+
+const PasteFieldValueButton: React.FC<IPasteFieldValueButtonProps> = ({
+  label = "value",
+  onPasteText,
+  disabled = false,
+}) => {
+  const [pasted, setPasted] = React.useState(false);
+
+  const handlePasteClick = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (disabled) return;
+
+    try {
+      if (navigator?.clipboard?.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim()) {
+          await onPasteText(text.trim());
+          setPasted(true);
+          setTimeout(() => setPasted(false), 1500);
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to read from clipboard:", err);
+    }
+  };
+
+  return (
+    <Tooltip
+      title={pasted ? "Pasted!" : `Paste ${label} from clipboard`}
+      arrow
+      placement="top"
+    >
+      <span>
+        <IconButton
+          size="small"
+          onClick={handlePasteClick}
+          disabled={disabled}
+          sx={{
+            p: "2px",
+            color: pasted ? "success.main" : "text.secondary",
+            opacity: 0.75,
+            transition: "all 0.15s ease",
+            "&:hover": {
+              opacity: 1,
+              color: pasted ? "success.main" : "primary.main",
+              backgroundColor: "rgba(0, 120, 212, 0.08)",
+            },
+          }}
+        >
+          {pasted ? (
+            <CheckIcon sx={{ fontSize: 13 }} />
+          ) : (
+            <ContentPasteIcon sx={{ fontSize: 13 }} />
+          )}
+        </IconButton>
+      </span>
+    </Tooltip>
+  );
+};
+
+const parseDateString = (text: string): Dayjs | null => {
+  const clean = text.trim();
+  if (!clean) return null;
+  const formats = ["DD/MM/YYYY", "DD-MM-YYYY", "YYYY-MM-DD", "D/M/YYYY", "YYYY/MM/DD"];
+  for (const f of formats) {
+    const d = dayjs(clean, f, true);
+    if (d.isValid()) return d;
+  }
+  const fallback = dayjs(clean);
+  return fallback.isValid() ? fallback : null;
+};
 
 export interface IEditPropertiesDialogProps {
   open: boolean;
@@ -642,6 +894,307 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
     }
   };
 
+  // Paste handlers for all controls (Autocomplete, Dropdown, Date, Text)
+  const handlePasteProducts = React.useCallback(
+    async (text: string) => {
+      const parts = parseDelimitedText(text);
+      if (parts.length === 0) return;
+
+      const currentKeys = new Set(
+        selectedProducts.map(
+          (p) => `${p.Title || ""} ${p.PIMProductName || ""}`.trim().toLowerCase()
+        )
+      );
+      const newEntries: IProductLookupItem[] = [];
+
+      parts.forEach((raw) => {
+        let parsedTitle = "";
+        let parsedName = "";
+
+        const pimMatch = raw.match(/\b(PIM\d+)\b/i);
+        if (pimMatch) {
+          parsedTitle = pimMatch[1].toUpperCase();
+          parsedName = raw.replace(pimMatch[0], "").replace(/^[|\s:-]+|[|\s:-]+$/g, "").trim();
+        } else if (raw.includes("|")) {
+          const segments = raw.split("|").map((s) => s.trim());
+          parsedTitle = segments[0] || "";
+          parsedName = segments.slice(1).join(" ").trim();
+        } else if (raw.includes(" : ")) {
+          const segments = raw.split(" : ").map((s) => s.trim());
+          parsedTitle = segments[0] || "";
+          parsedName = segments.slice(1).join(" ").trim();
+        } else {
+          const spaceIdx = raw.indexOf(" ");
+          if (spaceIdx > 0 && /^[A-Z0-9_-]+$/.test(raw.substring(0, spaceIdx))) {
+            parsedTitle = raw.substring(0, spaceIdx).trim();
+            parsedName = raw.substring(spaceIdx + 1).trim();
+          } else {
+            parsedName = raw.trim();
+            parsedTitle = "";
+          }
+        }
+
+        const key = `${parsedTitle} ${parsedName}`.trim().toLowerCase();
+        if (key && !currentKeys.has(key)) {
+          currentKeys.add(key);
+
+          const matched = productOptions.find((p) => {
+            const optTitle = (p.Title || "").trim().toLowerCase();
+            const optName = (p.PIMProductName || "").trim().toLowerCase();
+            const targetTitle = parsedTitle.toLowerCase();
+            const targetName = parsedName.toLowerCase();
+
+            if (targetTitle && optTitle) {
+              return targetTitle === optTitle;
+            }
+            if (targetName && optName) {
+              return targetName === optName;
+            }
+            return false;
+          });
+
+          if (matched) {
+            newEntries.push(matched);
+          } else {
+            newEntries.push({
+              ID: -Math.floor(Math.random() * 100000),
+              Title: parsedTitle,
+              PIMProductName: parsedName,
+            });
+          }
+        }
+      });
+
+      if (newEntries.length > 0) {
+        setSelectedProducts((prev) => [...prev, ...newEntries]);
+        setProductsModified(true);
+        setProductSearchText("");
+
+        if (sp) {
+          const unresolved = newEntries.filter((p) => !p.ID || p.ID <= 0 || !p.TermGuid);
+          if (unresolved.length > 0) {
+            resolveProductsBatch(sp, unresolved)
+              .then((resolved) => {
+                setSelectedProducts((currentList) =>
+                  currentList.map((item) => {
+                    const itemTitle = (item.Title || "").trim().toLowerCase();
+                    const itemName = (item.PIMProductName || "").trim().toLowerCase();
+
+                    const found = resolved.find((r) => {
+                      const rTitle = (r.Title || "").trim().toLowerCase();
+                      const rName = (r.PIMProductName || "").trim().toLowerCase();
+
+                      // Priority 1: Match by Product Code (Title)
+                      if (itemTitle && rTitle) {
+                        return itemTitle === rTitle;
+                      }
+                      // Priority 2: Only match by ProductName if item had no Product Code
+                      if (!itemTitle && itemName && rName) {
+                        return itemName === rName;
+                      }
+                      return false;
+                    });
+                    return found ? { ...item, ...found } : item;
+                  })
+                );
+              })
+              .catch((err) => {
+                console.warn("Could not batch resolve pasted products immediately:", err);
+              });
+          }
+        }
+      }
+    },
+    [selectedProducts, productOptions, sp]
+  );
+
+  const handlePasteClients = React.useCallback(
+    (text: string) => {
+      const parts = parseDelimitedText(text);
+      if (parts.length === 0) return;
+
+      const currentTitles = new Set(
+        selectedClients.map((c) => (c.Title || "").trim().toLowerCase())
+      );
+      const newEntries: IClientLookupItem[] = [];
+
+      parts.forEach((title) => {
+        const lower = title.toLowerCase();
+        if (!currentTitles.has(lower)) {
+          currentTitles.add(lower);
+          const found = clientOptions.find(
+            (c) => (c.Title || "").toLowerCase() === lower
+          );
+          newEntries.push(
+            found || { ID: -Math.floor(Math.random() * 100000), Title: title }
+          );
+        }
+      });
+
+      if (newEntries.length > 0) {
+        setSelectedClients((prev) => [...prev, ...newEntries]);
+        setClientsModified(true);
+        setClientSearchText("");
+      }
+    },
+    [selectedClients, clientOptions]
+  );
+
+  const handlePasteDocumentType = React.useCallback(
+    (text: string) => {
+      const parts = parseDelimitedText(text);
+      if (parts.length === 0) return;
+      const target = parts[0].toLowerCase();
+      const found = documentTypes.find(
+        (d) =>
+          (d.Title || "").toLowerCase() === target ||
+          (d.ShortTitle && d.ShortTitle.toLowerCase() === target)
+      );
+      if (found) {
+        handleDocumentTypeChange({} as any, found);
+      } else if (parts[0]) {
+        handleDocumentTypeChange({} as any, { ID: 0, Title: parts[0] });
+      }
+    },
+    [documentTypes, handleDocumentTypeChange]
+  );
+
+  const handlePasteSubDocumentType = React.useCallback(
+    (text: string) => {
+      const parts = parseDelimitedText(text);
+      if (parts.length === 0) return;
+
+      const currentTitles = new Set(
+        selectedSubDocumentTypes.map((s) => (s.Title || "").toLowerCase())
+      );
+      const newEntries: ISubDocumentTypeItem[] = [];
+
+      parts.forEach((title) => {
+        const lower = title.toLowerCase();
+        if (!currentTitles.has(lower)) {
+          currentTitles.add(lower);
+          const found = availableSubDocumentTypes.find(
+            (s) => (s.Title || "").toLowerCase() === lower
+          );
+          newEntries.push(
+            found || { ID: -Math.floor(Math.random() * 100000), Title: title }
+          );
+        }
+      });
+
+      if (newEntries.length > 0) {
+        setSelectedSubDocumentTypes((prev) => [...prev, ...newEntries]);
+        setSubDocumentTypesModified(true);
+      }
+    },
+    [selectedSubDocumentTypes, availableSubDocumentTypes]
+  );
+
+  const handlePasteIssuedBy = React.useCallback(
+    (text: string) => {
+      const clean = text.trim();
+      const matched = availableIssuedBy.find(
+        (opt) => opt.toLowerCase() === clean.toLowerCase()
+      );
+      setIssuedBy(matched || clean);
+      setIssuedByModified(true);
+    },
+    [availableIssuedBy]
+  );
+
+  const handlePasteSupplier = React.useCallback((text: string) => {
+    setSupplier(text.trim());
+    setSupplierModified(true);
+  }, []);
+
+  const handlePasteSupplierEmail = React.useCallback((text: string) => {
+    setSupplierEmail(text.trim());
+    setSupplierEmailModified(true);
+  }, []);
+
+  const handlePasteConfidentiality = React.useCallback(
+    (text: string) => {
+      const clean = text.trim();
+      const matched = availableConfidentiality.find(
+        (opt) => opt.toLowerCase() === clean.toLowerCase()
+      );
+      setConfidentiality(matched || clean);
+      setConfidentialityModified(true);
+    },
+    [availableConfidentiality]
+  );
+
+  const handlePasteDocumentStatus = React.useCallback(
+    (text: string) => {
+      const clean = text.trim();
+      const matched = availableDocStatus.find(
+        (opt) => opt.toLowerCase() === clean.toLowerCase()
+      );
+      setDocumentStatus(matched || clean);
+      setDocumentStatusModified(true);
+    },
+    [availableDocStatus]
+  );
+
+  const handlePasteDocumentLanguage = React.useCallback(
+    (text: string) => {
+      const parts = parseDelimitedText(text);
+      if (parts.length === 0) return;
+
+      const currentSet = new Set(documentLanguage.map((l) => l.toLowerCase()));
+      const newLangs = [...documentLanguage];
+
+      parts.forEach((p) => {
+        const matched = availableDocLanguage.find(
+          (opt) => opt.toLowerCase() === p.toLowerCase()
+        );
+        const toAdd = matched || p;
+        if (!currentSet.has(toAdd.toLowerCase())) {
+          currentSet.add(toAdd.toLowerCase());
+          newLangs.push(toAdd);
+        }
+      });
+
+      setDocumentLanguage(newLangs);
+      setDocumentLanguageModified(true);
+    },
+    [documentLanguage, availableDocLanguage]
+  );
+
+  const handlePasteDocumentDate = React.useCallback((text: string) => {
+    const d = parseDateString(text);
+    if (d) {
+      setDocumentDate(d);
+      setDocumentDateModified(true);
+    }
+  }, []);
+
+  const handlePasteExpiryDate = React.useCallback((text: string) => {
+    const d = parseDateString(text);
+    if (d) {
+      setExpiryDate(d);
+      setExpiryDateModified(true);
+    }
+  }, []);
+
+  const handlePasteNextReviewDate = React.useCallback((text: string) => {
+    const d = parseDateString(text);
+    if (d) {
+      setNextReviewDate(d);
+      setNextReviewDateModified(true);
+    }
+  }, []);
+
+  const handlePasteCustomerName = React.useCallback((text: string) => {
+    setCustomerName(text.trim());
+    setCustomerNameModified(true);
+  }, []);
+
+  const handlePasteBatchNumber = React.useCallback((text: string) => {
+    setBatchNumber(text.trim());
+    setBatchNumberModified(true);
+  }, []);
+
   const handleSave = async (): Promise<void> => {
     if (!hasWritePermission) {
       setErrorMessage("You do not have write permission to update items in this library.");
@@ -816,9 +1369,13 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
         {/* 1. Product (multi value) */}
         <Box>
           <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
-            <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
-              Product
-            </Typography>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+              <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                Product
+              </Typography>
+              <CopyFieldValueButton value={selectedProducts} label="products" />
+              <PasteFieldValueButton onPasteText={handlePasteProducts} label="products" />
+            </Box>
             {isBulkEdit && productsModified && (
               <Chip
                 size="small"
@@ -907,6 +1464,13 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
                 {...params}
                 size="small"
                 placeholder={isBulkEdit && !productsModified ? "(Unchanged - type to modify)" : "Search product (min 3 chars)..."}
+                onPaste={(e) => {
+                  const pasteData = e.clipboardData?.getData("text");
+                  if (pasteData) {
+                    e.preventDefault();
+                    void handlePasteProducts(pasteData);
+                  }
+                }}
                 InputProps={{
                   ...params.InputProps,
                   endAdornment: (
@@ -924,9 +1488,13 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
         {/* 2. Client (multi value) */}
         <Box>
           <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
-            <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
-              Client
-            </Typography>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+              <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                Client
+              </Typography>
+              <CopyFieldValueButton value={selectedClients} label="clients" />
+              <PasteFieldValueButton onPasteText={handlePasteClients} label="clients" />
+            </Box>
             {isBulkEdit && clientsModified && (
               <Chip
                 size="small"
@@ -961,6 +1529,13 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
                 {...params}
                 size="small"
                 placeholder={isBulkEdit && !clientsModified ? "(Unchanged - type to modify)" : "Search client (min 3 chars)..."}
+                onPaste={(e) => {
+                  const pasteData = e.clipboardData?.getData("text");
+                  if (pasteData) {
+                    e.preventDefault();
+                    handlePasteClients(pasteData);
+                  }
+                }}
                 InputProps={{
                   ...params.InputProps,
                   endAdornment: (
@@ -986,9 +1561,13 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
           {/* Document Type */}
           <Box>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
-              <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
-                Document Type
-              </Typography>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                  Document Type
+                </Typography>
+                <CopyFieldValueButton value={selectedDocumentType} label="document type" />
+                <PasteFieldValueButton onPasteText={handlePasteDocumentType} label="document type" />
+              </Box>
               {isBulkEdit && documentTypeModified && (
                 <Chip
                   size="small"
@@ -1017,6 +1596,12 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
                   {...params}
                   size="small"
                   placeholder={isBulkEdit && !documentTypeModified ? "(Unchanged)" : "Select document type..."}
+                  onPaste={(e) => {
+                    const parts = parseDelimitedPaste(e);
+                    if (parts && parts.length > 0) {
+                      handlePasteDocumentType(parts.join("; "));
+                    }
+                  }}
                 />
               )}
             />
@@ -1025,9 +1610,13 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
           {/* Sub Document Type */}
           <Box>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
-              <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
-                Sub Document Type
-              </Typography>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                  Sub Document Type
+                </Typography>
+                <CopyFieldValueButton value={selectedSubDocumentTypes} label="sub document types" />
+                <PasteFieldValueButton onPasteText={handlePasteSubDocumentType} label="sub document types" />
+              </Box>
               {isBulkEdit && subDocumentTypesModified && (
                 <Chip
                   size="small"
@@ -1065,6 +1654,12 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
                       ? "No sub types available"
                       : "Select sub document type(s)..."
                   }
+                  onPaste={(e) => {
+                    const parts = parseDelimitedPaste(e);
+                    if (parts && parts.length > 0) {
+                      handlePasteSubDocumentType(parts.join("; "));
+                    }
+                  }}
                 />
               )}
             />
@@ -1084,14 +1679,25 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
           {/* Issued by */}
           <Box>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
-              <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
-                Issued by
-              </Typography>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                  Issued by
+                </Typography>
+                <CopyFieldValueButton value={issuedBy} label="issued by" />
+                <PasteFieldValueButton onPasteText={handlePasteIssuedBy} label="issued by" />
+              </Box>
               {isBulkEdit && issuedByModified && (
                 <Chip size="small" label="Modified" color="primary" variant="outlined" sx={{ height: "18px", fontSize: "10px" }} />
               )}
             </Box>
-            <FormControl fullWidth size="small">
+            <FormControl
+              fullWidth
+              size="small"
+              onPaste={(e) => {
+                const t = e.clipboardData?.getData("text");
+                if (t) handlePasteIssuedBy(t);
+              }}
+            >
               <Select
                 value={issuedBy}
                 displayEmpty
@@ -1118,9 +1724,13 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
           {/* Issuer Name (Supplier) */}
           <Box>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
-              <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
-                Issuer Name
-              </Typography>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                  Issuer Name
+                </Typography>
+                <CopyFieldValueButton value={supplier} label="issuer name" />
+                <PasteFieldValueButton onPasteText={handlePasteSupplier} label="issuer name" />
+              </Box>
               {isBulkEdit && supplierModified && (
                 <Chip size="small" label="Modified" color="primary" variant="outlined" sx={{ height: "18px", fontSize: "10px" }} />
               )}
@@ -1140,9 +1750,13 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
           {/* Document Provider Email (Supplier_x0020_Email) */}
           <Box>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
-              <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
-                Document Provider Email
-              </Typography>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                  Document Provider Email
+                </Typography>
+                <CopyFieldValueButton value={supplierEmail} label="provider email" />
+                <PasteFieldValueButton onPasteText={handlePasteSupplierEmail} label="provider email" />
+              </Box>
               {isBulkEdit && supplierEmailModified && (
                 <Chip size="small" label="Modified" color="primary" variant="outlined" sx={{ height: "18px", fontSize: "10px" }} />
               )}
@@ -1171,14 +1785,25 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
           {/* Confidentiality */}
           <Box>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
-              <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
-                Confidentiality
-              </Typography>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                  Confidentiality
+                </Typography>
+                <CopyFieldValueButton value={confidentiality} label="confidentiality" />
+                <PasteFieldValueButton onPasteText={handlePasteConfidentiality} label="confidentiality" />
+              </Box>
               {isBulkEdit && confidentialityModified && (
                 <Chip size="small" label="Modified" color="primary" variant="outlined" sx={{ height: "18px", fontSize: "10px" }} />
               )}
             </Box>
-            <FormControl fullWidth size="small">
+            <FormControl
+              fullWidth
+              size="small"
+              onPaste={(e) => {
+                const t = e.clipboardData?.getData("text");
+                if (t) handlePasteConfidentiality(t);
+              }}
+            >
               <Select
                 value={confidentiality}
                 displayEmpty
@@ -1205,14 +1830,25 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
           {/* Document Status */}
           <Box>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
-              <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
-                Document Status
-              </Typography>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                  Document Status
+                </Typography>
+                <CopyFieldValueButton value={documentStatus} label="document status" />
+                <PasteFieldValueButton onPasteText={handlePasteDocumentStatus} label="document status" />
+              </Box>
               {isBulkEdit && documentStatusModified && (
                 <Chip size="small" label="Modified" color="primary" variant="outlined" sx={{ height: "18px", fontSize: "10px" }} />
               )}
             </Box>
-            <FormControl fullWidth size="small">
+            <FormControl
+              fullWidth
+              size="small"
+              onPaste={(e) => {
+                const t = e.clipboardData?.getData("text");
+                if (t) handlePasteDocumentStatus(t);
+              }}
+            >
               <Select
                 value={documentStatus}
                 displayEmpty
@@ -1239,14 +1875,25 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
           {/* Document Language (Multi-select) */}
           <Box>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
-              <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
-                Document Language
-              </Typography>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                  Document Language
+                </Typography>
+                <CopyFieldValueButton value={documentLanguage} label="document language" />
+                <PasteFieldValueButton onPasteText={handlePasteDocumentLanguage} label="document language" />
+              </Box>
               {isBulkEdit && documentLanguageModified && (
                 <Chip size="small" label="Modified" color="primary" variant="outlined" sx={{ height: "18px", fontSize: "10px" }} />
               )}
             </Box>
-            <FormControl fullWidth size="small">
+            <FormControl
+              fullWidth
+              size="small"
+              onPaste={(e) => {
+                const t = e.clipboardData?.getData("text");
+                if (t) handlePasteDocumentLanguage(t);
+              }}
+            >
               <Select
                 multiple
                 value={documentLanguage}
@@ -1286,9 +1933,13 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
             {/* Document Date */}
             <Box>
               <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
-                <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
-                  Document Date
-                </Typography>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                  <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                    Document Date
+                  </Typography>
+                  <CopyFieldValueButton value={documentDate} label="document date" />
+                  <PasteFieldValueButton onPasteText={handlePasteDocumentDate} label="document date" />
+                </Box>
                 {isBulkEdit && documentDateModified && (
                   <Chip size="small" label="Modified" color="primary" variant="outlined" sx={{ height: "18px", fontSize: "10px" }} />
                 )}
@@ -1314,9 +1965,13 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
             {/* Expiry Date */}
             <Box>
               <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
-                <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
-                  Expiry Date
-                </Typography>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                  <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                    Expiry Date
+                  </Typography>
+                  <CopyFieldValueButton value={expiryDate} label="expiry date" />
+                  <PasteFieldValueButton onPasteText={handlePasteExpiryDate} label="expiry date" />
+                </Box>
                 {isBulkEdit && expiryDateModified && (
                   <Chip size="small" label="Modified" color="primary" variant="outlined" sx={{ height: "18px", fontSize: "10px" }} />
                 )}
@@ -1342,9 +1997,13 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
             {/* Next Review Date */}
             <Box>
               <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
-                <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
-                  Next Review Date
-                </Typography>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                  <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                    Next Review Date
+                  </Typography>
+                  <CopyFieldValueButton value={nextReviewDate} label="next review date" />
+                  <PasteFieldValueButton onPasteText={handlePasteNextReviewDate} label="next review date" />
+                </Box>
                 {isBulkEdit && nextReviewDateModified && (
                   <Chip size="small" label="Modified" color="primary" variant="outlined" sx={{ height: "18px", fontSize: "10px" }} />
                 )}
@@ -1380,9 +2039,13 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
           {/* Customer Name */}
           <Box>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
-              <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
-                Customer Name
-              </Typography>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                  Customer Name
+                </Typography>
+                <CopyFieldValueButton value={customerName} label="customer name" />
+                <PasteFieldValueButton onPasteText={handlePasteCustomerName} label="customer name" />
+              </Box>
               {isBulkEdit && customerNameModified && (
                 <Chip size="small" label="Modified" color="primary" variant="outlined" sx={{ height: "18px", fontSize: "10px" }} />
               )}
@@ -1402,9 +2065,13 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
           {/* Batch Number */}
           <Box>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
-              <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
-                Batch Number
-              </Typography>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
+                  Batch Number
+                </Typography>
+                <CopyFieldValueButton value={batchNumber} label="batch number" />
+                <PasteFieldValueButton onPasteText={handlePasteBatchNumber} label="batch number" />
+              </Box>
               {isBulkEdit && batchNumberModified && (
                 <Chip size="small" label="Modified" color="primary" variant="outlined" sx={{ height: "18px", fontSize: "10px" }} />
               )}
