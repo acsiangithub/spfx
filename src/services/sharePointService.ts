@@ -272,6 +272,8 @@ export interface IListFieldMetadata {
   formatters: IFieldFormatters;
   choices: ILibraryColumnChoices;
   defaultViewUrl?: string;
+  listId?: string;
+  defaultViewId?: string;
 }
 
 export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadata> => {
@@ -292,7 +294,7 @@ export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadat
   try {
     const list = sp.web.lists.getByTitle("Clients & Products");
 
-    const [fields, defaultView] = await Promise.all([
+    const [fields, defaultView, listInfo] = await Promise.all([
       list.fields
         .select("InternalName", "CustomFormatter", "Choices")
         .filter(
@@ -300,12 +302,16 @@ export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadat
         )(),
       list.views
         .filter("DefaultView eq true")
-        .select("ServerRelativeUrl")()
+        .select("Id", "ServerRelativeUrl")()
         .then((views: any[]) => (views && views.length > 0 ? views[0] : null))
         .catch((err: any) => {
           console.warn("Could not retrieve defaultView for Clients & Products:", err);
           return null;
         }),
+      list.select("Id")().catch((err: any) => {
+        console.warn("Could not retrieve list Id for Clients & Products:", err);
+        return null;
+      }),
     ]);
 
     let blFormat: Record<string, IChipStyle> = {};
@@ -394,11 +400,52 @@ export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadat
         ),
       },
       defaultViewUrl: defaultView?.ServerRelativeUrl || undefined,
+      listId: listInfo?.Id || undefined,
+      defaultViewId: defaultView?.Id || undefined,
     };
   } catch (err) {
     console.warn("Could not load field metadata from Clients & Products:", err);
     return defaultResult;
   }
+};
+
+export const downloadDefaultViewIqy = (
+  siteUrl: string,
+  listId: string,
+  viewId: string,
+  fileName: string = "query.iqy"
+): void => {
+  const cleanListId = listId.replace(/[{}]/g, "").toUpperCase();
+  const cleanViewId = viewId.replace(/[{}]/g, "").toUpperCase();
+  const formattedListId = `{${cleanListId}}`;
+  const formattedViewId = `{${cleanViewId}}`;
+  const cleanSiteUrl = siteUrl.replace(/\/+$/, "");
+
+  const iqyLines = [
+    "WEB",
+    "1",
+    `${cleanSiteUrl}/_vti_bin/owssvr.dll?XMLDATA=1&List=${formattedListId}&View=${formattedViewId}&RowLimit=0&RootFolder=`,
+    "",
+    `Selection=${formattedViewId}`,
+    "EditWebPage=",
+    "Formatting=None",
+    "PreFormattedTextToColumns=True",
+    "ConsecutiveDelimitersAsOne=True",
+    "SingleBlockTextImport=False",
+    "DisableDateRecognition=False",
+    "DisableRedirections=False",
+    `SharePointBaseUrl=${cleanSiteUrl}`,
+  ];
+
+  const blob = new Blob([iqyLines.join("\r\n")], { type: "text/x-ms-iqy;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", fileName.endsWith(".iqy") ? fileName : `${fileName}.iqy`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 };
 
 export interface IBatchLoadResult {

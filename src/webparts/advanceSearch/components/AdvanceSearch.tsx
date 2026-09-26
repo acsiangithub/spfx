@@ -99,6 +99,7 @@ import {
   loadTaxonomy as loadTaxonomyService,
   loadSharingConfiguration as loadSharingConfigService,
   loadListFieldMetadata as loadListFieldMetadataService,
+  downloadDefaultViewIqy,
   loadRecordsBatch as loadRecordsBatchService,
   fetchSingleProductItem as fetchSingleProductItemService,
   searchRecords as searchRecordsService,
@@ -1168,6 +1169,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     documentLanguage: [],
   });
   const [defaultLibraryViewUrl, setDefaultLibraryViewUrl] = React.useState<string | null>(null);
+  const [libraryListId, setLibraryListId] = React.useState<string | null>(null);
+  const [defaultLibraryViewId, setDefaultLibraryViewId] = React.useState<string | null>(null);
 
   const [lookupLoading, setLookupLoading] = React.useState(false);
   const [resultsLoading, setResultsLoading] = React.useState(true);
@@ -1498,6 +1501,45 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     };
   }, [activeSp]);
 
+  // Download SharePoint default view query.iqy for live Excel sync
+  const handleExportIqy = React.useCallback(async () => {
+    try {
+      const siteUrl = (
+        props.urlSite?.trim() ||
+        props.context?.pageContext?.web?.absoluteUrl ||
+        window.location.origin
+      ).replace(/\/+$/, "");
+
+      let targetListId = libraryListId;
+      let targetViewId = defaultLibraryViewId;
+
+      if ((!targetListId || !targetViewId) && activeSp) {
+        const list = activeSp.web.lists.getByTitle("Clients & Products");
+        const [listData, defaultViews] = await Promise.all([
+          list.select("Id")().catch(() => null),
+          list.views.filter("DefaultView eq true").select("Id", "ServerRelativeUrl")().catch(() => null),
+        ]);
+        if (listData?.Id) {
+          targetListId = listData.Id;
+          setLibraryListId(listData.Id);
+        }
+        if (defaultViews && defaultViews.length > 0 && defaultViews[0]?.Id) {
+          targetViewId = defaultViews[0].Id;
+          setDefaultLibraryViewId(defaultViews[0].Id);
+        }
+      }
+
+      if (targetListId && targetViewId) {
+        downloadDefaultViewIqy(siteUrl, targetListId, targetViewId, "query.iqy");
+      } else {
+        const fallbackUrl = `${siteUrl}/_vti_bin/owssvr.dll?CS=1252&Using=_layouts/15/query.iqy&List=${encodeURIComponent(targetListId || "")}&View=${encodeURIComponent(targetViewId || "")}&CacheControl=1`;
+        window.open(fallbackUrl, "_blank");
+      }
+    } catch (err) {
+      console.error("Failed to export query.iqy:", err);
+    }
+  }, [props.urlSite, props.context, libraryListId, defaultLibraryViewId, activeSp]);
+
   // Dynamic table container height to fill available vertical space cleanly
   const paperRef = React.useRef<HTMLDivElement | null>(null);
   const tableContainerRef = React.useRef<HTMLDivElement | null>(null);
@@ -1737,11 +1779,17 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
     const loadFieldMetadata = async (): Promise<void> => {
       try {
-        const { formatters, choices, defaultViewUrl } = await loadListFieldMetadataService(activeSp);
+        const { formatters, choices, defaultViewUrl, listId, defaultViewId } = await loadListFieldMetadataService(activeSp);
         setFieldFormatters(formatters);
         setLibraryChoices(choices);
         if (defaultViewUrl) {
           setDefaultLibraryViewUrl(defaultViewUrl);
+        }
+        if (listId) {
+          setLibraryListId(listId);
+        }
+        if (defaultViewId) {
+          setDefaultLibraryViewId(defaultViewId);
         }
       } catch (err) {
         console.warn("loadListFieldMetadata error:", err);
@@ -1958,11 +2006,17 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       const [recordsResult] = await Promise.all([
         loadRecordsBatchService(activeSp, undefined, BATCH_SIZE),
         loadListFieldMetadataService(activeSp)
-          .then(({ formatters, choices, defaultViewUrl }) => {
+          .then(({ formatters, choices, defaultViewUrl, listId, defaultViewId }) => {
             setFieldFormatters(formatters);
             setLibraryChoices(choices);
             if (defaultViewUrl) {
               setDefaultLibraryViewUrl(defaultViewUrl);
+            }
+            if (listId) {
+              setLibraryListId(listId);
+            }
+            if (defaultViewId) {
+              setDefaultLibraryViewId(defaultViewId);
             }
           })
           .catch((err) => console.warn("handleRefresh metadata error:", err)),
@@ -3230,6 +3284,35 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
               <ListItemText
                 primary={`Export to Excel (${exportRowCount.toLocaleString()} ${selectedRowCount > 0 ? "selected" : "rows"})`}
                 secondary="Download Excel-compatible .csv"
+                primaryTypographyProps={{ fontSize: "12.5px", fontWeight: 600, color: "#107c41" }}
+                secondaryTypographyProps={{ fontSize: "10.5px" }}
+              />
+            </MenuItem>,
+
+            // Export to Excel via SharePoint query.iqy
+            <MenuItem
+              key="export-iqy-action"
+              onClick={() => {
+                closeMenu();
+                void handleExportIqy();
+              }}
+              sx={{
+                fontSize: "12.5px",
+                py: 0.9,
+                px: 2,
+                display: "flex",
+                alignItems: "center",
+                gap: 1.25,
+                color: "#107c41",
+                "&:hover": {
+                  bgcolor: "rgba(16, 124, 65, 0.08)",
+                },
+              }}
+            >
+              <ExcelFileTypeIcon size={18} />
+              <ListItemText
+                primary="Export to Excel (.iqy)"
+                secondary="Live SharePoint default view query"
                 primaryTypographyProps={{ fontSize: "12.5px", fontWeight: 600, color: "#107c41" }}
                 secondaryTypographyProps={{ fontSize: "10.5px" }}
               />
