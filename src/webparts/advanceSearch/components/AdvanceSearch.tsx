@@ -1394,8 +1394,9 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const handleViewFile = React.useCallback(
     (fileItem: doclib_AllProducts | null): void => {
       if (!fileItem) return;
-      if (typeof fileItem.id === "number") {
-        lastViewedItemIdRef.current = fileItem.id;
+      const parsedId = Number(fileItem.id);
+      if (!isNaN(parsedId) && parsedId > 0) {
+        lastViewedItemIdRef.current = parsedId;
       }
 
       const origin = window.location.origin;
@@ -1456,7 +1457,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
   // Close preview dialog and automatically perform targeted 1-item in-place refresh
   const handleClosePreviewDialog = React.useCallback(async () => {
-    const targetItemId = lastViewedItemIdRef.current || previewFileItem?.id;
+    const rawTarget = lastViewedItemIdRef.current ?? previewFileItem?.id;
+    const targetItemId = rawTarget ? Number(rawTarget) : null;
     setIsPreviewDialogOpen(false);
     setPreviewFileItem(null);
     setPreviewUrl("");
@@ -1468,7 +1470,11 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         if (latestItem) {
           console.log(`[AdvanceSearch] Successfully reloaded item ${targetItemId}:`, latestItem);
           setItems_AllProducts((prev) =>
-            prev.map((it) => (it.id === latestItem.id ? { ...it, ...latestItem } : it))
+            prev.map((it) =>
+              Number(it.id) === Number(latestItem.id) || Number(it.id) === targetItemId
+                ? { ...it, ...latestItem }
+                : it
+            )
           );
         }
       } catch (err) {
@@ -1480,13 +1486,18 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   // Tab focus listener: also re-fetch the last viewed item if user opened it in a new window and returned
   React.useEffect(() => {
     const handleTabFocus = async (): Promise<void> => {
-      const targetItemId = lastViewedItemIdRef.current;
+      const rawTarget = lastViewedItemIdRef.current;
+      const targetItemId = rawTarget ? Number(rawTarget) : null;
       if (targetItemId && targetItemId > 0 && activeSp && document.visibilityState === "visible") {
         try {
           const latestItem = await fetchSingleProductItemService(activeSp, targetItemId);
           if (latestItem) {
             setItems_AllProducts((prev) =>
-              prev.map((it) => (it.id === latestItem.id ? { ...it, ...latestItem } : it))
+              prev.map((it) =>
+                Number(it.id) === Number(latestItem.id) || Number(it.id) === targetItemId
+                  ? { ...it, ...latestItem }
+                  : it
+              )
             );
           }
         } catch (err) {

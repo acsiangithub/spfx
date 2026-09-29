@@ -541,10 +541,9 @@ export const fetchSingleProductItem = async (
 ): Promise<doclib_AllProducts | null> => {
   if (!sp || !itemId || itemId <= 0) return null;
   try {
-    const raw = await sp.web.lists
+    const batch = await sp.web.lists
       .getByTitle("Clients & Products")
-      .items.getById(itemId)
-      .select(
+      .items.select(
         "Id",
         "Title",
         "FileLeafRef",
@@ -555,8 +554,17 @@ export const fetchSingleProductItem = async (
         "PIMProductCode/Title",
         "PIMProductCode/PIMProductName",
         "Manufacturer",
+        "ManufacturerLookupId",
+        "PIMProductTermSet",
+        "GlobalClientTermSet",
         "Document_x0020_Type",
         "Sub_x0020_Document_x0020_Type",
+        "DocumentTypeId",
+        "SubDocumentTypeId",
+        "DocumentType/Id",
+        "DocumentType/Title",
+        "SubDocumentType/Id",
+        "SubDocumentType/Title",
         "Document_x0020_Date",
         "Alerts",
         "Confidentiality",
@@ -584,11 +592,293 @@ export const fetchSingleProductItem = async (
         "Expiry_x0020_Date",
         "Next_x0020_Review_x0020_Date"
       )
-      .expand("PIMProductCode", "Editor", "Author", "ReviewActionTakenBy")();
+      .expand("PIMProductCode", "DocumentType", "SubDocumentType", "Editor", "Author", "ReviewActionTakenBy")
+      .filter(`Id eq ${itemId}`)
+      .top(1)();
 
-    if (!raw) return null;
-    const mapped = mapSharePointItemsToProducts([raw]);
-    return mapped && mapped.length > 0 ? mapped[0] : null;
+    if (!batch || batch.length === 0) return null;
+    const raw = batch[0];
+    const mapped = mapSharePointItemsToProducts(batch);
+    if (!mapped || mapped.length === 0) return null;
+    const item = mapped[0];
+
+    // Check if Managed Metadata TermSets have values
+    const rawProductTerms = raw.PIMProductTermSet;
+    const rawClientTerms = raw.GlobalClientTermSet;
+
+    let resolvedProducts: IProductLookupItem[] = item.PIMProduct || [];
+    let resolvedClientString: string = item.ManufacturerSearchText || "";
+    let shouldBackfillSp = false;
+    const backfillPayload: Record<string, any> = {};
+
+    // 1. Resolve Products from PIMProductTermSet if termset exists
+    if (Array.isArray(rawProductTerms) && rawProductTerms.length > 0) {
+      const termCodeMap = new Map<string, { label: string; name: string; termGuid?: string; wssId?: number }>();
+
+      for (const t of rawProductTerms) {
+        const label = (t.Label || "").trim();
+        let code = "";
+        let name = "";
+
+        if (label.includes(" : ")) {
+          const parts = label.split(" : ");
+          code = parts[0].trim();
+          name = parts.slice(1).join(" : ").trim();
+        } else if (label.includes(":")) {
+          const parts = label.split(":");
+          code = parts[0].trim();
+          name = parts.slice(1).join(":").trim();
+        } else if (label.includes(" ")) {
+          const spaceIdx = label.indexOf(" ");
+          code = label.substring(0, spaceIdx).trim();
+          name = label.substring(spaceIdx + 1).trim();
+        } else {
+          code = label;
+        }
+
+        if (code) {
+          termCodeMap.set(code.toLowerCase(), {
+            label,
+            name,
+            termGuid: t.TermGuid,
+            wssId: t.WssId,
+          });
+        }
+      }
+
+      const codes = Array.from(termCodeMap.keys());
+      if (codes.length > 0) {
+        const foundProducts: IProductLookupItem[] = [];
+        const CHUNK = 25;
+        for (let i = 0; i < codes.length; i += CHUNK) {
+          const slice = codes.slice(i, i + CHUNK);
+          try {
+            const filterClause = slice
+              .map((c) => `Title eq '${c.replace(/'/g, "''")}'`)
+              .join(" or ");
+
+            const masterItems = await sp.web.lists
+              .getByTitle("PIM Product")
+              .items.filter(filterClause)
+              .select("ID", "Title", "PIMProductName", "Manufacturer", "BusinessLine")
+              .top(slice.length + 10)();
+
+            masterItems.forEach((mItem: any) => {
+              const mCode = (mItem.Title || "").trim().toLowerCase();
+              const info = termCodeMap.get(mCode);
+              foundProducts.push({
+                ID: mItem.ID,
+                Title: mItem.Title,
+                PIMProductName: mItem.PIMProductName || info?.name || "",
+                Manufacturer: mItem.Manufacturer || "",
+                BusinessLine: mItem.BusinessLine || "",
+                TermGuid: info?.termGuid,
+                WssId: info?.wssId,
+              });
+              termCodeMap.delete(mCode);
+            });
+          } catch (err) {
+            console.warn("fetchSingleProductItem resolving products failed:", err);
+          }
+        }
+
+        // Fallback for codes not in masterlist
+        termCodeMap.forEach((info, codeKey) => {
+          foundProducts.push({
+            ID: -(foundProducts.length + 1),
+            Title: codeKey.toUpperCase(),
+            PIMProductName: info.name,
+            TermGuid: info.termGuid,
+            WssId: info.wssId,
+          });
+        });
+
+        if (foundProducts.length > 0) {
+          resolvedProducts = foundProducts;
+          item.PIMProduct = resolvedProducts;
+          item.PIMProductSearchText = resolvedProducts
+            .map((p) => `${p.Title || ""} ${p.PIMProductName || ""}`.trim())
+            .filter(Boolean)
+            .join(" ");
+          item.LongProductName = resolvedProducts
+            .map((p) => p.PIMProductName || "")
+            .filter(Boolean)
+            .join("; ");
+
+          // Compare with existing lookup in SP
+          const currentSpLookupIds: number[] = Array.isArray(raw.PIMProductCode)
+            ? raw.PIMProductCode.map((p: any) => p.Id || p.ID).filter((id: number) => id > 0)
+            : [];
+          const newResolvedIds: number[] = resolvedProducts
+            .map((p) => p.ID)
+            .filter((id) => id > 0);
+
+          const isLookupDifferent =
+            currentSpLookupIds.length !== newResolvedIds.length ||
+            currentSpLookupIds.some((id, idx) => id !== newResolvedIds[idx]);
+
+          if (isLookupDifferent || !raw.LongProductName) {
+            backfillPayload["PIMProductCodeId"] = newResolvedIds;
+            backfillPayload["LongProductName"] = item.LongProductName || null;
+            backfillPayload["PIM_x0020_Product_x0020_Code"] = safeText(
+              resolvedProducts.map((p) => p.Title || "").filter(Boolean).join("; ")
+            );
+            shouldBackfillSp = true;
+          }
+        }
+      }
+    }
+
+    // 2. Resolve Clients from GlobalClientTermSet if termset exists (sync Manufacturer & ManufacturerLookupId)
+    if (Array.isArray(rawClientTerms) && rawClientTerms.length > 0) {
+      const clientTitles = rawClientTerms
+        .map((t: any) => (t.Label || "").trim())
+        .filter(Boolean);
+
+      if (clientTitles.length > 0) {
+        resolvedClientString = clientTitles.join("; ");
+        item.ManufacturerSearchText = resolvedClientString;
+
+        const currentSpManufacturer = (raw.Manufacturer || "").trim();
+        if (currentSpManufacturer !== resolvedClientString) {
+          backfillPayload["Manufacturer"] = safeText(resolvedClientString);
+          shouldBackfillSp = true;
+        }
+
+        // Query PIM Global Client master list to resolve IDs for ManufacturerLookupId
+        try {
+          const CHUNK = 25;
+          const resolvedClientIds: number[] = [];
+          for (let i = 0; i < clientTitles.length; i += CHUNK) {
+            const slice = clientTitles.slice(i, i + CHUNK);
+            const filterClause = slice.map((c) => `Title eq '${c.replace(/'/g, "''")}'`).join(" or ");
+            const masterClients = await sp.web.lists
+              .getByTitle("PIM Global Client")
+              .items.filter(filterClause)
+              .select("ID", "Title")
+              .top(slice.length + 5)();
+
+            masterClients.forEach((mClient: any) => {
+              if (mClient.ID && mClient.ID > 0 && !resolvedClientIds.includes(mClient.ID)) {
+                resolvedClientIds.push(mClient.ID);
+              }
+            });
+          }
+
+          if (resolvedClientIds.length > 0) {
+            const currentLookupIds: number[] = Array.isArray(raw.ManufacturerLookupId)
+              ? raw.ManufacturerLookupId
+              : typeof raw.ManufacturerLookupId === "number" && raw.ManufacturerLookupId > 0
+              ? [raw.ManufacturerLookupId]
+              : [];
+
+            const isLookupDiff =
+              currentLookupIds.length !== resolvedClientIds.length ||
+              resolvedClientIds.some((id) => !currentLookupIds.includes(id));
+
+            if (isLookupDiff) {
+              backfillPayload["ManufacturerLookupId"] = resolvedClientIds;
+              shouldBackfillSp = true;
+            }
+          }
+        } catch (clientErr) {
+          console.warn("fetchSingleProductItem resolving client lookup IDs failed:", clientErr);
+        }
+      }
+    }
+
+    // 3. Resolve Document Type text from DocumentTypeId / expanded DocumentType
+    let resolvedDocTypeTitle = (raw.Document_x0020_Type || "").trim();
+    const rawDocTypeId = raw.DocumentTypeId || raw.DocumentType?.Id || raw.DocumentType?.ID;
+    if (raw.DocumentType?.Title) {
+      resolvedDocTypeTitle = (raw.DocumentType.Title || "").trim();
+    } else if (rawDocTypeId && rawDocTypeId > 0 && !resolvedDocTypeTitle) {
+      // Query Document Type master list by ID if text column was not updated
+      try {
+        const docTypeRecord = await sp.web.lists
+          .getByTitle("Document Type")
+          .items.getById(rawDocTypeId)
+          .select("ID", "Title")();
+        if (docTypeRecord?.Title) {
+          resolvedDocTypeTitle = (docTypeRecord.Title || "").trim();
+        }
+      } catch (dtErr) {
+        console.warn(`fetchSingleProductItem resolve Document Type ID ${rawDocTypeId} failed:`, dtErr);
+      }
+    }
+
+    if (resolvedDocTypeTitle) {
+      item.DocumentTypeSearchText = resolvedDocTypeTitle;
+      const currentSpDocType = (raw.Document_x0020_Type || "").trim();
+      if (currentSpDocType !== resolvedDocTypeTitle) {
+        backfillPayload["Document_x0020_Type"] = safeText(resolvedDocTypeTitle);
+        shouldBackfillSp = true;
+      }
+    }
+
+    // 4. Resolve Sub Document Type text from SubDocumentTypeId / expanded SubDocumentType
+    let resolvedSubDocTypeTitle = (raw.Sub_x0020_Document_x0020_Type || "").trim();
+    let expandedSubTitles: string[] = [];
+
+    if (Array.isArray(raw.SubDocumentType) && raw.SubDocumentType.length > 0) {
+      expandedSubTitles = raw.SubDocumentType.map((s: any) => (s.Title || "").trim()).filter(Boolean);
+    } else {
+      const subDocTypeIds: number[] = Array.isArray(raw.SubDocumentTypeId)
+        ? raw.SubDocumentTypeId.filter((id: any) => typeof id === "number" && id > 0)
+        : typeof raw.SubDocumentTypeId === "number" && raw.SubDocumentTypeId > 0
+        ? [raw.SubDocumentTypeId]
+        : [];
+
+      if (subDocTypeIds.length > 0) {
+        try {
+          const CHUNK = 20;
+          for (let i = 0; i < subDocTypeIds.length; i += CHUNK) {
+            const slice = subDocTypeIds.slice(i, i + CHUNK);
+            const filterClause = slice.map((id) => `Id eq ${id}`).join(" or ");
+            const subRecords = await sp.web.lists
+              .getByTitle("Sub Document Type")
+              .items.filter(filterClause)
+              .select("ID", "Title")
+              .top(slice.length + 5)();
+            subRecords.forEach((s: any) => {
+              if (s.Title) expandedSubTitles.push(s.Title.trim());
+            });
+          }
+        } catch (sdtErr) {
+          console.warn("fetchSingleProductItem resolve Sub Document Type IDs failed:", sdtErr);
+        }
+      }
+    }
+
+    if (expandedSubTitles.length > 0) {
+      resolvedSubDocTypeTitle = expandedSubTitles.join("; ");
+    }
+
+    if (resolvedSubDocTypeTitle) {
+      item.SubDocumentTypeSearchText = resolvedSubDocTypeTitle;
+      const currentSpSubDocType = (raw.Sub_x0020_Document_x0020_Type || "").trim();
+      if (currentSpSubDocType !== resolvedSubDocTypeTitle) {
+        backfillPayload["Sub_x0020_Document_x0020_Type"] = safeText(resolvedSubDocTypeTitle);
+        shouldBackfillSp = true;
+      }
+    }
+
+    // 5. Dual-write backfill to SharePoint in background if differences exist
+    if (shouldBackfillSp && Object.keys(backfillPayload).length > 0) {
+      console.log(`[AdvanceSearch] Auto-syncing updated properties to lookup/text columns for item ${itemId}:`, backfillPayload);
+      sp.web.lists
+        .getByTitle("Clients & Products")
+        .items.getById(itemId)
+        .update(backfillPayload)
+        .then(() => {
+          console.log(`[AdvanceSearch] Successfully backfilled item ${itemId} in SharePoint.`);
+        })
+        .catch((err) => {
+          console.warn(`[AdvanceSearch] Failed to backfill item ${itemId} in SharePoint:`, err);
+        });
+    }
+
+    return item;
   } catch (err) {
     console.warn(`fetchSingleProductItem error for item ${itemId}:`, err);
     return null;
