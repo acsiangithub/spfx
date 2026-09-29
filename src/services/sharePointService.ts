@@ -7,6 +7,7 @@ import "@pnp/sp/search";
 import "@pnp/sp/sharing";
 import "@pnp/sp/fields/list";
 import "@pnp/sp/security";
+import "@pnp/sp/profiles";
 import { SharingRole } from "@pnp/sp/sharing";
 import { PermissionKind } from "@pnp/sp/security";
 import {
@@ -1111,6 +1112,66 @@ export const shareFilesByEmail = async (
     if (result && result.ErrorMessage) {
       throw new Error(result.ErrorMessage);
     }
+  }
+};
+
+export interface IPeoplePickerUserOption {
+  key: string;
+  displayText: string;
+  email: string;
+  department?: string;
+  jobTitle?: string;
+}
+
+export const searchSharePointUsers = async (
+  sp: SPFI,
+  query: string,
+  maxResults: number = 7
+): Promise<IPeoplePickerUserOption[]> => {
+  if (!sp || !query || query.trim().length < 2) {
+    return [];
+  }
+
+  try {
+    const rawResults = await sp.profiles.clientPeoplePickerSearchUser({
+      QueryString: query.trim(),
+      MaximumEntitySuggestions: maxResults,
+      PrincipalType: 1, // Users
+      PrincipalSource: 15, // All sources
+      AllowEmailAddresses: true,
+    });
+
+    let results: any[] = [];
+    if (typeof rawResults === "string") {
+      results = JSON.parse(rawResults);
+    } else if (Array.isArray(rawResults)) {
+      results = rawResults;
+    }
+
+    return results
+      .map((item: any): IPeoplePickerUserOption => {
+        const entityData = item.EntityData || {};
+        const email =
+          entityData.Email ||
+          item.Description ||
+          (item.Key && item.Key.indexOf("@") !== -1 ? item.Key.split("|").pop() || "" : "") ||
+          "";
+        const displayText = item.DisplayText || item.Title || email;
+        const jobTitle = entityData.Title || entityData.JobTitle || "";
+        const department = entityData.Department || "";
+
+        return {
+          key: item.Key || email || displayText,
+          displayText,
+          email: email.trim(),
+          jobTitle,
+          department,
+        };
+      })
+      .filter((u) => Boolean(u.email || u.displayText));
+  } catch (error) {
+    console.warn("Error searching SharePoint users:", error);
+    return [];
   }
 };
 
