@@ -17,9 +17,12 @@ import '@pnp/sp/lists';
 import '@pnp/sp/items';
 import "@pnp/sp/search";
 
+export const DEFAULT_SHARE_FLOW_URL = 'https://35fd17f69ff4ede0923e3e0e8748af.89.environment.api.powerplatform.com/powerautomate/automations/direct/workflows/65ebfbb4483b4dccb5271fd7b1a15008/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=SsvjGm30GuDtHVhMyKpzZU_vI2ketPbCtEd68I0YcKw';
+
 export interface IAdvanceSearchWebPartProps {
   description: string;
   urldata: string;
+  shareFlowUrl: string;
 }
 export let sp: SPFI;
 export default class AdvanceSearchWebPart extends BaseClientSideWebPart<IAdvanceSearchWebPartProps> {
@@ -129,6 +132,7 @@ export default class AdvanceSearchWebPart extends BaseClientSideWebPart<IAdvance
       {
         description: this.properties.description,
         urlSite: this.properties.urldata,
+        shareFlowUrl: this.properties.shareFlowUrl || DEFAULT_SHARE_FLOW_URL,
         isDarkTheme: this._isDarkTheme,
         environmentMessage: this._environmentMessage,
         hasTeamsContext: !!this.context.sdks.microsoftTeams,
@@ -241,6 +245,11 @@ export default class AdvanceSearchWebPart extends BaseClientSideWebPart<IAdvance
                 }),
                 PropertyPaneTextField('urldata', {
                   label: strings.UrlDataFieldLabel
+                }),
+                PropertyPaneTextField('shareFlowUrl', {
+                  label: 'External Sharing Flow URL',
+                  multiline: true,
+                  rows: 3
                 })
               ]
             }

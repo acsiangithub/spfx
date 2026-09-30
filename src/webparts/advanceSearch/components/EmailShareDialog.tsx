@@ -1,6 +1,6 @@
 import * as React from "react";
 import { SPFI } from "@pnp/sp";
-import { sp as defaultSp } from "../AdvanceSearchWebPart";
+import { sp as defaultSp, DEFAULT_SHARE_FLOW_URL } from "../AdvanceSearchWebPart";
 import {
   shareFilesByEmail,
   searchSharePointUsers,
@@ -24,6 +24,7 @@ export interface IEmailShareDialogProps {
   onClose: () => void;
   selectedItems?: any[];
   siteUrl: string;
+  shareFlowUrl?: string;
   defaultSubject?: string;
   defaultMessage?: string;
   currentUserEmail?: string;
@@ -302,6 +303,7 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
   onClose,
   selectedItems = [],
   siteUrl,
+  shareFlowUrl,
   defaultSubject = "",
   defaultMessage = "",
   currentUserEmail = "",
@@ -346,6 +348,11 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
   }, [open, defaultSubject, defaultMessage, currentUserEmail]);
 
   const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
+  const isInternalEmail = (email: string): boolean => email.trim().toLowerCase().endsWith("@dksh.com");
+
+  const isInternalConfidentialDocument = (item: any): boolean =>
+    (item?.Confidentiality || "").trim().toLowerCase() === "internal";
 
   const validateEmailList = (emails: string[]): string => {
     for (const em of emails) {
@@ -394,12 +401,40 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
       return;
     }
 
+    // Pre-send business rule: Check if any document is marked "Internal" and any recipient is external
+    const hasInternalConfidentialDoc = (selectedItems || []).some(isInternalConfidentialDocument);
+    if (hasInternalConfidentialDoc) {
+      const allRecipients = Array.from(
+        new Set([...finalTo, ...finalCc, ...finalBcc].map((e) => e.trim()).filter(Boolean))
+      );
+      const externalRecipients = allRecipients.filter((e) => !isInternalEmail(e));
+      const internalRecipients = allRecipients.filter((e) => isInternalEmail(e));
+
+      if (externalRecipients.length > 0) {
+        let errorMsg = `This document is marked Internal and cannot be shared with external recipients:\n${externalRecipients.join("\n")}`;
+        if (internalRecipients.length > 0) {
+          errorMsg += `\n\nTo share it with the internal recipients: ${internalRecipients.join(", ")}, remove the external recipients and send the email again.`;
+        }
+        errorMsg += `\n\nIf external sharing is required, contact your QA/RA Lead to review the document's confidentiality setting.`;
+
+        setShareErrorMessage(errorMsg);
+        return;
+      }
+    }
+
+    const flowTriggerUrl = (shareFlowUrl || DEFAULT_SHARE_FLOW_URL || "").trim();
+    if (!flowTriggerUrl) {
+      setShareErrorMessage("Sharing Flow URL is not configured. Please configure it in the Web Part properties.");
+      return;
+    }
+
     setIsSharing(true);
     setShareErrorMessage("");
     try {
       await shareFilesByEmail(
-        activeSp,
+        flowTriggerUrl,
         selectedItems,
+        currentUserEmail,
         finalTo,
         finalCc,
         finalBcc,
@@ -411,7 +446,7 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
       handleClose();
     } catch (error: any) {
       console.error("Error during sharing:", error);
-      setShareErrorMessage(error?.message || "Failed to share files. Please verify permissions.");
+      setShareErrorMessage(error?.message || "Failed to trigger sharing flow.");
     } finally {
       setIsSharing(false);
     }
@@ -445,7 +480,7 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
           <Typography
             color="error"
             variant="body2"
-            sx={{ mb: 1, p: 1, backgroundColor: "#ffebee", borderRadius: "4px" }}
+            sx={{ mb: 1, p: 1, backgroundColor: "#ffebee", borderRadius: "4px", whiteSpace: "pre-line" }}
           >
             {shareErrorMessage}
           </Typography>

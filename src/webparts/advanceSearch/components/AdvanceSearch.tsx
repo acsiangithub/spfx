@@ -5664,6 +5664,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           onClose={() => setIsShareDialogOpen(false)}
           selectedItems={selectedRowsData}
           siteUrl={props.urlSite}
+          shareFlowUrl={props.shareFlowUrl}
           defaultSubject={sharingConfig.subject}
           defaultMessage={sharingConfig.message}
           currentUserEmail={props.context?.pageContext?.user?.email || ""}

@@ -4,11 +4,9 @@ import "@pnp/sp/lists";
 import "@pnp/sp/views/list";
 import "@pnp/sp/items";
 import "@pnp/sp/search";
-import "@pnp/sp/sharing";
 import "@pnp/sp/fields/list";
 import "@pnp/sp/security";
 import "@pnp/sp/profiles";
-import { SharingRole } from "@pnp/sp/sharing";
 import { PermissionKind } from "@pnp/sp/security";
 import {
   doclib_AllProducts,
@@ -1077,41 +1075,79 @@ export const searchRecords = async (
   };
 };
 
+export interface IShareFlowDocument {
+  id: string;
+  name: string;
+  confidentiality: string;
+}
+
+export interface IShareFlowPayload {
+  senderEmail: string;
+  to: string;
+  cc: string;
+  bcc: string;
+  subject: string;
+  body: string;
+  confirmSend: boolean;
+  documents: IShareFlowDocument[];
+}
+
 export const shareFilesByEmail = async (
-  sp: SPFI,
+  flowUrl: string,
   selectedItems: any[],
+  senderEmail: string,
   toEmails: string[],
   ccEmails: string[],
   bccEmails: string[],
   subject: string,
   message: string
 ): Promise<void> => {
-  const origin = window.location.origin;
-  const allRecipients = Array.from(new Set([...toEmails, ...ccEmails, ...bccEmails]));
-
-  let cleanMessage = (message || "").replace(/{}/g, "").trim();
-  if (cleanMessage.length > 490) {
-    cleanMessage = cleanMessage.substring(0, 487) + "...";
+  if (!flowUrl || !flowUrl.trim()) {
+    throw new Error("Sharing Flow URL is not configured. Please check the Web Part properties.");
   }
 
-  for (let index = 0; index < selectedItems.length; index++) {
-    const item = selectedItems[index];
-    const itemUrl: string = item.fileUrl || "";
-    const fullUrl = itemUrl.startsWith("http") ? itemUrl : `${origin}${itemUrl}`;
+  // Convert newlines to <br/> tags
+  const formattedBody = (message || "").replace(/\r?\n/g, "<br/>");
 
-    const result = await sp.web.shareObject(
-      fullUrl,
-      allRecipients,
-      SharingRole.View,
-      {
-        subject: (subject || "Shared document").substring(0, 200),
-        body: cleanMessage || "Please find the shared document.",
+  const documents: IShareFlowDocument[] = (selectedItems || []).map((item) => ({
+    id: String(item.id ?? item.ID ?? ""),
+    name: item.filename || item.OriginalFilename || "",
+    confidentiality: item.Confidentiality || "",
+  }));
+
+  const payload: IShareFlowPayload = {
+    senderEmail: (senderEmail || "").trim(),
+    to: toEmails.map((e) => e.trim()).filter(Boolean).join(";"),
+    cc: ccEmails.map((e) => e.trim()).filter(Boolean).join(";"),
+    bcc: bccEmails.map((e) => e.trim()).filter(Boolean).join(";"),
+    subject: (subject || "").trim(),
+    body: formattedBody,
+    confirmSend: false,
+    documents,
+  };
+
+  const response = await fetch(flowUrl.trim(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    let errorDetail = "";
+    try {
+      const errorJson = await response.json();
+      errorDetail = errorJson?.message || errorJson?.error?.message || JSON.stringify(errorJson);
+    } catch {
+      try {
+        errorDetail = await response.text();
+      } catch {
+        errorDetail = `HTTP ${response.status} (${response.statusText})`;
       }
-    );
-
-    if (result && result.ErrorMessage) {
-      throw new Error(result.ErrorMessage);
     }
+    throw new Error(`Flow execution failed: ${errorDetail || `Status ${response.status}`}`);
   }
 };
 
