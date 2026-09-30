@@ -2,7 +2,9 @@ import * as React from "react";
 import { SPFI } from "@pnp/sp";
 import { sp as defaultSp, DEFAULT_SHARE_FLOW_URL } from "../AdvanceSearchWebPart";
 import {
-  shareFilesByEmail,
+  postToShareFlow,
+  parseRejectedDocumentNames,
+  IShareFlowPayload,
   searchSharePointUsers,
   IPeoplePickerUserOption,
 } from "../../../services/sharePointService";
@@ -351,7 +353,7 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
 
   const isInternalEmail = (email: string): boolean => email.trim().toLowerCase().endsWith("@dksh.com");
 
-  const isInternalConfidentialDocument = (item: any): boolean =>
+  const isInternalDocument = (item: any): boolean =>
     (item?.Confidentiality || "").trim().toLowerCase() === "internal";
 
   const validateEmailList = (emails: string[]): string => {
@@ -401,52 +403,136 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
       return;
     }
 
-    // Pre-send business rule: Check if any document is marked "Internal" and any recipient is external
-    const hasInternalConfidentialDoc = (selectedItems || []).some(isInternalConfidentialDocument);
-    if (hasInternalConfidentialDoc) {
-      const allRecipients = Array.from(
-        new Set([...finalTo, ...finalCc, ...finalBcc].map((e) => e.trim()).filter(Boolean))
-      );
-      const externalRecipients = allRecipients.filter((e) => !isInternalEmail(e));
-      const internalRecipients = allRecipients.filter((e) => isInternalEmail(e));
-
-      if (externalRecipients.length > 0) {
-        let errorMsg = `This document is marked Internal and cannot be shared with external recipients:\n${externalRecipients.join("\n")}`;
-        if (internalRecipients.length > 0) {
-          errorMsg += `\n\nTo share it with the internal recipients: ${internalRecipients.join(", ")}, remove the external recipients and send the email again.`;
-        }
-        errorMsg += `\n\nIf external sharing is required, contact your QA/RA Lead to review the document's confidentiality setting.`;
-
-        setShareErrorMessage(errorMsg);
-        return;
-      }
-    }
-
     const flowTriggerUrl = (shareFlowUrl || DEFAULT_SHARE_FLOW_URL || "").trim();
     if (!flowTriggerUrl) {
       setShareErrorMessage("Sharing Flow URL is not configured. Please configure it in the Web Part properties.");
       return;
     }
 
+    // Recipient & Document Classification (matching teammate logic)
+    const allRecipients = Array.from(
+      new Set([...finalTo, ...finalCc, ...finalBcc].map((e) => e.trim()).filter(Boolean))
+    );
+    const externalRecipients = allRecipients.filter((email) => !isInternalEmail(email));
+    const internalRecipients = allRecipients.filter((email) => isInternalEmail(email));
+    const hasOnlyExternalRecipients = allRecipients.length > 0 && internalRecipients.length === 0;
+
+    const allSelectedDocumentsInternal =
+      selectedItems.length > 0 && selectedItems.every((item) => isInternalDocument(item));
+    const hasAtLeastOneInternalDocument =
+      selectedItems.length > 0 && selectedItems.some((item) => isInternalDocument(item));
+    const hasInternalExternalRestriction =
+      hasAtLeastOneInternalDocument && !allSelectedDocumentsInternal && externalRecipients.length > 0;
+
+    // Hard block check: 100% of selected documents are Internal and there is an external recipient
+    if (allSelectedDocumentsInternal && externalRecipients.length > 0) {
+      const uniqueExternalRecipients = externalRecipients.filter((e, idx, arr) => arr.indexOf(e) === idx);
+      const uniqueInternalRecipients = internalRecipients.filter((e, idx, arr) => arr.indexOf(e) === idx);
+
+      let blockMessage =
+        `This document is marked Internal and cannot be shared with external recipients:\n` +
+        `${uniqueExternalRecipients.join("; ")}\n\n`;
+
+      if (uniqueInternalRecipients.length > 0) {
+        blockMessage +=
+          `To share it with the internal recipients: ${uniqueInternalRecipients.join("; ")}, remove the external recipients and send the email again.\n\n`;
+      }
+
+      blockMessage +=
+        `If external sharing is required, contact your QA/RA Lead to review the document's confidentiality setting.`;
+
+      setShareErrorMessage(blockMessage);
+      return;
+    }
+
     setIsSharing(true);
     setShareErrorMessage("");
-    try {
-      await shareFilesByEmail(
-        flowTriggerUrl,
-        selectedItems,
-        currentUserEmail,
-        finalTo,
-        finalCc,
-        finalBcc,
-        subject,
-        message
-      );
 
-      alert(`Successfully shared ${selectedItems.length} file(s)!`);
+    // Build payload documents (filter out internal documents if all recipients are external)
+    const documentsForPayload = hasOnlyExternalRecipients
+      ? selectedItems.filter((i) => !isInternalDocument(i))
+      : selectedItems;
+
+    const documents = documentsForPayload.map((item) => ({
+      id: String(item.id ?? item.ID ?? ""),
+      name: item.filename || item.OriginalFilename || item.FileLeafRef || "Unnamed document",
+      confidentiality: item.Confidentiality || "",
+    }));
+
+    const formattedBody = (message || "").replace(/\r?\n/g, "<br/>");
+    const payload: IShareFlowPayload = {
+      senderEmail: (currentUserEmail || "").trim(),
+      to: finalTo.map((e) => e.trim()).filter(Boolean).join(";"),
+      cc: finalCc.map((e) => e.trim()).filter(Boolean).join(";"),
+      bcc: finalBcc.map((e) => e.trim()).filter(Boolean).join(";"),
+      subject: (subject || "").trim(),
+      body: formattedBody,
+      confirmSend: false,
+      documents,
+    };
+
+    try {
+      // Phase 1: Preflight check with confirmSend: false
+      const preflightResult = await postToShareFlow(flowTriggerUrl, payload);
+
+      if (!preflightResult.ok) {
+        setShareErrorMessage(preflightResult.errorMessage || "Unable to complete the document sharing request.");
+        return;
+      }
+
+      const status = preflightResult.data && typeof preflightResult.data === "object"
+        ? (preflightResult.data as { status?: unknown }).status
+        : undefined;
+
+      // Check if Flow returned a WARNING status with rejected confidential documents
+      if (status === "WARNING") {
+        const rejectedDocumentNames = parseRejectedDocumentNames(preflightResult.data);
+        const documentList = rejectedDocumentNames.length > 0
+          ? `\n\nThe following confidential document(s) cannot be shared:\n${rejectedDocumentNames.map((name) => `- ${name}`).join("\n")}`
+          : "";
+
+        const warningMessage =
+          "Some document(s) cannot be shared because you do not have the required rights to share them." +
+          documentList +
+          (hasInternalExternalRestriction
+            ? '\n\nAt least one document is marked as "Internal" and cannot be shared with External recipient(s).'
+            : "") +
+          "\n\nIf you continue, only the eligible document(s) will be shared with the recipients." +
+          "\n\nAlternatively, remove the restricted document(s) and send the email again." +
+          "\n\nSelect OK to continue, or Cancel to edit.";
+
+        if (!window.confirm(warningMessage)) {
+          return;
+        }
+      } else if (hasInternalExternalRestriction) {
+        // Mixed documents warning (at least 1 internal, at least 1 non-internal, external recipients present)
+        const uniqueExternalRecipients = externalRecipients.filter((e, idx, arr) => arr.indexOf(e) === idx);
+        const internalWarningMessage =
+          `At least one document is marked as "Internal" and cannot be shared with ` +
+          `External recipient(s): ${uniqueExternalRecipients.join("; ")}\n\n` +
+          `To share the "Internal" document(s) with internal recipients, remove the external recipient(s) and send the email again.\n\n` +
+          `Alternatively, remove the Internal document(s) and send the email again.\n\n` +
+          `If you continue, only the "non-Internal" document(s) will be shared with all recipients.\n\n` +
+          `Select OK to continue, or Cancel to edit.`;
+
+        if (!window.confirm(internalWarningMessage)) {
+          return;
+        }
+      }
+
+      // Phase 2: Final send execution with confirmSend: true
+      const finalResult = await postToShareFlow(flowTriggerUrl, { ...payload, confirmSend: true });
+      if (!finalResult.ok) {
+        setShareErrorMessage(finalResult.errorMessage || "Unable to complete the document sharing request.");
+        return;
+      }
+
+      const toRecipients = finalTo.filter((r) => r.trim().length > 0).join("; ");
+      alert(`Mail trigger successful. Sent to: ${toRecipients}`);
       handleClose();
     } catch (error: any) {
-      console.error("Error during sharing:", error);
-      setShareErrorMessage(error?.message || "Failed to trigger sharing flow.");
+      console.error("Error during sharing flow:", error);
+      setShareErrorMessage("Unable to connect to the document sharing service. Please try again.");
     } finally {
       setIsSharing(false);
     }

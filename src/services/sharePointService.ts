@@ -1092,6 +1092,114 @@ export interface IShareFlowPayload {
   documents: IShareFlowDocument[];
 }
 
+export interface IFlowResponseResult {
+  ok: boolean;
+  status: number;
+  data?: any;
+  errorMessage?: string;
+}
+
+export const getFlowFriendlyErrorMessage = (status: number, responseData?: any): string => {
+  if (status === 400) {
+    return "Unable to process the request. Please check the selected documents and try again.";
+  } else if (status === 403) {
+    return "You do not have the required confidential rights to share the selected confidential document(s).";
+  } else if (status === 502) {
+    return "The selected document could not be processed for sharing. Please try again.";
+  } else if (status === 504) {
+    return "The document sharing process is still in progress. The sharing email will be sent within the next few minutes.";
+  }
+
+  const detailedMsg = responseData?.message || responseData?.error?.message;
+  if (detailedMsg && typeof detailedMsg === "string") {
+    return detailedMsg;
+  }
+
+  return `Unable to complete the document sharing request right now. Please try again. (Status: ${status})`;
+};
+
+export const parseRejectedDocumentNames = (responseBody: any): string[] => {
+  if (!responseBody || typeof responseBody !== "object") {
+    return [];
+  }
+
+  const rejectedDocumentValue =
+    responseBody.rejectedConfidentialDocuments ||
+    responseBody.RejectedConfidentialDocuments ||
+    responseBody.rejectedDocs;
+
+  let rejectedDocuments = rejectedDocumentValue;
+  if (typeof rejectedDocumentValue === "string") {
+    try {
+      rejectedDocuments = JSON.parse(rejectedDocumentValue);
+    } catch {
+      rejectedDocuments = rejectedDocumentValue
+        .split(/[;\r\n]+/)
+        .map((documentName: string) => documentName.trim())
+        .filter((documentName: string) => documentName.length > 0);
+    }
+  }
+
+  if (!Array.isArray(rejectedDocuments)) {
+    return [];
+  }
+
+  return rejectedDocuments.map((document: any) => {
+    if (typeof document === "string") {
+      return document;
+    }
+    if (document && typeof document === "object") {
+      return String(
+        document.name ||
+        document.Name ||
+        document.FileLeafRef ||
+        document.FileName ||
+        document.DisplayName ||
+        document.documentName ||
+        document.DocumentName ||
+        document.Title ||
+        "Unnamed document"
+      );
+    }
+    return "Unnamed document";
+  });
+};
+
+export const postToShareFlow = async (
+  flowUrl: string,
+  payload: IShareFlowPayload
+): Promise<IFlowResponseResult> => {
+  if (!flowUrl || !flowUrl.trim()) {
+    throw new Error("Sharing Flow URL is not configured. Please check the Web Part properties.");
+  }
+
+  const response = await fetch(flowUrl.trim(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const text = await response.text();
+  let data: any = undefined;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+  }
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    data,
+    errorMessage: !response.ok ? getFlowFriendlyErrorMessage(response.status, data) : undefined,
+  };
+};
+
 export const shareFilesByEmail = async (
   flowUrl: string,
   selectedItems: any[],
@@ -1102,16 +1210,11 @@ export const shareFilesByEmail = async (
   subject: string,
   message: string
 ): Promise<void> => {
-  if (!flowUrl || !flowUrl.trim()) {
-    throw new Error("Sharing Flow URL is not configured. Please check the Web Part properties.");
-  }
-
-  // Convert newlines to <br/> tags
   const formattedBody = (message || "").replace(/\r?\n/g, "<br/>");
 
   const documents: IShareFlowDocument[] = (selectedItems || []).map((item) => ({
     id: String(item.id ?? item.ID ?? ""),
-    name: item.filename || item.OriginalFilename || "",
+    name: item.filename || item.OriginalFilename || item.FileLeafRef || "",
     confidentiality: item.Confidentiality || "",
   }));
 
@@ -1126,28 +1229,9 @@ export const shareFilesByEmail = async (
     documents,
   };
 
-  const response = await fetch(flowUrl.trim(), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    let errorDetail = "";
-    try {
-      const errorJson = await response.json();
-      errorDetail = errorJson?.message || errorJson?.error?.message || JSON.stringify(errorJson);
-    } catch {
-      try {
-        errorDetail = await response.text();
-      } catch {
-        errorDetail = `HTTP ${response.status} (${response.statusText})`;
-      }
-    }
-    throw new Error(`Flow execution failed: ${errorDetail || `Status ${response.status}`}`);
+  const result = await postToShareFlow(flowUrl, payload);
+  if (!result.ok) {
+    throw new Error(result.errorMessage || `Flow execution failed with status ${result.status}`);
   }
 };
 
