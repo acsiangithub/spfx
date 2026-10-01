@@ -523,6 +523,7 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
       // Phase 2: Final send execution with confirmSend: true
       const finalResult = await postToShareFlow(flowTriggerUrl, { ...payload, confirmSend: true });
       if (!finalResult.ok) {
+        console.error("Phase 2 Share Flow failed:", finalResult);
         setShareErrorMessage(finalResult.errorMessage || "Unable to complete the document sharing request.");
         return;
       }
@@ -532,7 +533,7 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
       handleClose();
     } catch (error: any) {
       console.error("Error during sharing flow:", error);
-      setShareErrorMessage("Unable to connect to the document sharing service. Please try again.");
+      setShareErrorMessage(error?.message || "Unable to connect to the document sharing service. Please try again.");
     } finally {
       setIsSharing(false);
     }

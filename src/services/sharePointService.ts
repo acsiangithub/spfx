@@ -1103,19 +1103,24 @@ export interface IFlowResponseResult {
 }
 
 export const getFlowFriendlyErrorMessage = (status: number, responseData?: any): string => {
+  const detailedMsg =
+    responseData?.message ||
+    responseData?.error?.message ||
+    (typeof responseData?.error === "string" ? responseData.error : undefined) ||
+    (typeof responseData === "string" && responseData.length > 0 && responseData.length < 300 ? responseData : undefined);
+
+  if (detailedMsg && typeof detailedMsg === "string") {
+    return detailedMsg;
+  }
+
   if (status === 400) {
     return "Unable to process the request. Please check the selected documents and try again.";
   } else if (status === 403) {
     return "You do not have the required confidential rights to share the selected confidential document(s).";
   } else if (status === 502) {
-    return "The selected document could not be processed for sharing. Please try again.";
+    return "The selected document could not be processed for sharing. Please check Power Automate Flow run history or try again.";
   } else if (status === 504) {
     return "The document sharing process is still in progress. The sharing email will be sent within the next few minutes.";
-  }
-
-  const detailedMsg = responseData?.message || responseData?.error?.message;
-  if (detailedMsg && typeof detailedMsg === "string") {
-    return detailedMsg;
   }
 
   return `Unable to complete the document sharing request right now. Please try again. (Status: ${status})`;
