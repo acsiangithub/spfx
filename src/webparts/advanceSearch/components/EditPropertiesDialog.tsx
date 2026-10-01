@@ -9,6 +9,7 @@ import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
+import Link from "@mui/material/Link";
 import TextField from "@mui/material/TextField";
 import Autocomplete from "@mui/material/Autocomplete";
 import FormControl from "@mui/material/FormControl";
@@ -28,6 +29,7 @@ import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import ContentPasteIcon from "@mui/icons-material/ContentPaste";
 import CheckIcon from "@mui/icons-material/Check";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
@@ -477,6 +479,7 @@ export interface IEditPropertiesDialogProps {
   documentTypes: IDocumentTypeItem[];
   allSubDocumentTypes: ISubDocumentTypeItem[];
   libraryChoices?: ILibraryColumnChoices;
+  siteUrl?: string;
   onSave: (payload: IEditPropertiesPayload, itemIds: number[]) => Promise<void>;
 }
 
@@ -488,10 +491,39 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
   documentTypes,
   allSubDocumentTypes,
   libraryChoices,
+  siteUrl,
   onSave,
 }) => {
   const isBulkEdit = selectedItems.length > 1;
   const singleItem = selectedItems.length === 1 ? selectedItems[0] : null;
+
+  const getAbsoluteFileUrl = React.useCallback(
+    (rawUrl?: string): string => {
+      if (!rawUrl) return "";
+      if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) {
+        return rawUrl;
+      }
+      const cleanSiteUrl = (siteUrl || "").trim().replace(/\/+$/, "");
+      const origin = cleanSiteUrl
+        ? (() => {
+            try {
+              return new URL(cleanSiteUrl).origin;
+            } catch {
+              return typeof window !== "undefined" ? window.location.origin : "";
+            }
+          })()
+        : typeof window !== "undefined"
+        ? window.location.origin
+        : "";
+
+      if (rawUrl.startsWith("/")) {
+        return `${origin}${rawUrl}`;
+      }
+
+      return cleanSiteUrl ? `${cleanSiteUrl}/${rawUrl}` : `${origin}/${rawUrl}`;
+    },
+    [siteUrl]
+  );
 
   // Track field values
   const [selectedProducts, setSelectedProducts] = React.useState<IProductLookupItem[]>([]);
@@ -1331,19 +1363,115 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
           touchAction: "none",
         }}
       >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          <DragIndicatorIcon sx={{ color: "text.secondary", fontSize: 20, opacity: 0.6, cursor: "grab" }} />
-          <EditNoteIcon color="primary" sx={{ fontSize: 24 }} />
-          <Box>
-            <Typography variant="h6" sx={{ fontSize: "16px", fontWeight: 600 }}>
-              {isBulkEdit
-                ? `Edit Properties (${selectedItems.length} items selected)`
-                : `Edit Properties - ${singleItem?.filename || "Document"}`}
-            </Typography>
-            {isBulkEdit && (
-              <Typography variant="caption" sx={{ fontSize: "11px", color: "text.secondary" }}>
-                Fields left untouched will retain their existing values on each document.
-              </Typography>
+        <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1, overflow: "hidden", pr: 1 }}>
+          <DragIndicatorIcon sx={{ color: "text.secondary", fontSize: 20, opacity: 0.6, cursor: "grab", mt: 0.4 }} />
+          <EditNoteIcon color="primary" sx={{ fontSize: 24, mt: 0.2 }} />
+          <Box sx={{ overflow: "hidden" }}>
+            {isBulkEdit ? (
+              <>
+                <Typography variant="h6" sx={{ fontSize: "16px", fontWeight: 600 }}>
+                  Edit Properties ({selectedItems.length} items selected)
+                </Typography>
+                <Typography variant="caption" sx={{ fontSize: "11px", color: "text.secondary", display: "block", mb: 0.5 }}>
+                  Fields left untouched will retain their existing values on each document.
+                </Typography>
+                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, mt: 0.5, maxHeight: "60px", overflowY: "auto" }}>
+                  {selectedItems.map((item) => {
+                    const fileUrl = getAbsoluteFileUrl(item.fileUrl);
+                    return (
+                      <Chip
+                        key={item.id ?? item.filename}
+                        size="small"
+                        label={item.filename || "Document"}
+                        component={fileUrl ? "a" : "div"}
+                        href={fileUrl || undefined}
+                        target={fileUrl ? "_blank" : undefined}
+                        rel={fileUrl ? "noopener noreferrer" : undefined}
+                        data-interception="off"
+                        clickable={Boolean(fileUrl)}
+                        deleteIcon={<OpenInNewIcon sx={{ fontSize: 13 }} />}
+                        onDelete={
+                          fileUrl
+                            ? (e: any) => {
+                                if (e?.preventDefault) e.preventDefault();
+                                if (e?.stopPropagation) e.stopPropagation();
+                                window.open(fileUrl, "_blank", "noopener,noreferrer");
+                              }
+                            : undefined
+                        }
+                        onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}
+                        onClick={
+                          fileUrl
+                            ? (e: React.MouseEvent) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                window.open(fileUrl, "_blank", "noopener,noreferrer");
+                              }
+                            : undefined
+                        }
+                        sx={{
+                          fontSize: "11px",
+                          height: "22px",
+                          cursor: fileUrl ? "pointer" : "default",
+                          "& .MuiChip-deleteIcon": {
+                            fontSize: "13px",
+                            color: "primary.main",
+                          },
+                        }}
+                      />
+                    );
+                  })}
+                </Box>
+              </>
+            ) : (
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, flexWrap: "wrap" }}>
+                <Typography variant="h6" component="span" sx={{ fontSize: "16px", fontWeight: 600 }}>
+                  Edit Properties -
+                </Typography>
+                {(() => {
+                  const fileUrl = getAbsoluteFileUrl(singleItem?.fileUrl);
+                  const fileName = singleItem?.filename || "Document";
+                  if (fileUrl) {
+                    return (
+                      <Link
+                        href={fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        data-interception="off"
+                        onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}
+                        onClick={(e: React.MouseEvent) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          window.open(fileUrl, "_blank", "noopener,noreferrer");
+                        }}
+                        sx={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 0.5,
+                          fontSize: "15px",
+                          fontWeight: 600,
+                          color: "primary.main",
+                          textDecoration: "underline",
+                          cursor: "pointer",
+                          wordBreak: "break-all",
+                          "&:hover": {
+                            color: "primary.dark",
+                          },
+                        }}
+                        title="Open document in new tab"
+                      >
+                        <span>{fileName}</span>
+                        <OpenInNewIcon sx={{ fontSize: 16 }} />
+                      </Link>
+                    );
+                  }
+                  return (
+                    <Typography variant="h6" component="span" sx={{ fontSize: "16px", fontWeight: 600 }}>
+                      {fileName}
+                    </Typography>
+                  );
+                })()}
+              </Box>
             )}
           </Box>
         </Box>

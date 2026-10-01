@@ -5864,6 +5864,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           onClose={() => setIsEditDialogOpen(false)}
           selectedItems={selectedItemsForEdit}
           sp={activeSp}
+          siteUrl={props.urlSite}
           documentTypes={documentTypes}
           allSubDocumentTypes={allSubDocumentTypes}
           libraryChoices={libraryChoices}
