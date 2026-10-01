@@ -7,6 +7,8 @@ import "@pnp/sp/search";
 import "@pnp/sp/fields/list";
 import "@pnp/sp/security";
 import "@pnp/sp/profiles";
+import "@pnp/sp/files";
+import "@pnp/sp/folders";
 import { PermissionKind } from "@pnp/sp/security";
 import {
   doclib_AllProducts,
@@ -18,6 +20,7 @@ import {
   IAlertRule,
   ISharingConfig,
   IChipStyle,
+  ITableViewPreset,
 } from "../webparts/advanceSearch/types/advanceSearchTypes";
 import {
   choiceToString,
@@ -2004,5 +2007,86 @@ export const updateItemProperties = async (
         }
       })
     );
+  }
+};
+
+export const DEFAULT_GLOBAL_VIEWS: ITableViewPreset[] = [
+  {
+    id: "default",
+    name: "All Documents",
+    isBuiltIn: true,
+    grouping: [],
+    sorting: [{ id: "DocumentDate", desc: true }],
+    columnVisibility: {},
+    columnFilters: [],
+  },
+  {
+    id: "byClient",
+    name: "Grouped by Client",
+    isBuiltIn: true,
+    grouping: ["ManufacturerSearchText"],
+    sorting: [{ id: "ManufacturerSearchText", desc: false }],
+    columnVisibility: {},
+    columnFilters: [],
+  },
+  {
+    id: "byDocType",
+    name: "Grouped by Document Type",
+    isBuiltIn: true,
+    grouping: ["DocumentTypeSearchText"],
+    sorting: [{ id: "DocumentTypeSearchText", desc: false }],
+    columnVisibility: {},
+    columnFilters: [],
+  },
+  {
+    id: "summary",
+    name: "Summary (Compact)",
+    isBuiltIn: true,
+    grouping: [],
+    sorting: [{ id: "DocumentDate", desc: true }],
+    columnVisibility: {
+      Alerts: false,
+      CountrySoldTo: false,
+      Confidentiality: false,
+    },
+    columnFilters: [],
+  },
+];
+
+export const getGlobalViews = async (sp: SPFI): Promise<ITableViewPreset[]> => {
+  try {
+    const webInfo = await sp.web.select("ServerRelativeUrl")();
+    const serverRelativeUrl = (webInfo.ServerRelativeUrl || "").replace(/\/$/, "");
+    const filePath = `${serverRelativeUrl}/SiteAssets/AdvanceSearch/globalViews.json`;
+    const content = await sp.web.getFileByServerRelativePath(filePath).getText();
+    const parsed = JSON.parse(content);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed.map((v: ITableViewPreset) => ({ ...v, isBuiltIn: true }));
+    }
+  } catch (e) {
+    // File does not exist or not accessible; return defaults
+  }
+  return DEFAULT_GLOBAL_VIEWS;
+};
+
+export const saveGlobalViews = async (sp: SPFI, views: ITableViewPreset[]): Promise<void> => {
+  const jsonContent = JSON.stringify(views, null, 2);
+  try {
+    const webInfo = await sp.web.select("ServerRelativeUrl")();
+    const serverRelativeUrl = (webInfo.ServerRelativeUrl || "").replace(/\/$/, "");
+    const folderPath = `${serverRelativeUrl}/SiteAssets/AdvanceSearch`;
+
+    // Ensure folder exists
+    try {
+      await sp.web.folders.addUsingPath(`${serverRelativeUrl}/SiteAssets/AdvanceSearch`);
+    } catch {
+      // Folder might already exist
+    }
+
+    const folder = sp.web.getFolderByServerRelativePath(folderPath);
+    await folder.files.addUsingPath("globalViews.json", jsonContent, { Overwrite: true });
+  } catch (err) {
+    console.error("Failed to save global views to SiteAssets:", err);
+    throw err;
   }
 };

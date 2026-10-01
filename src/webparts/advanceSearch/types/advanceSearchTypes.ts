@@ -97,3 +97,15 @@ export interface ISharingConfig {
   subject: string;
   message: string;
 }
+
+export interface ITableViewPreset {
+  id: string;
+  name: string;
+  isBuiltIn?: boolean;
+  grouping?: string[];
+  sorting?: { id: string; desc: boolean }[];
+  columnVisibility?: Record<string, boolean>;
+  columnOrder?: string[];
+  columnFilters?: { id: string; value: unknown }[];
+  columnPinning?: { left?: string[]; right?: string[] };
+}

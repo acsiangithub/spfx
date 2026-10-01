@@ -9,5 +9,5 @@ export interface IAdvanceSearchProps {
   hasTeamsContext: boolean;
   userDisplayName: string;
   context: WebPartContext;
-  
+  isSiteAdmin?: boolean;
 }

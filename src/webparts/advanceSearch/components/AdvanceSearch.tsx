@@ -32,6 +32,10 @@ import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import CheckIcon from "@mui/icons-material/Check";
 import EventBusyIcon from "@mui/icons-material/EventBusy";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
+import PublicIcon from "@mui/icons-material/Public";
+import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import PersonIcon from "@mui/icons-material/Person";
+import SaveIcon from "@mui/icons-material/Save";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -39,6 +43,9 @@ import DialogActions from "@mui/material/DialogActions";
 import Paper, { PaperProps } from "@mui/material/Paper";
 import FormControl from "@mui/material/FormControl";
 import FormControlLabel from "@mui/material/FormControlLabel";
+import FormLabel from "@mui/material/FormLabel";
+import Radio from "@mui/material/Radio";
+import RadioGroup from "@mui/material/RadioGroup";
 import Switch from "@mui/material/Switch";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
@@ -72,6 +79,7 @@ import {
   ISubDocumentTypeItem,
   IFieldFormatters,
   ISharingConfig,
+  ITableViewPreset,
 } from "../types/advanceSearchTypes";
 import {
   sanitizeKqlValue,
@@ -104,6 +112,9 @@ import {
   fetchSingleProductItem as fetchSingleProductItemService,
   searchRecords as searchRecordsService,
   updateItemProperties as updateItemPropertiesService,
+  getGlobalViews as getGlobalViewsService,
+  saveGlobalViews as saveGlobalViewsService,
+  DEFAULT_GLOBAL_VIEWS,
   IEditPropertiesPayload,
   ILibraryColumnChoices,
 } from "../../../services/sharePointService";
@@ -1040,62 +1051,7 @@ const DraggablePaper = React.forwardRef<HTMLDivElement, PaperProps>(function Dra
   );
 });
 
-interface ITableViewPreset {
-  id: string;
-  name: string;
-  isBuiltIn?: boolean;
-  grouping?: MRT_GroupingState;
-  sorting?: MRT_SortingState;
-  columnVisibility?: MRT_VisibilityState;
-  columnOrder?: string[];
-  columnFilters?: MRT_ColumnFiltersState;
-  columnPinning?: MRT_ColumnPinningState;
-}
-
 const STORAGE_KEY_CUSTOM_VIEWS = "advanceSearch_user_views";
-
-const BUILT_IN_VIEWS: ITableViewPreset[] = [
-  {
-    id: "default",
-    name: "All Documents",
-    isBuiltIn: true,
-    grouping: [],
-    sorting: [{ id: "DocumentDate", desc: true }],
-    columnVisibility: {},
-    columnFilters: [],
-  },
-  {
-    id: "byClient",
-    name: "Grouped by Client",
-    isBuiltIn: true,
-    grouping: ["ManufacturerSearchText"],
-    sorting: [{ id: "ManufacturerSearchText", desc: false }],
-    columnVisibility: {},
-    columnFilters: [],
-  },
-  {
-    id: "byDocType",
-    name: "Grouped by Document Type",
-    isBuiltIn: true,
-    grouping: ["DocumentTypeSearchText"],
-    sorting: [{ id: "DocumentTypeSearchText", desc: false }],
-    columnVisibility: {},
-    columnFilters: [],
-  },
-  {
-    id: "summary",
-    name: "Summary (Compact)",
-    isBuiltIn: true,
-    grouping: [],
-    sorting: [{ id: "DocumentDate", desc: true }],
-    columnVisibility: {
-      Alerts: false,
-      CountrySoldTo: false,
-      Confidentiality: false,
-    },
-    columnFilters: [],
-  },
-];
 
 export interface IDateRange {
   from: Dayjs | null;
@@ -1273,6 +1229,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const [grouping, setGrouping] = React.useState<MRT_GroupingState>([]);
 
   // --- View Management State ---
+  const [globalViews, setGlobalViews] = React.useState<ITableViewPreset[]>(DEFAULT_GLOBAL_VIEWS);
   const [selectedViewId, setSelectedViewId] = React.useState<string>("default");
   const [viewMenuAnchorEl, setViewMenuAnchorEl] = React.useState<null | HTMLElement>(null);
   const [customViews, setCustomViews] = React.useState<ITableViewPreset[]>(() => {
@@ -1297,44 +1254,55 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   // Dialog state for "Save Current View"
   const [isSaveViewDialogOpen, setIsSaveViewDialogOpen] = React.useState(false);
   const [newViewName, setNewViewName] = React.useState("");
+  const [saveViewScope, setSaveViewScope] = React.useState<"personal" | "global">("personal");
+  const [isSavingGlobalView, setIsSavingGlobalView] = React.useState(false);
 
   const allAvailableViews = React.useMemo(() => {
-    return [...BUILT_IN_VIEWS, ...customViews];
-  }, [customViews]);
+    return [...globalViews, ...customViews];
+  }, [globalViews, customViews]);
 
   const currentView = React.useMemo(() => {
-    return allAvailableViews.find((v) => v.id === selectedViewId) || BUILT_IN_VIEWS[0];
-  }, [allAvailableViews, selectedViewId]);
+    return allAvailableViews.find((v) => v.id === selectedViewId) || globalViews[0] || DEFAULT_GLOBAL_VIEWS[0];
+  }, [allAvailableViews, selectedViewId, globalViews]);
 
-  const handleApplyView = (viewId: string): void => {
-    setSelectedViewId(viewId);
-    const view = allAvailableViews.find((v) => v.id === viewId);
-    if (!view) return;
-
-    setGrouping(view.grouping ?? []);
-    setSorting(view.sorting ?? []);
-    setColumnVisibility(view.columnVisibility ?? {});
+  const applyPresetToTable = React.useCallback((view: ITableViewPreset): void => {
+    setGrouping((view.grouping as MRT_GroupingState) ?? []);
+    setSorting((view.sorting as MRT_SortingState) ?? []);
+    setColumnVisibility((view.columnVisibility as MRT_VisibilityState) ?? {});
     if (view.columnOrder && view.columnOrder.length > 0) {
       setColumnOrder(view.columnOrder);
     }
     if (view.columnFilters !== undefined) {
-      setColumnFilters(view.columnFilters.filter((f) => isFilterActive(f.value)));
+      setColumnFilters(
+        (view.columnFilters as MRT_ColumnFiltersState).filter((f) =>
+          isFilterActive(f.value)
+        )
+      );
     }
     if (view.columnPinning !== undefined) {
-      setColumnPinning(view.columnPinning);
+      setColumnPinning(view.columnPinning as MRT_ColumnPinningState);
     } else {
       setColumnPinning({ left: [], right: [] });
     }
+  }, []);
+
+  const handleApplyView = (viewId: string): void => {
+    setSelectedViewId(viewId);
+    const view = allAvailableViews.find((v) => v.id === viewId);
+    if (view) {
+      applyPresetToTable(view);
+    }
   };
 
-  const handleSaveCurrentView = (): void => {
+  const handleSaveCurrentView = async (): Promise<void> => {
     const trimmed = newViewName.trim();
     if (!trimmed) return;
 
+    const isGlobal = saveViewScope === "global" && Boolean(props.isSiteAdmin);
     const newView: ITableViewPreset = {
-      id: `custom_${Date.now()}`,
+      id: isGlobal ? `global_${Date.now()}` : `custom_${Date.now()}`,
       name: trimmed,
-      isBuiltIn: false,
+      isBuiltIn: isGlobal,
       grouping,
       sorting,
       columnVisibility,
@@ -1343,17 +1311,36 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       columnPinning,
     };
 
-    const updated = [...customViews.filter((v) => v.name.toLowerCase() !== trimmed.toLowerCase()), newView];
-    setCustomViews(updated);
-    try {
-      localStorage.setItem(STORAGE_KEY_CUSTOM_VIEWS, JSON.stringify(updated));
-    } catch (e) {
-      console.warn("Could not save view to localStorage", e);
+    if (isGlobal) {
+      setIsSavingGlobalView(true);
+      try {
+        const updatedGlobal = [
+          ...globalViews.filter((v) => v.name.toLowerCase() !== trimmed.toLowerCase()),
+          newView,
+        ];
+        await saveGlobalViewsService(activeSp, updatedGlobal);
+        setGlobalViews(updatedGlobal);
+        setSelectedViewId(newView.id);
+        setIsSaveViewDialogOpen(false);
+        setNewViewName("");
+      } catch (err) {
+        console.error("Failed to save global view:", err);
+        alert("Failed to save global preset view. Please check site permissions.");
+      } finally {
+        setIsSavingGlobalView(false);
+      }
+    } else {
+      const updated = [...customViews.filter((v) => v.name.toLowerCase() !== trimmed.toLowerCase()), newView];
+      setCustomViews(updated);
+      try {
+        localStorage.setItem(STORAGE_KEY_CUSTOM_VIEWS, JSON.stringify(updated));
+      } catch (e) {
+        console.warn("Could not save view to localStorage", e);
+      }
+      setSelectedViewId(newView.id);
+      setIsSaveViewDialogOpen(false);
+      setNewViewName("");
     }
-
-    setSelectedViewId(newView.id);
-    setIsSaveViewDialogOpen(false);
-    setNewViewName("");
   };
 
   const handleDeleteView = (viewId: string, e: React.MouseEvent): void => {
@@ -1366,7 +1353,80 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       console.warn("Could not update localStorage", e);
     }
     if (selectedViewId === viewId) {
-      handleApplyView("default");
+      handleApplyView(globalViews[0]?.id || "default");
+    }
+  };
+
+  // Admin action: Overwrite an existing global preset with current table layout
+  const handleUpdateGlobalViewWithCurrentState = async (viewId: string, e: React.MouseEvent): Promise<void> => {
+    e.stopPropagation();
+    if (!props.isSiteAdmin) return;
+    const target = globalViews.find((v) => v.id === viewId);
+    if (!target) return;
+
+    if (!window.confirm(`Update global preset "${target.name}" with the current column layout, filters, and grouping?`)) {
+      return;
+    }
+
+    const updatedPreset: ITableViewPreset = {
+      ...target,
+      grouping,
+      sorting,
+      columnVisibility,
+      columnOrder,
+      columnFilters: activeColumnFilters,
+      columnPinning,
+    };
+
+    const updatedGlobal = globalViews.map((v) => (v.id === viewId ? updatedPreset : v));
+    try {
+      await saveGlobalViewsService(activeSp, updatedGlobal);
+      setGlobalViews(updatedGlobal);
+    } catch (err) {
+      console.error("Failed to update global view:", err);
+      alert("Failed to update global view.");
+    }
+  };
+
+  // Admin action: Delete a global preset view
+  const handleDeleteGlobalView = async (viewId: string, e: React.MouseEvent): Promise<void> => {
+    e.stopPropagation();
+    if (!props.isSiteAdmin) return;
+    if (globalViews.length <= 1) {
+      alert("Cannot delete the last remaining preset view.");
+      return;
+    }
+    const target = globalViews.find((v) => v.id === viewId);
+    if (!window.confirm(`Are you sure you want to delete global preset "${target?.name || viewId}" for all users?`)) {
+      return;
+    }
+
+    const updatedGlobal = globalViews.filter((v) => v.id !== viewId);
+    try {
+      await saveGlobalViewsService(activeSp, updatedGlobal);
+      setGlobalViews(updatedGlobal);
+      if (selectedViewId === viewId) {
+        handleApplyView(updatedGlobal[0]?.id || "default");
+      }
+    } catch (err) {
+      console.error("Failed to delete global view:", err);
+      alert("Failed to delete global view.");
+    }
+  };
+
+  // Admin action: Reset global presets to factory defaults
+  const handleResetGlobalViewsToDefault = async (): Promise<void> => {
+    if (!props.isSiteAdmin) return;
+    if (!window.confirm("Reset all global preset views to default system views for all users?")) {
+      return;
+    }
+    try {
+      await saveGlobalViewsService(activeSp, DEFAULT_GLOBAL_VIEWS);
+      setGlobalViews(DEFAULT_GLOBAL_VIEWS);
+      handleApplyView(DEFAULT_GLOBAL_VIEWS[0].id);
+    } catch (err) {
+      console.error("Failed to reset global views:", err);
+      alert("Failed to reset global views.");
     }
   };
 
@@ -1821,9 +1881,25 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       }
     };
 
+    const loadGlobalPresetViews = async (): Promise<void> => {
+      try {
+        const presets = await getGlobalViewsService(activeSp);
+        if (presets && presets.length > 0) {
+          setGlobalViews(presets);
+          const activePreset = presets.find((p) => p.id === selectedViewId) || presets[0];
+          if (activePreset) {
+            applyPresetToTable(activePreset);
+          }
+        }
+      } catch (err) {
+        console.warn("loadGlobalPresetViews error:", err);
+      }
+    };
+
     void loadTaxonomy();
     void loadSharingConfig();
     void loadFieldMetadata();
+    void loadGlobalPresetViews();
     void loadInitialRecords();
   }, [activeSp]);
 
@@ -4351,7 +4427,9 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                 px: 2,
                 pt: 1,
                 pb: 0.5,
-                display: "block",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
                 fontSize: "10.5px",
                 fontWeight: 700,
                 color: "text.secondary",
@@ -4359,10 +4437,23 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                 letterSpacing: "0.5px",
               }}
             >
-              Standard Views
+              <span>Global Presets</span>
+              {props.isSiteAdmin && (
+                <Chip
+                  size="small"
+                  label="Admin"
+                  sx={{
+                    height: "16px",
+                    fontSize: "9px",
+                    fontWeight: 700,
+                    bgcolor: "rgba(25, 118, 210, 0.1)",
+                    color: "primary.main",
+                  }}
+                />
+              )}
             </Typography>
 
-            {BUILT_IN_VIEWS.map((v) => (
+            {globalViews.map((v) => (
               <MenuItem
                 key={v.id}
                 selected={selectedViewId === v.id}
@@ -4376,23 +4467,89 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                   px: 1.5,
                   display: "flex",
                   alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1, overflow: "hidden" }}>
+                  <Box sx={{ width: 16, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    {selectedViewId === v.id && (
+                      <CheckIcon sx={{ fontSize: 16, color: "primary.main" }} />
+                    )}
+                  </Box>
+                  <ListItemText
+                    primary={v.name}
+                    primaryTypographyProps={{
+                      fontSize: "12.5px",
+                      fontWeight: selectedViewId === v.id ? 600 : 400,
+                      noWrap: true,
+                    }}
+                  />
+                </Box>
+                {props.isSiteAdmin && (
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, ml: 1, flexShrink: 0 }}>
+                    <Tooltip title="Overwrite preset with current table layout">
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          void handleUpdateGlobalViewWithCurrentState(v.id, e);
+                        }}
+                        sx={{
+                          p: 0.25,
+                          color: "text.secondary",
+                          "&:hover": { color: "primary.main" },
+                        }}
+                      >
+                        <SaveIcon sx={{ fontSize: 15 }} />
+                      </IconButton>
+                    </Tooltip>
+                    {globalViews.length > 1 && (
+                      <Tooltip title="Delete global preset">
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            void handleDeleteGlobalView(v.id, e);
+                          }}
+                          sx={{
+                            p: 0.25,
+                            color: "text.secondary",
+                            "&:hover": { color: "error.main" },
+                          }}
+                        >
+                          <DeleteOutlineIcon sx={{ fontSize: 15 }} />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                  </Box>
+                )}
+              </MenuItem>
+            ))}
+
+            {props.isSiteAdmin && (
+              <MenuItem
+                onClick={() => {
+                  setViewMenuAnchorEl(null);
+                  void handleResetGlobalViewsToDefault();
+                }}
+                sx={{
+                  fontSize: "11.5px",
+                  py: 0.5,
+                  px: 1.5,
+                  color: "text.secondary",
+                  display: "flex",
+                  alignItems: "center",
                   gap: 1,
+                  "&:hover": { color: "warning.main" },
                 }}
               >
                 <Box sx={{ width: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  {selectedViewId === v.id && (
-                    <CheckIcon sx={{ fontSize: 16, color: "primary.main" }} />
-                  )}
+                  <RestartAltIcon sx={{ fontSize: 15 }} />
                 </Box>
                 <ListItemText
-                  primary={v.name}
-                  primaryTypographyProps={{
-                    fontSize: "12.5px",
-                    fontWeight: selectedViewId === v.id ? 600 : 400,
-                  }}
+                  primary="Reset Presets to Default"
+                  primaryTypographyProps={{ fontSize: "11.5px" }}
                 />
               </MenuItem>
-            ))}
+            )}
 
             {customViews.length > 0 && (
               <>
@@ -4411,7 +4568,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                     letterSpacing: "0.5px",
                   }}
                 >
-                  Saved Views
+                  My Saved Views
                 </Typography>
                 {customViews.map((v) => (
                   <MenuItem
@@ -5724,7 +5881,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         {/* Modal Dialog to Name & Save Custom View */}
         <Dialog
           open={isSaveViewDialogOpen}
-          onClose={() => setIsSaveViewDialogOpen(false)}
+          onClose={() => !isSavingGlobalView && setIsSaveViewDialogOpen(false)}
           maxWidth="xs"
           fullWidth
         >
@@ -5733,8 +5890,45 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           </DialogTitle>
           <DialogContent sx={{ px: 2, pt: 1 }}>
             <Typography variant="body2" sx={{ fontSize: "12px", color: "text.secondary", mb: 1.5 }}>
-              Saves the current column order, visibility, grouping, and sorting.
+              Saves the current column order, visibility, grouping, sorting, and pinning.
             </Typography>
+
+            {props.isSiteAdmin && (
+              <Box sx={{ mb: 2, p: 1.5, bgcolor: "#f8fafc", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                <FormLabel sx={{ fontSize: "11.5px", fontWeight: 600, color: "text.primary", mb: 0.5, display: "block" }}>
+                  View Scope
+                </FormLabel>
+                <RadioGroup
+                  row
+                  value={saveViewScope}
+                  onChange={(e) => setSaveViewScope(e.target.value as "personal" | "global")}
+                >
+                  <FormControlLabel
+                    value="personal"
+                    control={<Radio size="small" />}
+                    label={
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                        <PersonIcon sx={{ fontSize: 16, color: "text.secondary" }} />
+                        <Typography sx={{ fontSize: "12px" }}>Personal (Only me)</Typography>
+                      </Box>
+                    }
+                  />
+                  <FormControlLabel
+                    value="global"
+                    control={<Radio size="small" />}
+                    label={
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                        <PublicIcon sx={{ fontSize: 16, color: "primary.main" }} />
+                        <Typography sx={{ fontSize: "12px", fontWeight: 500, color: "primary.main" }}>
+                          Global Preset (Everyone)
+                        </Typography>
+                      </Box>
+                    }
+                  />
+                </RadioGroup>
+              </Box>
+            )}
+
             <TextField
               autoFocus
               fullWidth
@@ -5742,10 +5936,11 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
               label="View Name"
               placeholder="e.g. My Custom View"
               value={newViewName}
+              disabled={isSavingGlobalView}
               onChange={(e) => setNewViewName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && newViewName.trim()) {
-                  handleSaveCurrentView();
+                if (e.key === "Enter" && newViewName.trim() && !isSavingGlobalView) {
+                  void handleSaveCurrentView();
                 }
               }}
             />
@@ -5754,6 +5949,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             <Button
               onClick={() => setIsSaveViewDialogOpen(false)}
               size="small"
+              disabled={isSavingGlobalView}
               sx={{ textTransform: "none", fontSize: "12px" }}
             >
               Cancel
@@ -5761,11 +5957,16 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             <Button
               variant="contained"
               size="small"
-              disabled={!newViewName.trim()}
-              onClick={handleSaveCurrentView}
+              disabled={!newViewName.trim() || isSavingGlobalView}
+              onClick={() => void handleSaveCurrentView()}
+              startIcon={isSavingGlobalView ? <CircularProgress size={14} color="inherit" /> : undefined}
               sx={{ textTransform: "none", fontSize: "12px", fontWeight: 600 }}
             >
-              Save View
+              {isSavingGlobalView
+                ? "Saving..."
+                : saveViewScope === "global" && props.isSiteAdmin
+                ? "Save for Everyone"
+                : "Save View"}
             </Button>
           </DialogActions>
         </Dialog>

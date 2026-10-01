@@ -127,6 +127,11 @@ export default class AdvanceSearchWebPart extends BaseClientSideWebPart<IAdvance
       this._resizeObserver.observe(target);
     }
 
+    const isSiteAdmin = Boolean(
+      (this.context.pageContext.legacyPageContext as any)?.isSiteAdmin ||
+      (this.context.pageContext.user as any)?.isSiteAdmin
+    );
+
     const element: React.ReactElement<IAdvanceSearchProps> = React.createElement(
       AdvanceSearch,
       {
@@ -137,7 +142,8 @@ export default class AdvanceSearchWebPart extends BaseClientSideWebPart<IAdvance
         environmentMessage: this._environmentMessage,
         hasTeamsContext: !!this.context.sdks.microsoftTeams,
         userDisplayName: this.context.pageContext.user.displayName,
-        context: this.context
+        context: this.context,
+        isSiteAdmin
       }
     );
 
