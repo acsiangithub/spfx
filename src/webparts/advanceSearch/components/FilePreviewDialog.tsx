@@ -28,6 +28,7 @@ export const FilePreviewDialog: React.FC<IFilePreviewDialogProps> = ({
 }) => {
   const [isLoading, setIsLoading] = React.useState<boolean>(true);
   const [iframeKey, setIframeKey] = React.useState<number>(0);
+  const iframeRef = React.useRef<HTMLIFrameElement | null>(null);
 
   // Reset loading state whenever dialog opens or previewUrl changes
   React.useEffect(() => {
@@ -46,6 +47,54 @@ export const FilePreviewDialog: React.FC<IFilePreviewDialogProps> = ({
   const handleRefreshIframe = (): void => {
     setIsLoading(true);
     setIframeKey((prev) => prev + 1);
+  };
+
+  const handleIframeLoad = (): void => {
+    setIsLoading(false);
+
+    // Safely inject CSS into same-origin iframe document to hide inner SharePoint close button
+    try {
+      const doc = iframeRef.current?.contentDocument;
+      if (doc) {
+        // 1. Inject CSS rule to hide #closeCommand
+        const styleId = "hide-sp-inner-close-command";
+        if (!doc.getElementById(styleId)) {
+          const styleEl = doc.createElement("style");
+          styleEl.id = styleId;
+          styleEl.textContent = `
+            #closeCommand,
+            [data-automation-id="closeCommand"],
+            button[aria-label="Close"][data-automation-id="closeCommand"] {
+              display: none !important;
+              visibility: hidden !important;
+            }
+          `;
+          doc.head?.appendChild(styleEl);
+        }
+
+        // 2. Fallback listener: if user still somehow clicks close or presses Escape inside iframe, invoke onClose
+        const handleInnerClick = (e: MouseEvent): void => {
+          const target = e.target as HTMLElement | null;
+          if (target && target.closest('#closeCommand, [data-automation-id="closeCommand"]')) {
+            e.preventDefault();
+            e.stopPropagation();
+            onClose();
+          }
+        };
+
+        const handleInnerKeydown = (e: KeyboardEvent): void => {
+          if (e.key === "Escape") {
+            onClose();
+          }
+        };
+
+        doc.addEventListener("click", handleInnerClick, true);
+        doc.addEventListener("keydown", handleInnerKeydown, true);
+      }
+    } catch (err) {
+      // Cross-origin fallback (in case preview domain is different)
+      console.warn("Could not access iframe document to hide inner close button:", err);
+    }
   };
 
   const filename = item?.filename || "Document Preview";
@@ -154,10 +203,11 @@ export const FilePreviewDialog: React.FC<IFilePreviewDialogProps> = ({
 
         {previewUrl ? (
           <iframe
+            ref={iframeRef}
             key={iframeKey}
             src={previewUrl}
             title={filename}
-            onLoad={() => setIsLoading(false)}
+            onLoad={handleIframeLoad}
             style={{
               width: "100%",
               height: "100%",
