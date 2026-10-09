@@ -99,7 +99,7 @@ const EmailPeoplePickerInput: React.FC<IEmailPeoplePickerInputProps> = ({
   }, [inputValue, sp]);
 
   return (
-    <Autocomplete
+    <Autocomplete<any, true, false, true>
       multiple
       freeSolo
       size="small"
@@ -232,14 +232,15 @@ const EmailPeoplePickerInput: React.FC<IEmailPeoplePickerInputProps> = ({
           </li>
         );
       }}
-      renderTags={(value: readonly string[], getTagProps) =>
-        value.map((option: string, index: number) => {
-          const isValid = validateEmail(option);
+      renderTags={(value: any[], getTagProps) =>
+        value.map((option: any, index: number) => {
+          const emailText = typeof option === "string" ? option : option.email || option.displayText || "";
+          const isValid = validateEmail(emailText);
           return (
             <Chip
               {...getTagProps({ index })}
               key={index}
-              label={option}
+              label={emailText}
               size="small"
               sx={{
                 height: "24px",
@@ -332,6 +333,7 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
   });
   const [shareErrorMessage, setShareErrorMessage] = React.useState<string>("");
   const [isSharing, setIsSharing] = React.useState(false);
+  const [isNewSharing, setIsNewSharing] = React.useState(false);
 
   React.useEffect(() => {
     if (open) {
@@ -346,6 +348,8 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
       setMessage(defaultMessage);
       setEmailErrors({ to: "", cc: "", bcc: "" });
       setShareErrorMessage("");
+      setIsSharing(false);
+      setIsNewSharing(false);
     }
   }, [open, defaultSubject, defaultMessage, currentUserEmail]);
 
@@ -376,6 +380,8 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
     setMessage("");
     setEmailErrors({ to: "", cc: "", bcc: "" });
     setShareErrorMessage("");
+    setIsSharing(false);
+    setIsNewSharing(false);
     onClose();
   };
 
@@ -539,6 +545,96 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
     }
   };
 
+  const handleNewSend = async () => {
+    // Flush any pending text input into the email arrays
+    const finalTo = [
+      ...toEmails,
+      ...(toInput.trim() ? toInput.split(/[,;]/).map((e) => e.trim()).filter(Boolean) : []),
+    ];
+    const finalCc = [
+      ...ccEmails,
+      ...(ccInput.trim() ? ccInput.split(/[,;]/).map((e) => e.trim()).filter(Boolean) : []),
+    ];
+    const finalBcc = [
+      ...bccEmails,
+      ...(bccInput.trim() ? bccInput.split(/[,;]/).map((e) => e.trim()).filter(Boolean) : []),
+    ];
+
+    const toError = finalTo.length === 0 ? "At least one recipient is required." : validateEmailList(finalTo);
+    const ccError = validateEmailList(finalCc);
+    const bccError = validateEmailList(finalBcc);
+
+    if (toError || ccError || bccError) {
+      setEmailErrors({ to: toError, cc: ccError, bcc: bccError });
+      return;
+    }
+
+    const flowTriggerUrl = (shareFlowUrl || DEFAULT_SHARE_FLOW_URL || "").trim();
+    if (!flowTriggerUrl) {
+      setShareErrorMessage("Sharing Flow URL is not configured. Please configure it in the Web Part properties.");
+      return;
+    }
+
+    setShareErrorMessage("");
+
+    // Recipient & Document Classification (Front-end check)
+    const allRecipients = Array.from(
+      new Set([...finalTo, ...finalCc, ...finalBcc].map((e) => e.trim()).filter(Boolean))
+    );
+    const externalRecipients = allRecipients.filter((email) => !isInternalEmail(email));
+    const hasAtLeastOneInternalDocument =
+      selectedItems.length > 0 && selectedItems.some((item) => isInternalDocument(item));
+
+    let documentsForPayload = selectedItems;
+
+    // Check if at least one selected item is Internal and there is an external recipient
+    if (hasAtLeastOneInternalDocument && externalRecipients.length > 0) {
+      const uniqueExternalRecipients = externalRecipients.filter((e, idx, arr) => arr.indexOf(e) === idx);
+      const internalWarningMessage =
+        `At least one document is marked as "Internal" and cannot be shared with ` +
+        `External recipient(s): ${uniqueExternalRecipients.join("; ")}\n\n` +
+        `To share the "Internal" document(s) with internal recipients, remove the external recipient(s) and send the email again.\n\n` +
+        `Alternatively, remove the Internal document(s) and send the email again.\n\n` +
+        `If you continue, only the "non-Internal" document(s) will be shared with all recipients.\n\n` +
+        `Select OK to continue, or Cancel to edit.`;
+
+      if (!window.confirm(internalWarningMessage)) {
+        return;
+      }
+
+      // Filter out "Internal" documents when user confirms OK
+      documentsForPayload = selectedItems.filter((item) => !isInternalDocument(item));
+    }
+
+    const documents = documentsForPayload.map((item) => ({
+      id: String(item.id ?? item.ID ?? ""),
+      name: item.filename || item.OriginalFilename || item.FileLeafRef || "Unnamed document",
+      confidentiality: item.Confidentiality || "",
+    }));
+
+    const formattedBody = (message || "").replace(/\r?\n/g, "<br/>");
+    const payload: IShareFlowPayload = {
+      senderEmail: (currentUserEmail || "").trim(),
+      to: finalTo.map((e) => e.trim()).filter(Boolean).join(";"),
+      cc: finalCc.map((e) => e.trim()).filter(Boolean).join(";"),
+      bcc: finalBcc.map((e) => e.trim()).filter(Boolean).join(";"),
+      subject: (subject || "").trim(),
+      body: formattedBody,
+      confirmSend: true,
+      documents,
+    };
+
+    setIsNewSharing(true);
+
+    try {
+      await postToShareFlow(flowTriggerUrl, payload);
+    } catch (error: any) {
+      console.error("Error during New Send sharing flow:", error);
+    } finally {
+      setIsNewSharing(false);
+    }
+  };
+
   const handleFieldBlur = (field: "to" | "cc" | "bcc", currentAll: string[]) => {
     const err =
       field === "to" && currentAll.length === 0
@@ -638,8 +734,14 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
       <DialogActions>
         <Button onClick={handleClose}>Cancel</Button>
         <Button
+          onClick={handleNewSend}
+          disabled={!isFormValid || isSharing || isNewSharing}
+        >
+          {isNewSharing ? "Sharing..." : "New Send"}
+        </Button>
+        <Button
           onClick={handleSend}
-          disabled={!isFormValid || isSharing}
+          disabled={!isFormValid || isSharing || isNewSharing}
         >
           {isSharing ? "Sharing..." : "Send"}
         </Button>
