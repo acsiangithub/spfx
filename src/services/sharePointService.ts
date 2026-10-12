@@ -2197,9 +2197,37 @@ export const getSenderUserAccessMatrix = async (
   }
 };
 
+export interface ICountryRegionMap {
+  [country: string]: string;
+}
+
+export const getCountryRegionMapping = async (sp: SPFI): Promise<ICountryRegionMap> => {
+  if (!sp) return {};
+  try {
+    const items = await sp.web.lists
+      .getByTitle("Country Region")
+      .items.select("Country", "Region")
+      .top(500)();
+
+    const map: ICountryRegionMap = {};
+    items.forEach((item: any) => {
+      const country = (item.Country || "").trim().toLowerCase();
+      const region = (item.Region || "").trim().toLowerCase();
+      if (country && region) {
+        map[country] = region;
+      }
+    });
+    return map;
+  } catch (err) {
+    console.warn("Failed to fetch Country Region list:", err);
+    return {};
+  }
+};
+
 export const checkConfidentialDocumentAccess = (
   docItem: any,
-  matrix: IUserAccessMatrixRecord
+  matrix: IUserAccessMatrixRecord,
+  countryRegionMap: ICountryRegionMap = {}
 ): boolean => {
   if (!matrix.confidentialRights) {
     return false;
@@ -2228,13 +2256,23 @@ export const checkConfidentialDocumentAccess = (
     .map((s: string) => s.trim().toLowerCase())
     .filter(Boolean);
 
+  // Expand doc locations to include corresponding region from Country Region list
+  const docLocations = new Set<string>();
+  docCountries.forEach((c: string) => {
+    docLocations.add(c);
+    const region = countryRegionMap[c];
+    if (region) {
+      docLocations.add(region);
+    }
+  });
+
   // If document does not specify BL and country, check if user has global or any AllBL permissions
   if (docBLs.length === 0 && docCountries.length === 0) {
     return allBLLocations.length > 0;
   }
 
-  // 1. Check All-BL access against doc countries
-  if (docCountries.length > 0 && allBLLocations.some((l) => docCountries.includes(l))) {
+  // 1. Check All-BL access against doc countries and region
+  if (docLocations.size > 0 && Array.from(docLocations).some((loc) => allBLLocations.includes(loc))) {
     return true;
   }
 
@@ -2242,14 +2280,14 @@ export const checkConfidentialDocumentAccess = (
   for (const bl of docBLs) {
     const perm = matrix.blPermissions[bl];
     if (perm) {
-      const allowedCountries = [...perm.edit, ...perm.view].map((c: string) => c.toLowerCase());
-      if (allowedCountries.some((c: string) => c.includes("global"))) {
+      const allowedLocations = [...perm.edit, ...perm.view].map((c: string) => c.toLowerCase());
+      if (allowedLocations.some((c: string) => c.includes("global"))) {
         return true;
       }
-      if (docCountries.length === 0 && allowedCountries.length > 0) {
+      if (docCountries.length === 0 && allowedLocations.length > 0) {
         return true;
       }
-      if (docCountries.some((c: string) => allowedCountries.includes(c))) {
+      if (Array.from(docLocations).some((loc) => allowedLocations.includes(loc))) {
         return true;
       }
     }

@@ -9,6 +9,7 @@ import {
   IPeoplePickerUserOption,
   getSenderUserAccessMatrix,
   checkConfidentialDocumentAccess,
+  getCountryRegionMapping,
 } from "../../../services/sharePointService";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
@@ -387,6 +388,7 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
     onClose();
   };
 
+  // @ts-ignore - Preserved as backup for reference
   const handleSend = async () => {
     // Flush any pending text input into the email arrays
     const finalTo = [
@@ -622,9 +624,14 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
     let rejectedConfidentialDocs: any[] = [];
     if (confidentialDocs.length > 0) {
       setIsNewSharing(true);
-      const senderMatrix = await getSenderUserAccessMatrix(activeSp, currentUserEmail);
+      const [senderMatrix, countryRegionMap] = await Promise.all([
+        getSenderUserAccessMatrix(activeSp, currentUserEmail),
+        getCountryRegionMapping(activeSp),
+      ]);
       confidentialDocs.forEach((doc) => {
-        const isAuthorized = senderMatrix ? checkConfidentialDocumentAccess(doc, senderMatrix) : false;
+        const isAuthorized = senderMatrix
+          ? checkConfidentialDocumentAccess(doc, senderMatrix, countryRegionMap)
+          : false;
         if (!isAuthorized) {
           rejectedConfidentialDocs.push(doc);
         }
@@ -834,14 +841,16 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
           onClick={handleNewSend}
           disabled={!isFormValid || isSharing || isNewSharing}
         >
-          {isNewSharing ? "Sharing..." : "New Send"}
+          {isNewSharing ? "Sharing..." : "Send"}
         </Button>
+        {/* Backup of Legacy Send Button - kept hidden for reference
         <Button
           onClick={handleSend}
           disabled={!isFormValid || isSharing || isNewSharing}
         >
           {isSharing ? "Sharing..." : "Send"}
         </Button>
+        */}
       </DialogActions>
     </Dialog>
   );
