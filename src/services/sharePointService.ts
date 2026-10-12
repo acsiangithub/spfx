@@ -2095,3 +2095,165 @@ export const saveGlobalViews = async (sp: SPFI, views: ITableViewPreset[]): Prom
     throw err;
   }
 };
+
+export interface IUserAccessMatrixRecord {
+  Id: number;
+  userEmail: string;
+  confidentialRights: boolean;
+  editAllBL: string[];
+  viewAllBL: string[];
+  blPermissions: Record<string, { edit: string[]; view: string[] }>;
+  userCountry?: string;
+}
+
+export const getSenderUserAccessMatrix = async (
+  sp: SPFI,
+  userEmail: string
+): Promise<IUserAccessMatrixRecord | null> => {
+  if (!sp || !userEmail || !userEmail.trim()) {
+    return null;
+  }
+
+  const cleanEmail = userEmail.trim().replace(/'/g, "''");
+
+  try {
+    const items = await sp.web.lists
+      .getByTitle("User Access Matrix")
+      .items.select(
+        "Id",
+        "UserName/EMail",
+        "UserName/Title",
+        "ConfidentialRights_x003f_",
+        "EDIT_x002d_ALLBL",
+        "AllBL_x002d_VIEW",
+        "FBI_x002d_EDIT",
+        "FBI_x002d_VIEW",
+        "SCI_x002d_EDIT",
+        "SCI_x002d_VIEW",
+        "PHI_x002d_EDIT",
+        "PHI_x002d_VIEW",
+        "PCI_x002d_EDIT",
+        "PCI_x002d_VIEW",
+        "AccessGranted_x003f_",
+        "User_x0020_Country"
+      )
+      .expand("UserName")
+      .filter(`UserName/EMail eq '${cleanEmail}'`)
+      .top(1)();
+
+    if (!items || items.length === 0) {
+      console.warn(`User Access Matrix record not found for: ${userEmail}`);
+      return null;
+    }
+
+    const row = items[0];
+
+    const toArray = (val: any): string[] => {
+      if (!val) return [];
+      if (Array.isArray(val)) return val.map((v) => String(v).trim()).filter(Boolean);
+      return String(val)
+        .split(/[;,]+/)
+        .map((v) => v.trim())
+        .filter(Boolean);
+    };
+
+    const isYes = (val: any): boolean => {
+      if (!val) return false;
+      const str = String(val).trim().toLowerCase();
+      return str === "yes" || str === "true";
+    };
+
+    const blPermissions: Record<string, { edit: string[]; view: string[] }> = {
+      fbi: {
+        edit: toArray(row.FBI_x002d_EDIT),
+        view: toArray(row.FBI_x002d_VIEW),
+      },
+      sci: {
+        edit: toArray(row.SCI_x002d_EDIT),
+        view: toArray(row.SCI_x002d_VIEW),
+      },
+      phi: {
+        edit: toArray(row.PHI_x002d_EDIT),
+        view: toArray(row.PHI_x002d_VIEW),
+      },
+      pci: {
+        edit: toArray(row.PCI_x002d_EDIT),
+        view: toArray(row.PCI_x002d_VIEW),
+      },
+    };
+
+    return {
+      Id: row.Id,
+      userEmail: row.UserName?.EMail || userEmail,
+      confidentialRights: isYes(row.ConfidentialRights_x003f_),
+      editAllBL: toArray(row.EDIT_x002d_ALLBL),
+      viewAllBL: toArray(row.AllBL_x002d_VIEW),
+      blPermissions,
+      userCountry: row.User_x0020_Country ? String(row.User_x0020_Country).trim() : undefined,
+    };
+  } catch (error) {
+    console.error("Error fetching User Access Matrix record:", error);
+    return null;
+  }
+};
+
+export const checkConfidentialDocumentAccess = (
+  docItem: any,
+  matrix: IUserAccessMatrixRecord
+): boolean => {
+  if (!matrix.confidentialRights) {
+    return false;
+  }
+
+  const allBLLocations = [...matrix.editAllBL, ...matrix.viewAllBL].map((l) => l.toLowerCase());
+  if (allBLLocations.some((l) => l.includes("global"))) {
+    return true;
+  }
+
+  const docBLs = (
+    docItem.BusinessLine ||
+    docItem.Business_x0020_Line ||
+    ""
+  )
+    .split(/[;,]+/)
+    .map((s: string) => s.trim().toLowerCase())
+    .filter(Boolean);
+
+  const docCountries = (
+    docItem.CountrySoldTo ||
+    docItem.Country ||
+    ""
+  )
+    .split(/[;,]+/)
+    .map((s: string) => s.trim().toLowerCase())
+    .filter(Boolean);
+
+  // If document does not specify BL and country, check if user has global or any AllBL permissions
+  if (docBLs.length === 0 && docCountries.length === 0) {
+    return allBLLocations.length > 0;
+  }
+
+  // 1. Check All-BL access against doc countries
+  if (docCountries.length > 0 && allBLLocations.some((l) => docCountries.includes(l))) {
+    return true;
+  }
+
+  // 2. Check specific BL access
+  for (const bl of docBLs) {
+    const perm = matrix.blPermissions[bl];
+    if (perm) {
+      const allowedCountries = [...perm.edit, ...perm.view].map((c: string) => c.toLowerCase());
+      if (allowedCountries.some((c: string) => c.includes("global"))) {
+        return true;
+      }
+      if (docCountries.length === 0 && allowedCountries.length > 0) {
+        return true;
+      }
+      if (docCountries.some((c: string) => allowedCountries.includes(c))) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+};

@@ -7,6 +7,8 @@ import {
   IShareFlowPayload,
   searchSharePointUsers,
   IPeoplePickerUserOption,
+  getSenderUserAccessMatrix,
+  checkConfidentialDocumentAccess,
 } from "../../../services/sharePointService";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
@@ -582,28 +584,114 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
       new Set([...finalTo, ...finalCc, ...finalBcc].map((e) => e.trim()).filter(Boolean))
     );
     const externalRecipients = allRecipients.filter((email) => !isInternalEmail(email));
+    const internalRecipients = allRecipients.filter((email) => isInternalEmail(email));
+
+    const allSelectedDocumentsInternal =
+      selectedItems.length > 0 && selectedItems.every((item) => isInternalDocument(item));
     const hasAtLeastOneInternalDocument =
       selectedItems.length > 0 && selectedItems.some((item) => isInternalDocument(item));
+    const hasInternalExternalRestriction =
+      hasAtLeastOneInternalDocument && !allSelectedDocumentsInternal && externalRecipients.length > 0;
 
-    let documentsForPayload = selectedItems;
-
-    // Check if at least one selected item is Internal and there is an external recipient
-    if (hasAtLeastOneInternalDocument && externalRecipients.length > 0) {
+    // Hard block check: 100% of selected documents are Internal and there is an external recipient
+    if (allSelectedDocumentsInternal && externalRecipients.length > 0) {
       const uniqueExternalRecipients = externalRecipients.filter((e, idx, arr) => arr.indexOf(e) === idx);
-      const internalWarningMessage =
-        `At least one document is marked as "Internal" and cannot be shared with ` +
-        `External recipient(s): ${uniqueExternalRecipients.join("; ")}\n\n` +
-        `To share the "Internal" document(s) with internal recipients, remove the external recipient(s) and send the email again.\n\n` +
-        `Alternatively, remove the Internal document(s) and send the email again.\n\n` +
-        `If you continue, only the "non-Internal" document(s) will be shared with all recipients.\n\n` +
-        `Select OK to continue, or Cancel to edit.`;
+      const uniqueInternalRecipients = internalRecipients.filter((e, idx, arr) => arr.indexOf(e) === idx);
 
-      if (!window.confirm(internalWarningMessage)) {
-        return;
+      let blockMessage =
+        `This document is marked Internal and cannot be shared with external recipients:\n` +
+        `${uniqueExternalRecipients.join("; ")}\n\n`;
+
+      if (uniqueInternalRecipients.length > 0) {
+        blockMessage +=
+          `To share it with the internal recipients: ${uniqueInternalRecipients.join("; ")}, remove the external recipients and send the email again.\n\n`;
       }
 
-      // Filter out "Internal" documents when user confirms OK
-      documentsForPayload = selectedItems.filter((item) => !isInternalDocument(item));
+      blockMessage +=
+        `If external sharing is required, contact your QA/RA Lead to review the document's confidentiality setting.`;
+
+      setShareErrorMessage(blockMessage);
+      return;
+    }
+
+    // Check Confidential documents against User Access Matrix via PnPjs
+    const confidentialDocs = selectedItems.filter(
+      (item) => (item?.Confidentiality || "").trim().toLowerCase() === "confidential"
+    );
+
+    let rejectedConfidentialDocs: any[] = [];
+    if (confidentialDocs.length > 0) {
+      setIsNewSharing(true);
+      const senderMatrix = await getSenderUserAccessMatrix(activeSp, currentUserEmail);
+      confidentialDocs.forEach((doc) => {
+        const isAuthorized = senderMatrix ? checkConfidentialDocumentAccess(doc, senderMatrix) : false;
+        if (!isAuthorized) {
+          rejectedConfidentialDocs.push(doc);
+        }
+      });
+      setIsNewSharing(false);
+    }
+
+    const hasConfidentialRejection = rejectedConfidentialDocs.length > 0;
+
+    // Consolidated prompt: Match the exact unified style from the original Send logic
+    if (hasConfidentialRejection || hasInternalExternalRestriction) {
+      const rejectedDocNames = rejectedConfidentialDocs.map(
+        (doc) => `- ${doc.filename || doc.OriginalFilename || doc.FileLeafRef || "Unnamed document"}`
+      );
+      const documentList = rejectedDocNames.length > 0
+        ? `\n\nThe following confidential document(s) cannot be shared:\n${rejectedDocNames.join("\n")}`
+        : "";
+
+      const uniqueExternalRecipients = externalRecipients.filter((e, idx, arr) => arr.indexOf(e) === idx);
+
+      let warningMessage = "";
+
+      if (hasConfidentialRejection) {
+        warningMessage =
+          "Some document(s) cannot be shared because you do not have the required rights to share them." +
+          documentList +
+          (hasInternalExternalRestriction
+            ? '\n\nAt least one document is marked as "Internal" and cannot be shared with External recipient(s).'
+            : "") +
+          "\n\nIf you continue, only the eligible document(s) will be shared with the recipients." +
+          "\n\nAlternatively, remove the restricted document(s) and send the email again." +
+          "\n\nSelect OK to continue, or Cancel to edit.";
+      } else {
+        warningMessage =
+          `At least one document is marked as "Internal" and cannot be shared with ` +
+          `External recipient(s): ${uniqueExternalRecipients.join("; ")}\n\n` +
+          `To share the "Internal" document(s) with internal recipients, remove the external recipient(s) and send the email again.\n\n` +
+          `Alternatively, remove the Internal document(s) and send the email again.\n\n` +
+          `If you continue, only the "non-Internal" document(s) will be shared with all recipients.\n\n` +
+          `Select OK to continue, or Cancel to edit.`;
+      }
+
+      if (!window.confirm(warningMessage)) {
+        return;
+      }
+    }
+
+    // Filter documents for payload based on exclusions
+    let documentsForPayload = selectedItems;
+
+    // 1. Filter out Internal documents if there are external recipients
+    if (hasInternalExternalRestriction) {
+      documentsForPayload = documentsForPayload.filter((item) => !isInternalDocument(item));
+    }
+
+    // 2. Filter out rejected Confidential documents
+    if (hasConfidentialRejection) {
+      const rejectedIds = new Set(rejectedConfidentialDocs.map((doc) => doc.id ?? doc.ID));
+      documentsForPayload = documentsForPayload.filter(
+        (doc) => !rejectedIds.has(doc.id ?? doc.ID)
+      );
+    }
+
+    // Edge case check: No eligible documents remaining after exclusions
+    if (documentsForPayload.length === 0) {
+      setShareErrorMessage("None of the selected documents are eligible to be shared with the specified recipient(s).");
+      return;
     }
 
     const documents = documentsForPayload.map((item) => ({
@@ -627,9 +715,18 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
     setIsNewSharing(true);
 
     try {
-      await postToShareFlow(flowTriggerUrl, payload);
+      const flowResult = await postToShareFlow(flowTriggerUrl, payload);
+      if (!flowResult.ok) {
+        setShareErrorMessage(flowResult.errorMessage || "Unable to complete the document sharing request.");
+        return;
+      }
+
+      const toRecipients = finalTo.filter((r) => r.trim().length > 0).join("; ");
+      alert(`Mail trigger successful. Sent to: ${toRecipients}`);
+      handleClose();
     } catch (error: any) {
       console.error("Error during New Send sharing flow:", error);
+      setShareErrorMessage(error?.message || "Unable to connect to the document sharing service. Please try again.");
     } finally {
       setIsNewSharing(false);
     }
