@@ -115,9 +115,14 @@ export const mapSharePointItemsToProducts = (
 
 export const searchProducts = async (
   sp: SPFI,
-  searchText: string
+  searchText: string,
+  hasDocumentOnly: boolean = false
 ): Promise<IProductLookupItem[]> => {
   const escapedText = searchText.replace(/'/g, "''");
+  let filterClause = `substringof('${escapedText}', PIMProductName)`;
+  if (hasDocumentOnly) {
+    filterClause += " and HasDocument eq 1";
+  }
 
   const results = await sp.web.lists
     .getByTitle("PIM Product")
@@ -130,7 +135,7 @@ export const searchProducts = async (
       "ManufacturerLookupId",
       "PIMProductTermSet"
     )
-    .filter(`substringof('${escapedText}', PIMProductName)`)
+    .filter(filterClause)
     .orderBy("PIMProductName")
     .top(5000)();
 
@@ -166,14 +171,19 @@ export const searchProducts = async (
 
 export const searchClients = async (
   sp: SPFI,
-  searchText: string
+  searchText: string,
+  hasDocumentOnly: boolean = false
 ): Promise<IClientLookupItem[]> => {
   const escapedText = searchText.replace(/'/g, "''");
+  let filterClause = `substringof('${escapedText}', Title)`;
+  if (hasDocumentOnly) {
+    filterClause += " and HasDocument eq 1";
+  }
 
   const results = await sp.web.lists
     .getByTitle("PIM Global Client")
     .items.select("ID", "Title", "GlobalClientTermSet")
-    .filter(`substringof('${escapedText}', Title)`)
+    .filter(filterClause)
     .orderBy("Title")
     .top(5000)();
 
