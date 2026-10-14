@@ -1958,7 +1958,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       const productName = (item.PIMProductName || "").trim();
       if (title && productName) {
         productClauses.push(
-          `("${sanitizeKqlValue(title)}" OR "${sanitizeKqlValue(productName)}")`
+          `("${sanitizeKqlValue(title)}" AND "${sanitizeKqlValue(productName)}")`
         );
       } else if (title) {
         productClauses.push(`"${sanitizeKqlValue(title)}"`);
