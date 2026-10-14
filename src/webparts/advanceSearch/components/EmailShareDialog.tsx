@@ -539,7 +539,7 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
       }
 
       const toRecipients = finalTo.filter((r) => r.trim().length > 0).join("; ");
-      alert(`Mail trigger successful. Sent to: ${toRecipients}`);
+      alert(`The external sharing emails are currently being processed. The respective recipients: ${toRecipients} should receive the email shortly.`);
       handleClose();
     } catch (error: any) {
       console.error("Error during sharing flow:", error);
@@ -729,7 +729,7 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
       }
 
       const toRecipients = finalTo.filter((r) => r.trim().length > 0).join("; ");
-      alert(`Mail trigger successful. Sent to: ${toRecipients}`);
+      alert(`The external sharing emails are currently being processed. The respective recipients: ${toRecipients} should receive the email shortly.`);
       handleClose();
     } catch (error: any) {
       console.error("Error during New Send sharing flow:", error);
