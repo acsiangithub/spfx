@@ -310,10 +310,13 @@ export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadat
         .filter(
           "InternalName eq 'Business_x0020_Line' or InternalName eq 'Country' or InternalName eq 'Confidentiality' or InternalName eq 'Alerts' or InternalName eq 'Document_x0020_Status' or InternalName eq 'Expiry_x0020_Date' or InternalName eq 'Next_x0020_Review_x0020_Date' or InternalName eq 'Issued_x0020_By' or InternalName eq 'Document_x0020_Language'"
         )(),
-      list.views
-        .filter("DefaultView eq true")
+      list.defaultView
         .select("Id", "ServerRelativeUrl")()
-        .then((views: any[]) => (views && views.length > 0 ? views[0] : null))
+        .catch(() =>
+          list.views
+            .select("Id", "DefaultView", "ServerRelativeUrl")()
+            .then((views: any[]) => (views && views.length > 0 ? (views.find((v: any) => v.DefaultView) || views[0]) : null))
+        )
         .catch((err: any) => {
           console.warn("Could not retrieve defaultView for Clients & Products:", err);
           return null;
@@ -419,6 +422,19 @@ export const loadListFieldMetadata = async (sp: SPFI): Promise<IListFieldMetadat
   }
 };
 
+export const getSharePointNativeIqyUrl = (
+  siteUrl: string,
+  listId: string,
+  viewId: string
+): string => {
+  const cleanListId = listId.replace(/[{}]/g, "").toUpperCase();
+  const cleanViewId = viewId.replace(/[{}]/g, "").toUpperCase();
+  const formattedListId = `{${cleanListId}}`;
+  const formattedViewId = `{${cleanViewId}}`;
+  const cleanSiteUrl = siteUrl.replace(/\/+$/, "");
+  return `${cleanSiteUrl}/_vti_bin/owssvr.dll?CS=1252&Using=_layouts/15/query.iqy&List=${encodeURIComponent(formattedListId)}&View=${encodeURIComponent(formattedViewId)}&CacheControl=1`;
+};
+
 export const downloadDefaultViewIqy = (
   siteUrl: string,
   listId: string,
@@ -431,6 +447,23 @@ export const downloadDefaultViewIqy = (
   const formattedViewId = `{${cleanViewId}}`;
   const cleanSiteUrl = siteUrl.replace(/\/+$/, "");
 
+  // First try triggering download via SharePoint's official native query.iqy generator
+  try {
+    const nativeUrl = getSharePointNativeIqyUrl(cleanSiteUrl, cleanListId, cleanViewId);
+    const link = document.createElement("a");
+    link.href = nativeUrl;
+    link.setAttribute("download", fileName.endsWith(".iqy") ? fileName : `${fileName}.iqy`);
+    link.setAttribute("target", "_blank");
+    link.rel = "noopener noreferrer";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    return;
+  } catch (nativeErr) {
+    console.warn("Native query.iqy download trigger failed, falling back to Blob:", nativeErr);
+  }
+
+  // Fallback: Synthesize standard query.iqy format client-side
   const iqyLines = [
     "WEB",
     "1",

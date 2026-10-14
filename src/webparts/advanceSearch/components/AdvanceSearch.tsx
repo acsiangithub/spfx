@@ -1257,6 +1257,10 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const [saveViewScope, setSaveViewScope] = React.useState<"personal" | "global">("personal");
   const [isSavingGlobalView, setIsSavingGlobalView] = React.useState(false);
 
+  // Dialog state for IQY export guidance
+  const [isIqyGuideOpen, setIsIqyGuideOpen] = React.useState(false);
+  const [dontShowIqyGuideAgain, setDontShowIqyGuideAgain] = React.useState(false);
+
   const allAvailableViews = React.useMemo(() => {
     return [...globalViews, ...customViews];
   }, [globalViews, customViews]);
@@ -1586,17 +1590,24 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
       if ((!targetListId || !targetViewId) && activeSp) {
         const list = activeSp.web.lists.getByTitle("Clients & Products");
-        const [listData, defaultViews] = await Promise.all([
+        const [listData, defaultViewData] = await Promise.all([
           list.select("Id")().catch(() => null),
-          list.views.filter("DefaultView eq true").select("Id", "ServerRelativeUrl")().catch(() => null),
+          list.defaultView
+            .select("Id", "ServerRelativeUrl")()
+            .catch(() =>
+              list.views
+                .select("Id", "DefaultView", "ServerRelativeUrl")()
+                .then((views: any[]) => (views && views.length > 0 ? (views.find((v: any) => v.DefaultView) || views[0]) : null))
+            )
+            .catch(() => null),
         ]);
         if (listData?.Id) {
           targetListId = listData.Id;
           setLibraryListId(listData.Id);
         }
-        if (defaultViews && defaultViews.length > 0 && defaultViews[0]?.Id) {
-          targetViewId = defaultViews[0].Id;
-          setDefaultLibraryViewId(defaultViews[0].Id);
+        if (defaultViewData?.Id) {
+          targetViewId = defaultViewData.Id;
+          setDefaultLibraryViewId(defaultViewData.Id);
         }
       }
 
@@ -1605,6 +1616,12 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       } else {
         const fallbackUrl = `${siteUrl}/_vti_bin/owssvr.dll?CS=1252&Using=_layouts/15/query.iqy&List=${encodeURIComponent(targetListId || "")}&View=${encodeURIComponent(targetViewId || "")}&CacheControl=1`;
         window.open(fallbackUrl, "_blank");
+      }
+
+      // Check if user previously suppressed the guidance dialog
+      const hideGuide = localStorage.getItem("advanceSearch_hideIqyGuide") === "true";
+      if (!hideGuide) {
+        setIsIqyGuideOpen(true);
       }
     } catch (err) {
       console.error("Failed to export query.iqy:", err);
@@ -5968,6 +5985,73 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                 : saveViewScope === "global" && props.isSiteAdmin
                 ? "Save for Everyone"
                 : "Save View"}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Modal Dialog: Export to Excel (.iqy) Setup & Guidance */}
+        <Dialog
+          open={isIqyGuideOpen}
+          onClose={() => setIsIqyGuideOpen(false)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle sx={{ fontSize: "15px", fontWeight: 600, py: 1.5, px: 2.5, display: "flex", alignItems: "center", gap: 1 }}>
+            <ExcelFileTypeIcon size={20} />
+            Opening Live SharePoint Query (.iqy) in Excel
+          </DialogTitle>
+          <DialogContent sx={{ px: 2.5, pt: 1 }}>
+            <Typography variant="body2" sx={{ fontSize: "12.5px", color: "text.primary", mb: 1.5 }}>
+              Your query file (<strong>query.iqy</strong>) has been downloaded. Opening it in Excel establishes a live connection to SharePoint.
+            </Typography>
+
+            <Box sx={{ bgcolor: "#fff8e1", border: "1px solid #ffe082", borderRadius: "6px", p: 1.5, mb: 1.5 }}>
+              <Typography variant="body2" sx={{ fontSize: "12px", fontWeight: 600, color: "#b78103", mb: 0.5 }}>
+                Seeing "Data could not be retrieved from the database"?
+              </Typography>
+              <Typography variant="body2" sx={{ fontSize: "11.5px", color: "#5d4037", lineHeight: 1.5 }}>
+                Windows security blocks downloaded web queries by default. To unblock:
+                <br />
+                1. In Downloads, right-click <strong>query.iqy</strong> &rarr; <strong>Properties</strong> &rarr; check <strong>Unblock</strong> at bottom &rarr; <strong>OK</strong>.
+                <br />
+                2. If prompted again, in Windows <em>Internet Options</em> &rarr; <em>Security</em> &rarr; <em>Trusted sites</em>, add <code>https://*.sharepoint.com</code>.
+              </Typography>
+            </Box>
+
+            <Box sx={{ bgcolor: "#f1f8e9", border: "1px solid #c5e1a5", borderRadius: "6px", p: 1.5 }}>
+              <Typography variant="body2" sx={{ fontSize: "12px", fontWeight: 600, color: "#33691e", mb: 0.5 }}>
+                Quick Alternative: Instant CSV Export
+              </Typography>
+              <Typography variant="body2" sx={{ fontSize: "11.5px", color: "#33691e", lineHeight: 1.4 }}>
+                If you just need a snapshot of your search results without live background syncing, click <strong>Export to Excel (CSV)</strong> from the table actions menu. It opens immediately with no configuration needed.
+              </Typography>
+            </Box>
+          </DialogContent>
+          <DialogActions sx={{ px: 2.5, pb: 1.5, justifyContent: "space-between" }}>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  size="small"
+                  checked={dontShowIqyGuideAgain}
+                  onChange={(e) => {
+                    setDontShowIqyGuideAgain(e.target.checked);
+                    if (e.target.checked) {
+                      localStorage.setItem("advanceSearch_hideIqyGuide", "true");
+                    } else {
+                      localStorage.removeItem("advanceSearch_hideIqyGuide");
+                    }
+                  }}
+                />
+              }
+              label={<Typography sx={{ fontSize: "11.5px", color: "text.secondary" }}>Don't show this reminder again</Typography>}
+            />
+            <Button
+              variant="contained"
+              size="small"
+              onClick={() => setIsIqyGuideOpen(false)}
+              sx={{ textTransform: "none", fontSize: "12px", fontWeight: 600 }}
+            >
+              Got it
             </Button>
           </DialogActions>
         </Dialog>
