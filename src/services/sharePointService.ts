@@ -149,9 +149,13 @@ export const searchProducts = async (
     const termGuid = Array.isArray(rawTerm) && rawTerm.length > 0
       ? rawTerm[0].TermGuid
       : rawTerm?.TermGuid || undefined;
-    const termLabel = Array.isArray(rawTerm) && rawTerm.length > 0
+    const rawLabel = Array.isArray(rawTerm) && rawTerm.length > 0
       ? rawTerm[0].Label
       : rawTerm?.Label || undefined;
+    const cleanLabel = rawLabel && !/^\d+$/.test(String(rawLabel).trim()) ? String(rawLabel).trim() : undefined;
+    const code = (item.Title || "").trim();
+    const name = (item.PIMProductName || "").trim();
+    const termLabel = cleanLabel || (code && name ? `${code} : ${name}` : code || name || undefined);
     const wssId = Array.isArray(rawTerm) && rawTerm.length > 0
       ? rawTerm[0].WssId
       : rawTerm?.WssId || undefined;
@@ -203,9 +207,12 @@ export const searchClients = async (
     const termGuid = Array.isArray(rawTerm) && rawTerm.length > 0
       ? rawTerm[0].TermGuid
       : rawTerm?.TermGuid || undefined;
-    const termLabel = Array.isArray(rawTerm) && rawTerm.length > 0
+    const rawLabel = Array.isArray(rawTerm) && rawTerm.length > 0
       ? rawTerm[0].Label
       : rawTerm?.Label || undefined;
+    const cleanLabel = rawLabel && !/^\d+$/.test(String(rawLabel).trim()) ? String(rawLabel).trim() : undefined;
+    const clientTitle = (item.Title || "").trim();
+    const termLabel = cleanLabel || clientTitle || undefined;
     const wssId = Array.isArray(rawTerm) && rawTerm.length > 0
       ? rawTerm[0].WssId
       : rawTerm?.WssId || undefined;
@@ -1777,7 +1784,11 @@ export const resolveProductsBatch = async (
               const firstTerm = getTermFromField(mItem.PIMProductTermSet);
               if (firstTerm) {
                 match.TermGuid = firstTerm.TermGuid || match.TermGuid;
-                match.TermLabel = firstTerm.Label || match.TermLabel;
+                const fLabel = firstTerm.Label ? String(firstTerm.Label).trim() : "";
+                const cleanLabel = fLabel && !/^\d+$/.test(fLabel) ? fLabel : undefined;
+                const mCode = (match.Title || "").trim();
+                const mName = (match.PIMProductName || "").trim();
+                match.TermLabel = cleanLabel || (mCode && mName ? `${mCode} : ${mName}` : mCode || mName || match.TermLabel);
                 match.WssId = firstTerm.WssId || match.WssId;
               }
             }
@@ -1813,7 +1824,11 @@ export const resolveProductsBatch = async (
             const firstTerm = getTermFromField(mItem.PIMProductTermSet);
             if (firstTerm) {
               item.TermGuid = firstTerm.TermGuid || item.TermGuid;
-              item.TermLabel = firstTerm.Label || item.TermLabel;
+              const fLabel = firstTerm.Label ? String(firstTerm.Label).trim() : "";
+              const cleanLabel = fLabel && !/^\d+$/.test(fLabel) ? fLabel : undefined;
+              const iCode = (item.Title || "").trim();
+              const iName = (item.PIMProductName || "").trim();
+              item.TermLabel = cleanLabel || (iCode && iName ? `${iCode} : ${iName}` : iCode || iName || item.TermLabel);
               item.WssId = firstTerm.WssId || item.WssId;
             }
           }
@@ -1878,7 +1893,12 @@ export const updateItemProperties = async (
       }
       const code = (p.Title || "").trim();
       const name = (p.PIMProductName || "").trim();
-      const label = p.TermLabel || (code && name ? `${code} : ${name}` : code || name);
+      // Prioritize authoritative OOB format "CODE : NAME"
+      let label = code && name ? `${code} : ${name}` : (code || name);
+      // Fallback only if both code and name are blank, ensuring label is not a numeric WssId (e.g. "2516")
+      if (!label && p.TermLabel && !/^\d+$/.test(String(p.TermLabel).trim())) {
+        label = String(p.TermLabel).trim();
+      }
       return `${label}|${p.TermGuid}`;
     }).filter(Boolean);
 
@@ -1910,7 +1930,9 @@ export const updateItemProperties = async (
                 const firstTerm = Array.isArray(rawTerm) && rawTerm.length > 0 ? rawTerm[0] : rawTerm;
                 if (firstTerm) {
                   match.TermGuid = firstTerm.TermGuid || match.TermGuid;
-                  match.TermLabel = firstTerm.Label || match.TermLabel;
+                  const fLabel = firstTerm.Label ? String(firstTerm.Label).trim() : "";
+                  const cleanLabel = fLabel && !/^\d+$/.test(fLabel) ? fLabel : undefined;
+                  match.TermLabel = cleanLabel || match.Title || match.TermLabel;
                   match.WssId = firstTerm.WssId || match.WssId;
                 }
               }
@@ -1934,7 +1956,11 @@ export const updateItemProperties = async (
     combinedUpdatePayload["ManufacturerLookupId"] = resolvedClientIds;
 
     const termSetParts = clients.map((c) => {
-      const label = c.TermLabel || (c.Title || "").trim();
+      const title = (c.Title || "").trim();
+      let label = title;
+      if (!label && c.TermLabel && !/^\d+$/.test(String(c.TermLabel).trim())) {
+        label = String(c.TermLabel).trim();
+      }
       if (c.TermGuid) {
         return `${label}|${c.TermGuid}`;
       }
