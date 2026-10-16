@@ -116,7 +116,8 @@ export const mapSharePointItemsToProducts = (
 export const searchProducts = async (
   sp: SPFI,
   searchText: string,
-  hasDocumentOnly: boolean = false
+  hasDocumentOnly: boolean = false,
+  includeTermSet: boolean = true
 ): Promise<IProductLookupItem[]> => {
   const escapedText = searchText.replace(/'/g, "''");
   let filterClause = `substringof('${escapedText}', PIMProductName)`;
@@ -124,23 +125,27 @@ export const searchProducts = async (
     filterClause += " and HasDocument eq 1";
   }
 
+  const selectFields = [
+    "ID",
+    "Title",
+    "PIMProductName",
+    "Manufacturer",
+    "BusinessLine",
+    "ManufacturerLookupId",
+  ];
+  if (includeTermSet) {
+    selectFields.push("PIMProductTermSet");
+  }
+
   const results = await sp.web.lists
     .getByTitle("PIM Product")
-    .items.select(
-      "ID",
-      "Title",
-      "PIMProductName",
-      "Manufacturer",
-      "BusinessLine",
-      "ManufacturerLookupId",
-      "PIMProductTermSet"
-    )
+    .items.select(...selectFields)
     .filter(filterClause)
     .orderBy("PIMProductName")
-    .top(5000)();
+    .top(500)();
 
   return (results as any[]).map((item) => {
-    const rawTerm = item.PIMProductTermSet;
+    const rawTerm = includeTermSet ? item.PIMProductTermSet : undefined;
     const termGuid = Array.isArray(rawTerm) && rawTerm.length > 0
       ? rawTerm[0].TermGuid
       : rawTerm?.TermGuid || undefined;
@@ -172,7 +177,8 @@ export const searchProducts = async (
 export const searchClients = async (
   sp: SPFI,
   searchText: string,
-  hasDocumentOnly: boolean = false
+  hasDocumentOnly: boolean = false,
+  includeTermSet: boolean = true
 ): Promise<IClientLookupItem[]> => {
   const escapedText = searchText.replace(/'/g, "''");
   let filterClause = `substringof('${escapedText}', Title)`;
@@ -180,15 +186,20 @@ export const searchClients = async (
     filterClause += " and HasDocument eq 1";
   }
 
+  const selectFields = ["ID", "Title"];
+  if (includeTermSet) {
+    selectFields.push("GlobalClientTermSet");
+  }
+
   const results = await sp.web.lists
     .getByTitle("PIM Global Client")
-    .items.select("ID", "Title", "GlobalClientTermSet")
+    .items.select(...selectFields)
     .filter(filterClause)
     .orderBy("Title")
-    .top(5000)();
+    .top(500)();
 
   return (results as any[]).map((item) => {
-    const rawTerm = item.GlobalClientTermSet;
+    const rawTerm = includeTermSet ? item.GlobalClientTermSet : undefined;
     const termGuid = Array.isArray(rawTerm) && rawTerm.length > 0
       ? rawTerm[0].TermGuid
       : rawTerm?.TermGuid || undefined;

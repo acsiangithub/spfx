@@ -1805,7 +1805,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       if (productSearchText.trim().length >= 3) {
         setLookupLoading(true);
         try {
-          const results = await searchProductsService(activeSp, productSearchText.trim(), true);
+          const results = await searchProductsService(activeSp, productSearchText.trim(), true, false);
           setProducts(results);
         } catch (error) {
           console.error("searchProducts error:", error);
@@ -1825,7 +1825,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       if (clientSearchText.trim().length >= 3) {
         setLookupLoading(true);
         try {
-          const results = await searchClientsService(activeSp, clientSearchText.trim(), true);
+          const results = await searchClientsService(activeSp, clientSearchText.trim(), true, false);
           setClients(results);
         } catch (error) {
           console.error("searchClients error:", error);
