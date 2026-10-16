@@ -763,11 +763,11 @@ export const fetchSingleProductItem = async (
             currentSpLookupIds.some((id, idx) => id !== newResolvedIds[idx]);
 
           if (isLookupDifferent || !raw.LongProductName) {
+            const productCodes = resolvedProducts.map((p) => p.Title || "").filter(Boolean).join("; ");
             backfillPayload["PIMProductCodeId"] = newResolvedIds;
             backfillPayload["LongProductName"] = item.LongProductName || null;
-            backfillPayload["PIM_x0020_Product_x0020_Code"] = safeText(
-              resolvedProducts.map((p) => p.Title || "").filter(Boolean).join("; ")
-            );
+            backfillPayload["PIM_x0020_Product_x0020_Name"] = safeText(item.LongProductName);
+            backfillPayload["PIM_x0020_Product_x0020_Code"] = productCodes || null;
             shouldBackfillSp = true;
           }
         }
@@ -1853,7 +1853,10 @@ export const updateItemProperties = async (
 
     // LongProductName is Note (OWSMTXT), do not truncate to 255 chars
     combinedUpdatePayload["LongProductName"] = longNames || null;
-    combinedUpdatePayload["PIM_x0020_Product_x0020_Code"] = safeText(productCodes);
+    // PIM_x0020_Product_x0020_Name is Single line of text, limited to 255 chars
+    combinedUpdatePayload["PIM_x0020_Product_x0020_Name"] = safeText(longNames);
+    // PIM_x0020_Product_x0020_Code is Multiple lines of text (Note), do not truncate to 255 chars
+    combinedUpdatePayload["PIM_x0020_Product_x0020_Code"] = productCodes || null;
     combinedUpdatePayload["PIMProductCodeId"] = resolvedProductIds;
 
     // Step C: Build TermSet values using the authoritative TermLabel and TermGuid
