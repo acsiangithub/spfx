@@ -926,6 +926,31 @@ export const fetchSingleProductItem = async (
       }
     }
 
+    // 4b. Normalize Supplier, Customer Name, and Batch Number to uppercase if needed
+    const rawSupplier = raw.Supplier ? String(raw.Supplier).trim() : "";
+    const upperSupplier = rawSupplier.toUpperCase();
+    if (rawSupplier && rawSupplier !== upperSupplier) {
+      backfillPayload["Supplier"] = safeText(upperSupplier);
+      item.Supplier = upperSupplier;
+      shouldBackfillSp = true;
+    }
+
+    const rawCustomer = raw.Customer_x0020_Name ? String(raw.Customer_x0020_Name).trim() : "";
+    const upperCustomer = rawCustomer.toUpperCase();
+    if (rawCustomer && rawCustomer !== upperCustomer) {
+      backfillPayload["Customer_x0020_Name"] = safeText(upperCustomer);
+      item.CustomerName = upperCustomer;
+      shouldBackfillSp = true;
+    }
+
+    const rawBatch = raw.Batch_x0020_Number ? String(raw.Batch_x0020_Number).trim() : "";
+    const upperBatch = rawBatch.toUpperCase();
+    if (rawBatch && rawBatch !== upperBatch) {
+      backfillPayload["Batch_x0020_Number"] = safeText(upperBatch);
+      item.BatchNumber = upperBatch;
+      shouldBackfillSp = true;
+    }
+
     // 5. Dual-write backfill to SharePoint in background if differences exist
     if (shouldBackfillSp && Object.keys(backfillPayload).length > 0) {
       console.log(`[AdvanceSearch] Auto-syncing updated properties to lookup/text columns for item ${itemId}:`, backfillPayload);
@@ -1994,7 +2019,8 @@ export const updateItemProperties = async (
 
   // 6. Issuer Name (Supplier - text)
   if (payload.supplierModified) {
-    combinedUpdatePayload["Supplier"] = safeText(payload.supplier);
+    const val = payload.supplier ? payload.supplier.trim().toUpperCase() : payload.supplier;
+    combinedUpdatePayload["Supplier"] = safeText(val);
   }
 
   // 7. Document Provider Email (Supplier_x0020_Email - text)
@@ -2043,12 +2069,14 @@ export const updateItemProperties = async (
 
   // 14. Customer Name (text)
   if (payload.customerNameModified) {
-    combinedUpdatePayload["Customer_x0020_Name"] = safeText(payload.customerName);
+    const val = payload.customerName ? payload.customerName.trim().toUpperCase() : payload.customerName;
+    combinedUpdatePayload["Customer_x0020_Name"] = safeText(val);
   }
 
   // 15. Batch Number (text)
   if (payload.batchNumberModified) {
-    combinedUpdatePayload["Batch_x0020_Number"] = safeText(payload.batchNumber);
+    const val = payload.batchNumber ? payload.batchNumber.trim().toUpperCase() : payload.batchNumber;
+    combinedUpdatePayload["Batch_x0020_Number"] = safeText(val);
   }
 
   console.log("Saving item properties to SharePoint (unified payload):", {

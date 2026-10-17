@@ -1135,7 +1135,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
   );
 
   const handlePasteSupplier = React.useCallback((text: string) => {
-    setSupplier(text.trim());
+    setSupplier(text.trim().toUpperCase());
     setSupplierModified(true);
   }, []);
 
@@ -1218,12 +1218,12 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
   }, []);
 
   const handlePasteCustomerName = React.useCallback((text: string) => {
-    setCustomerName(text.trim());
+    setCustomerName(text.trim().toUpperCase());
     setCustomerNameModified(true);
   }, []);
 
   const handlePasteBatchNumber = React.useCallback((text: string) => {
-    setBatchNumber(text.trim());
+    setBatchNumber(text.trim().toUpperCase());
     setBatchNumberModified(true);
   }, []);
 
@@ -1282,7 +1282,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
         issuedBy: issuedByModified ? issuedBy : undefined,
 
         supplierModified,
-        supplier: supplierModified ? supplier : undefined,
+        supplier: supplierModified ? (supplier ? supplier.trim().toUpperCase() : "") : undefined,
 
         supplierEmailModified,
         supplierEmail: supplierEmailModified ? supplierEmail : undefined,
@@ -1306,10 +1306,10 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
         documentStatus: documentStatusModified ? documentStatus || undefined : undefined,
 
         customerNameModified,
-        customerName: customerNameModified ? customerName : undefined,
+        customerName: customerNameModified ? (customerName ? customerName.trim().toUpperCase() : "") : undefined,
 
         batchNumberModified,
-        batchNumber: batchNumberModified ? batchNumber : undefined,
+        batchNumber: batchNumberModified ? (batchNumber ? batchNumber.trim().toUpperCase() : "") : undefined,
       };
 
       await onSave(payload, itemIds);
@@ -1868,9 +1868,13 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
               size="small"
               value={supplier}
               placeholder={isBulkEdit && !supplierModified ? "(Unchanged)" : "Enter issuer name..."}
+              inputProps={{ style: { textTransform: "uppercase" } }}
               onChange={(e) => {
                 setSupplier(e.target.value);
                 setSupplierModified(true);
+              }}
+              onBlur={() => {
+                if (supplier) setSupplier((prev) => prev.toUpperCase());
               }}
             />
           </Box>
@@ -2183,9 +2187,13 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
               size="small"
               value={customerName}
               placeholder={isBulkEdit && !customerNameModified ? "(Unchanged)" : "Enter customer name..."}
+              inputProps={{ style: { textTransform: "uppercase" } }}
               onChange={(e) => {
                 setCustomerName(e.target.value);
                 setCustomerNameModified(true);
+              }}
+              onBlur={() => {
+                if (customerName) setCustomerName((prev) => prev.toUpperCase());
               }}
             />
           </Box>
@@ -2209,9 +2217,13 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
               size="small"
               value={batchNumber}
               placeholder={isBulkEdit && !batchNumberModified ? "(Unchanged)" : "Enter batch number..."}
+              inputProps={{ style: { textTransform: "uppercase" } }}
               onChange={(e) => {
                 setBatchNumber(e.target.value);
                 setBatchNumberModified(true);
+              }}
+              onBlur={() => {
+                if (batchNumber) setBatchNumber((prev) => prev.toUpperCase());
               }}
             />
           </Box>

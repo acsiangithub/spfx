@@ -1745,7 +1745,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
           // 6. Issuer Name (Supplier)
           if (payload.supplierModified && payload.supplier !== undefined) {
-            updated.Supplier = payload.supplier;
+            updated.Supplier = payload.supplier ? payload.supplier.trim().toUpperCase() : payload.supplier;
           }
 
           // 7. Document Provider Email
@@ -1785,12 +1785,12 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
           // 14. Customer Name
           if (payload.customerNameModified && payload.customerName !== undefined) {
-            updated.CustomerName = payload.customerName;
+            updated.CustomerName = payload.customerName ? payload.customerName.trim().toUpperCase() : payload.customerName;
           }
 
           // 15. Batch Number
           if (payload.batchNumberModified && payload.batchNumber !== undefined) {
-            updated.BatchNumber = payload.batchNumber;
+            updated.BatchNumber = payload.batchNumber ? payload.batchNumber.trim().toUpperCase() : payload.batchNumber;
           }
 
           return updated;
