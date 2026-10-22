@@ -117,6 +117,11 @@ import {
   DEFAULT_GLOBAL_VIEWS,
   IEditPropertiesPayload,
   ILibraryColumnChoices,
+  getSenderUserAccessMatrix,
+  getCountryRegionMapping,
+  checkConfidentialDocumentAccess,
+  IUserAccessMatrixRecord,
+  ICountryRegionMap,
 } from "../../../services/sharePointService";
 import EmailShareDialog from "./EmailShareDialog";
 import EditPropertiesDialog from "./EditPropertiesDialog";
@@ -1454,21 +1459,88 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const [previewUrl, setPreviewUrl] = React.useState<string>("");
   const lastViewedItemIdRef = React.useRef<number | null>(null);
 
+  // Cache user access matrix and country mapping in memory
+  const userAccessMatrixRef = React.useRef<IUserAccessMatrixRecord | null>(null);
+  const countryRegionMapRef = React.useRef<ICountryRegionMap | null>(null);
+
+  const getUserPermissions = React.useCallback(async () => {
+    if (!userAccessMatrixRef.current || !countryRegionMapRef.current) {
+      const userEmail = props.context?.pageContext?.user?.email || "";
+      const [matrix, countryMap] = await Promise.all([
+        getSenderUserAccessMatrix(activeSp, userEmail),
+        getCountryRegionMapping(activeSp),
+      ]);
+      userAccessMatrixRef.current = matrix;
+      countryRegionMapRef.current = countryMap;
+    }
+    return {
+      matrix: userAccessMatrixRef.current,
+      countryMap: countryRegionMapRef.current,
+    };
+  }, [activeSp, props.context]);
+
   // Action to View file in pop dialog (used by filename link & popup menu)
   const handleViewFile = React.useCallback(
-    (fileItem: doclib_AllProducts | null): void => {
+    async (fileItem: doclib_AllProducts | null): Promise<void> => {
       if (!fileItem) return;
+
+      const isConfidential =
+        (fileItem.Confidentiality || "").trim().toLowerCase() === "confidential";
+
+      const origin = window.location.origin;
+      const siteUrl = (props.urlSite?.trim() || props.context?.pageContext?.web?.absoluteUrl || origin).replace(
+        /\/$/,
+        ""
+      );
+
+      // =========================================================
+      // 1. CONFIDENTIAL FILES ONLY
+      // =========================================================
+      if (isConfidential) {
+        // A. Check User Access Matrix for View permissions
+        const { matrix, countryMap } = await getUserPermissions();
+        const hasViewAccess = matrix
+          ? checkConfidentialDocumentAccess(fileItem, matrix, countryMap, "view")
+          : false;
+
+        if (!hasViewAccess) {
+          const docName = fileItem.filename || fileItem.OriginalFilename || "Unnamed document";
+          alert(
+            `You do not have the required rights in the User Access Matrix to view the confidential document:\n\n- ${docName}`
+          );
+          return;
+        }
+
+        const parsedId = Number(fileItem.id);
+        if (!isNaN(parsedId) && parsedId > 0) {
+          lastViewedItemIdRef.current = parsedId;
+        }
+
+        // B. Strip .url extension
+        const cleanFileName = (fileItem.filename || fileItem.OriginalFilename || "")
+          .replace(/\.url$/i, "")
+          .trim();
+
+        // C. Direct file URL in Clients%20%20ProductsConfidential library (strictly direct file, no ?web=1, no view page)
+        const directConfidentialUrl = `${siteUrl}/Clients%20%20ProductsConfidential/${encodeURIComponent(
+          cleanFileName
+        )}`;
+
+        setPreviewFileItem(fileItem);
+        setPreviewUrl(directConfidentialUrl);
+        setIsPreviewDialogOpen(true);
+        return;
+      }
+
+      // =========================================================
+      // 2. NON-CONFIDENTIAL FILES (ORIGINAL UNTOUCHED LOGIC)
+      // =========================================================
       const parsedId = Number(fileItem.id);
       if (!isNaN(parsedId) && parsedId > 0) {
         lastViewedItemIdRef.current = parsedId;
       }
 
-      const origin = window.location.origin;
       const rawFileRef = fileItem.fileUrl || "";
-      const siteUrl = (props.urlSite?.trim() || props.context?.pageContext?.web?.absoluteUrl || origin).replace(
-        /\/$/,
-        ""
-      );
 
       // Extract server-relative file path (e.g., /sites/PMDMS/Products/doc.pdf)
       let serverRelativeFilePath = rawFileRef;
@@ -1483,7 +1555,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         serverRelativeFilePath = `/${serverRelativeFilePath}`;
       }
 
-      // If we have a file path, open SharePoint OOB viewer in pop dialog (?id=...&parent=...)
+      // If we have a file path, open SharePoint OOB viewer in pop dialog (?id=...&parent=...)\r
       if (serverRelativeFilePath) {
         const lastSlashIndex = serverRelativeFilePath.lastIndexOf("/");
         const parentFolder = lastSlashIndex > 0 ? serverRelativeFilePath.substring(0, lastSlashIndex) : "";
@@ -1516,7 +1588,75 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       setPreviewUrl(fallbackUrl);
       setIsPreviewDialogOpen(true);
     },
-    [props.urlSite, props.context, defaultLibraryViewUrl]
+    [props.urlSite, props.context, defaultLibraryViewUrl, getUserPermissions]
+  );
+
+  // Helper to open Edit Properties dialog with confidential check
+  const handleOpenEditProperties = React.useCallback(
+    async (itemsToEdit: doclib_AllProducts[]): Promise<void> => {
+      if (!itemsToEdit || itemsToEdit.length === 0) return;
+
+      const confidentialDocs = itemsToEdit.filter(
+        (it) => (it.Confidentiality || "").trim().toLowerCase() === "confidential"
+      );
+
+      let eligibleItems = itemsToEdit;
+
+      if (confidentialDocs.length > 0) {
+        const { matrix, countryMap } = await getUserPermissions();
+        const rejectedDocs: doclib_AllProducts[] = [];
+
+        confidentialDocs.forEach((doc) => {
+          const isAllowed = matrix
+            ? checkConfidentialDocumentAccess(doc, matrix, countryMap, "edit")
+            : false;
+          if (!isAllowed) {
+            rejectedDocs.push(doc);
+          }
+        });
+
+        if (rejectedDocs.length > 0) {
+          const rejectedDocNames = rejectedDocs.map(
+            (doc) => `- ${doc.filename || doc.OriginalFilename || "Unnamed document"}`
+          );
+
+          if (rejectedDocs.length === itemsToEdit.length) {
+            // All selected items are unauthorized
+            alert(
+              `You do not have the required rights in the User Access Matrix to edit the following confidential document(s):\n\n${rejectedDocNames.join(
+                "\n"
+              )}`
+            );
+            return;
+          }
+
+          // Partial rejection: prompt user whether to proceed with eligible items (matching EmailShareDialog UX)
+          const warningMessage =
+            "Some document(s) cannot be edited because you do not have the required rights in the User Access Matrix to edit them:\n\n" +
+            rejectedDocNames.join("\n") +
+            "\n\nIf you continue, only the eligible document(s) will be edited." +
+            "\n\nSelect OK to continue, or Cancel to abort.";
+
+          if (!window.confirm(warningMessage)) {
+            return;
+          }
+
+          const rejectedIds = new Set(rejectedDocs.map((doc) => doc.id));
+          eligibleItems = itemsToEdit.filter((item) => !rejectedIds.has(item.id));
+          if (eligibleItems.length === 0) {
+            return;
+          }
+        }
+      }
+
+      console.log(
+        `[AdvanceSearch] Opening Edit Dialog for ${eligibleItems.length} selected row(s):`,
+        eligibleItems.map((r) => r.id)
+      );
+      setSelectedItemsForEdit(eligibleItems);
+      setIsEditDialogOpen(true);
+    },
+    [getUserPermissions]
   );
 
   // Close preview dialog and automatically perform targeted 1-item in-place refresh
@@ -4381,9 +4521,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           disabled={table.getSelectedRowModel().rows.length === 0}
           onClick={() => {
             const selectedRows = table.getSelectedRowModel().rows.map(row => row.original);
-            console.log(`[AdvanceSearch] Opening Edit Dialog for ${selectedRows.length} selected row(s):`, selectedRows.map(r => r.id));
-            setSelectedItemsForEdit(selectedRows);
-            setIsEditDialogOpen(true);
+            handleOpenEditProperties(selectedRows);
           }}
           title={
             table.getSelectedRowModel().rows.length > 0
@@ -5865,8 +6003,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           <MenuItem
             onClick={() => {
               if (selectedFileForAction) {
-                setSelectedItemsForEdit([selectedFileForAction]);
-                setIsEditDialogOpen(true);
+                handleOpenEditProperties([selectedFileForAction]);
               }
               setFileMenuAnchorEl(null);
             }}
@@ -5882,6 +6019,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
           selectedItems={selectedItemsForEdit}
           sp={activeSp}
           siteUrl={props.urlSite}
+          currentUserEmail={props.context?.pageContext?.user?.email || ""}
           documentTypes={documentTypes}
           allSubDocumentTypes={allSubDocumentTypes}
           libraryChoices={libraryChoices}

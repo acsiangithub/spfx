@@ -2338,13 +2338,22 @@ export const getCountryRegionMapping = async (sp: SPFI): Promise<ICountryRegionM
 export const checkConfidentialDocumentAccess = (
   docItem: any,
   matrix: IUserAccessMatrixRecord,
-  countryRegionMap: ICountryRegionMap = {}
+  countryRegionMap: ICountryRegionMap = {},
+  mode: "view" | "edit" | "all" = "all"
 ): boolean => {
   if (!matrix.confidentialRights) {
     return false;
   }
 
-  const allBLLocations = [...matrix.editAllBL, ...matrix.viewAllBL].map((l) => l.toLowerCase());
+  let allBLLocations: string[] = [];
+  if (mode === "edit") {
+    allBLLocations = matrix.editAllBL.map((l) => l.toLowerCase());
+  } else if (mode === "view") {
+    allBLLocations = [...matrix.viewAllBL, ...matrix.editAllBL].map((l) => l.toLowerCase());
+  } else {
+    allBLLocations = [...matrix.editAllBL, ...matrix.viewAllBL].map((l) => l.toLowerCase());
+  }
+
   if (allBLLocations.some((l) => l.includes("global"))) {
     return true;
   }
@@ -2391,7 +2400,15 @@ export const checkConfidentialDocumentAccess = (
   for (const bl of docBLs) {
     const perm = matrix.blPermissions[bl];
     if (perm) {
-      const allowedLocations = [...perm.edit, ...perm.view].map((c: string) => c.toLowerCase());
+      let allowedLocations: string[] = [];
+      if (mode === "edit") {
+        allowedLocations = perm.edit.map((c: string) => c.toLowerCase());
+      } else if (mode === "view") {
+        allowedLocations = [...perm.view, ...perm.edit].map((c: string) => c.toLowerCase());
+      } else {
+        allowedLocations = [...perm.edit, ...perm.view].map((c: string) => c.toLowerCase());
+      }
+
       if (allowedLocations.some((c: string) => c.includes("global"))) {
         return true;
       }

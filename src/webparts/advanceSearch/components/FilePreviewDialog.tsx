@@ -38,6 +38,9 @@ export const FilePreviewDialog: React.FC<IFilePreviewDialogProps> = ({
     }
   }, [open, previewUrl]);
 
+  const isConfidential =
+    (item?.Confidentiality || "").trim().toLowerCase() === "confidential";
+
   const handleOpenInNewTab = (): void => {
     if (previewUrl) {
       window.open(previewUrl, "_blank", "noopener,noreferrer");
@@ -72,7 +75,66 @@ export const FilePreviewDialog: React.FC<IFilePreviewDialogProps> = ({
           doc.head?.appendChild(styleEl);
         }
 
-        // 2. Fallback listener: if user still somehow clicks close or presses Escape inside iframe, invoke onClose
+        // 2. Hide Share button (#shareCommandGroup) when viewing non-confidential files
+        if (!isConfidential) {
+          const shareStyleId = "hide-sp-inner-share-command";
+          if (!doc.getElementById(shareStyleId)) {
+            const shareStyleEl = doc.createElement("style");
+            shareStyleEl.id = shareStyleId;
+            shareStyleEl.textContent = `
+              #shareCommandGroup,
+              [data-automation-id="shareCommandGroup"],
+              #shareCommand,
+              [data-automation-id="shareCommand"],
+              [data-automation-id="ShareCommand"],
+              button[name="Share"],
+              button[title="Share"],
+              button[aria-label="Share"],
+              button[data-automationid="ShareCommand"] {
+                display: none !important;
+                visibility: hidden !important;
+                pointer-events: none !important;
+              }
+            `;
+            doc.head?.appendChild(shareStyleEl);
+          }
+        }
+
+        // 3. If viewing a confidential file, hide Edit Properties and Details Pane
+        if (isConfidential) {
+          const confStyleId = "hide-sp-inner-edit-properties";
+          if (!doc.getElementById(confStyleId)) {
+            const confStyleEl = doc.createElement("style");
+            confStyleEl.id = confStyleId;
+            confStyleEl.textContent = `
+              #editPropertiesCommand,
+              [data-automation-id="editPropertiesCommand"],
+              [data-automation-id="EditProperties"],
+              [data-automation-id="EditPropertiesCommand"],
+              [data-automation-id="detailsPaneCommand"],
+              [data-automation-id="infoCommand"],
+              [data-automation-id="editCommand"],
+              button[name*="Edit properties"],
+              button[name*="Edit Properties"],
+              button[name="Edit"],
+              button[title*="Edit properties"],
+              button[title*="Edit Properties"],
+              button[aria-label*="Edit properties"],
+              button[aria-label*="Edit Properties"],
+              button[aria-label*="Open the details pane"],
+              button[aria-label*="Details"],
+              button[data-automationid="Details"],
+              button[data-automationid="infoCommand"] {
+                display: none !important;
+                visibility: hidden !important;
+                pointer-events: none !important;
+              }
+            `;
+            doc.head?.appendChild(confStyleEl);
+          }
+        }
+
+        // 3. Fallback listener: if user still somehow clicks close or presses Escape inside iframe, invoke onClose
         const handleInnerClick = (e: MouseEvent): void => {
           const target = e.target as HTMLElement | null;
           if (target && target.closest('#closeCommand, [data-automation-id="closeCommand"]')) {
@@ -97,7 +159,8 @@ export const FilePreviewDialog: React.FC<IFilePreviewDialogProps> = ({
     }
   };
 
-  const filename = item?.filename || "Document Preview";
+  const rawName = item?.filename || "Document Preview";
+  const filename = isConfidential ? rawName.replace(/\.url$/i, "") : rawName;
 
   return (
     <Dialog
@@ -152,11 +215,13 @@ export const FilePreviewDialog: React.FC<IFilePreviewDialogProps> = ({
             </IconButton>
           </Tooltip>
 
-          <Tooltip title="Open in new window">
-            <IconButton size="small" onClick={handleOpenInNewTab} sx={{ color: "text.secondary" }}>
-              <OpenInNewIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
+          {!isConfidential && (
+            <Tooltip title="Open in new window">
+              <IconButton size="small" onClick={handleOpenInNewTab} sx={{ color: "text.secondary" }}>
+                <OpenInNewIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
 
           <Tooltip title="Close">
             <IconButton size="small" onClick={onClose} sx={{ color: "text.secondary" }}>

@@ -50,6 +50,9 @@ import {
   resolveProductsBatch,
   IEditPropertiesPayload,
   ILibraryColumnChoices,
+  getSenderUserAccessMatrix,
+  getCountryRegionMapping,
+  checkConfidentialDocumentAccess,
 } from "../../../services/sharePointService";
 
 const EditProductListbox = React.forwardRef<
@@ -480,6 +483,7 @@ export interface IEditPropertiesDialogProps {
   allSubDocumentTypes: ISubDocumentTypeItem[];
   libraryChoices?: ILibraryColumnChoices;
   siteUrl?: string;
+  currentUserEmail?: string;
   onSave: (payload: IEditPropertiesPayload, itemIds: number[]) => Promise<void>;
 }
 
@@ -492,6 +496,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
   allSubDocumentTypes,
   libraryChoices,
   siteUrl,
+  currentUserEmail,
   onSave,
 }) => {
   const isBulkEdit = selectedItems.length > 1;
@@ -823,11 +828,43 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
       .map((item) => item.id)
       .filter((id): id is number => typeof id === "number" && id > 0);
 
-    checkUserWritePermissions(sp, "Clients & Products", itemIds)
-      .then((hasPermission) => {
-        if (!isCancelled) {
-          setHasWritePermission(hasPermission);
+    const confidentialItems = selectedItems.filter(
+      (item) => (item?.Confidentiality || "").trim().toLowerCase() === "confidential"
+    );
+
+    Promise.all([
+      checkUserWritePermissions(sp, "Clients & Products", itemIds),
+      confidentialItems.length > 0 && currentUserEmail
+        ? Promise.all([
+            getSenderUserAccessMatrix(sp, currentUserEmail),
+            getCountryRegionMapping(sp),
+          ])
+        : Promise.resolve(null),
+    ])
+      .then(([hasLibPermission, matrixData]) => {
+        if (isCancelled) return;
+        if (!hasLibPermission) {
+          setHasWritePermission(false);
+          return;
         }
+
+        if (confidentialItems.length > 0 && matrixData) {
+          const [matrix, countryMap] = matrixData;
+          const allAllowed = matrix
+            ? confidentialItems.every((doc) =>
+                checkConfidentialDocumentAccess(doc, matrix, countryMap, "edit")
+              )
+            : false;
+          if (!allAllowed) {
+            setHasWritePermission(false);
+            setErrorMessage(
+              "You do not have write permission in the User Access Matrix to edit confidential document(s). The Save button is disabled."
+            );
+            return;
+          }
+        }
+
+        setHasWritePermission(true);
       })
       .catch((err) => {
         console.warn("checkUserWritePermissions error in EditPropertiesDialog:", err);
@@ -844,7 +881,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
     return () => {
       isCancelled = true;
     };
-  }, [open, sp, selectedItems]);
+  }, [open, sp, selectedItems, currentUserEmail]);
 
   // Product Autocomplete type-ahead
   React.useEffect(() => {
