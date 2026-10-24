@@ -131,6 +131,7 @@ export const searchProducts = async (
     "PIMProductName",
     "Manufacturer",
     "BusinessLine",
+    "Country",
     "ManufacturerLookupId",
   ];
   if (includeTermSet) {
@@ -166,6 +167,7 @@ export const searchProducts = async (
       PIMProductName: item.PIMProductName || "",
       Manufacturer: item.Manufacturer || "",
       BusinessLine: item.BusinessLine || "",
+      Country: choiceToString(item.Country) || (item.Country ? String(item.Country) : ""),
       ManufacturerLookupId: item.ManufacturerLookupId,
       TermGuid: termGuid,
       TermLabel: termLabel,
@@ -723,7 +725,7 @@ export const fetchSingleProductItem = async (
             const masterItems = await sp.web.lists
               .getByTitle("PIM Product")
               .items.filter(filterClause)
-              .select("ID", "Title", "PIMProductName", "Manufacturer", "BusinessLine")
+              .select("ID", "Title", "PIMProductName", "Manufacturer", "BusinessLine", "Country")
               .top(slice.length + 10)();
 
             masterItems.forEach((mItem: any) => {
@@ -735,6 +737,7 @@ export const fetchSingleProductItem = async (
                 PIMProductName: mItem.PIMProductName || info?.name || "",
                 Manufacturer: mItem.Manufacturer || "",
                 BusinessLine: mItem.BusinessLine || "",
+                Country: choiceToString(mItem.Country) || (mItem.Country ? String(mItem.Country) : ""),
                 TermGuid: info?.termGuid,
                 WssId: info?.wssId,
               });
@@ -1531,7 +1534,7 @@ export const loadItemDetailsForEdit = async (
           const masterItems = await sp.web.lists
             .getByTitle("PIM Product")
             .items.filter(filterClause)
-            .select("ID", "Title", "PIMProductName", "Manufacturer", "BusinessLine")
+            .select("ID", "Title", "PIMProductName", "Manufacturer", "BusinessLine", "Country")
             .top(slice.length + 10)();
 
           masterItems.forEach((mItem: any) => {
@@ -1543,6 +1546,7 @@ export const loadItemDetailsForEdit = async (
               PIMProductName: mItem.PIMProductName || info?.name || "",
               Manufacturer: mItem.Manufacturer || "",
               BusinessLine: mItem.BusinessLine || "",
+              Country: choiceToString(mItem.Country) || (mItem.Country ? String(mItem.Country) : ""),
               TermGuid: info?.termGuid,
               WssId: info?.wssId,
             });
@@ -1756,7 +1760,7 @@ const getTermFromField = (rawTerm: any): { TermGuid?: string; Label?: string; Ws
 
 export const resolveProductsBatch = async (
   sp: SPFI,
-  items: { ID?: number; Title?: string; PIMProductName?: string; TermGuid?: string; TermLabel?: string; WssId?: number; Manufacturer?: string; BusinessLine?: string }[]
+  items: { ID?: number; Title?: string; PIMProductName?: string; TermGuid?: string; TermLabel?: string; WssId?: number; Manufacturer?: string; BusinessLine?: string; Country?: string }[]
 ): Promise<IProductLookupItem[]> => {
   if (!sp || !items || items.length === 0) return [];
 
@@ -1786,6 +1790,7 @@ export const resolveProductsBatch = async (
             "PIMProductName",
             "Manufacturer",
             "BusinessLine",
+            "Country",
             "PIMProductTermSet"
           )
           .top(slice.length + 10)();
@@ -1804,7 +1809,8 @@ export const resolveProductsBatch = async (
             match.Title = mItem.Title || match.Title;
             match.PIMProductName = mItem.PIMProductName || match.PIMProductName;
             if (mItem.Manufacturer) match.Manufacturer = mItem.Manufacturer;
-            if (mItem.BusinessLine) match.BusinessLine = mItem.BusinessLine;
+            if (mItem.BusinessLine) match.BusinessLine = choiceToString(mItem.BusinessLine) || String(mItem.BusinessLine);
+            if (mItem.Country) match.Country = choiceToString(mItem.Country) || String(mItem.Country);
             if (mItem.PIMProductTermSet) {
               const firstTerm = getTermFromField(mItem.PIMProductTermSet);
               if (firstTerm) {
@@ -1835,7 +1841,7 @@ export const resolveProductsBatch = async (
         const found = await sp.web.lists
           .getByTitle("PIM Product")
           .items.filter(`PIMProductName eq '${escaped}'`)
-          .select("ID", "Title", "PIMProductName", "Manufacturer", "BusinessLine", "PIMProductTermSet")
+          .select("ID", "Title", "PIMProductName", "Manufacturer", "BusinessLine", "Country", "PIMProductTermSet")
           .top(5)();
 
         if (found && found.length > 0) {
@@ -1844,7 +1850,8 @@ export const resolveProductsBatch = async (
           item.Title = mItem.Title || item.Title;
           item.PIMProductName = mItem.PIMProductName || item.PIMProductName;
           if (mItem.Manufacturer) item.Manufacturer = mItem.Manufacturer;
-          if (mItem.BusinessLine) item.BusinessLine = mItem.BusinessLine;
+          if (mItem.BusinessLine) item.BusinessLine = choiceToString(mItem.BusinessLine) || String(mItem.BusinessLine);
+          if (mItem.Country) item.Country = choiceToString(mItem.Country) || String(mItem.Country);
           if (mItem.PIMProductTermSet) {
             const firstTerm = getTermFromField(mItem.PIMProductTermSet);
             if (firstTerm) {
@@ -1909,6 +1916,46 @@ export const updateItemProperties = async (
     // PIM_x0020_Product_x0020_Code is Multiple lines of text (Note), do not truncate to 255 chars
     combinedUpdatePayload["PIM_x0020_Product_x0020_Code"] = productCodes || null;
     combinedUpdatePayload["PIMProductCodeId"] = resolvedProductIds;
+
+    // Step B2: Sync Business_x0020_Line and Country from selected products to Clients & Products list (Multi-Choice columns expect string[])
+    const uniqueBLs: string[] = [];
+    const blSet = new Set<string>();
+    products.forEach((p) => {
+      if (p.BusinessLine) {
+        String(p.BusinessLine)
+          .split(/[;,]+/)
+          .map((b) => b.trim())
+          .filter(Boolean)
+          .forEach((b) => {
+            const lower = b.toLowerCase();
+            if (!blSet.has(lower)) {
+              blSet.add(lower);
+              uniqueBLs.push(b);
+            }
+          });
+      }
+    });
+
+    const uniqueCountries: string[] = [];
+    const countrySet = new Set<string>();
+    products.forEach((p) => {
+      if (p.Country) {
+        String(p.Country)
+          .split(/[;,]+/)
+          .map((c) => c.trim())
+          .filter(Boolean)
+          .forEach((c) => {
+            const lower = c.toLowerCase();
+            if (!countrySet.has(lower)) {
+              countrySet.add(lower);
+              uniqueCountries.push(c);
+            }
+          });
+      }
+    });
+
+    combinedUpdatePayload["Business_x0020_Line"] = uniqueBLs;
+    combinedUpdatePayload["Country"] = uniqueCountries;
 
     // Step C: Build TermSet values using the authoritative TermLabel and TermGuid
     const termSetParts = products.map((p) => {

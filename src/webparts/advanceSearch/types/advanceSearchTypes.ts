@@ -41,6 +41,7 @@ export type IProductLookupItem = {
   PIMProductName: string;
   Manufacturer?: string;
   BusinessLine?: string;
+  Country?: string;
   ManufacturerLookupId?: number;
   TermGuid?: string;
   TermLabel?: string;

@@ -1066,6 +1066,41 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
                     return found ? { ...item, ...found } : item;
                   })
                 );
+
+                // Populate clients from resolved products without duplicates
+                setSelectedClients((currentClients) => {
+                  const currentTitles = new Set(
+                    currentClients.map((c) => (c.Title || "").trim().toLowerCase())
+                  );
+                  const toAdd: IClientLookupItem[] = [];
+
+                  resolved.forEach((prod) => {
+                    if (prod.Manufacturer) {
+                      const clientNames = parseDelimitedText(prod.Manufacturer);
+                      clientNames.forEach((clientTitle) => {
+                        const lower = clientTitle.toLowerCase();
+                        if (!currentTitles.has(lower)) {
+                          currentTitles.add(lower);
+                          const matched = clientOptions.find(
+                            (c) => (c.Title || "").trim().toLowerCase() === lower
+                          );
+                          toAdd.push(
+                            matched || {
+                              ID: -(toAdd.length + 100),
+                              Title: clientTitle,
+                            }
+                          );
+                        }
+                      });
+                    }
+                  });
+
+                  if (toAdd.length > 0) {
+                    setClientsModified(true);
+                    return [...currentClients, ...toAdd];
+                  }
+                  return currentClients;
+                });
               })
               .catch((err) => {
                 console.warn("Could not batch resolve pasted products immediately:", err);
@@ -1074,7 +1109,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
         }
       }
     },
-    [selectedProducts, productOptions, sp]
+    [selectedProducts, productOptions, clientOptions, sp]
   );
 
   const handlePasteClients = React.useCallback(
@@ -1573,6 +1608,39 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
             onChange={(_e, newValue) => {
               setSelectedProducts(newValue);
               setProductsModified(true);
+
+              if (newValue && newValue.length > 0) {
+                const currentClientTitles = new Set(
+                  selectedClients.map((c) => (c.Title || "").trim().toLowerCase())
+                );
+                const newClientsToAdd: IClientLookupItem[] = [];
+
+                newValue.forEach((prod) => {
+                  if (prod.Manufacturer) {
+                    const clientNames = parseDelimitedText(prod.Manufacturer);
+                    clientNames.forEach((clientTitle) => {
+                      const lower = clientTitle.toLowerCase();
+                      if (!currentClientTitles.has(lower)) {
+                        currentClientTitles.add(lower);
+                        const matched = clientOptions.find(
+                          (c) => (c.Title || "").trim().toLowerCase() === lower
+                        );
+                        newClientsToAdd.push(
+                          matched || {
+                            ID: -(newClientsToAdd.length + 100),
+                            Title: clientTitle,
+                          }
+                        );
+                      }
+                    });
+                  }
+                });
+
+                if (newClientsToAdd.length > 0) {
+                  setSelectedClients((prev) => [...prev, ...newClientsToAdd]);
+                  setClientsModified(true);
+                }
+              }
             }}
             renderOption={(props, option) => (
               <li {...props} key={option.ID}>

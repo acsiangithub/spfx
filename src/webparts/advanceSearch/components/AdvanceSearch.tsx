@@ -1855,6 +1855,45 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
               .map((p) => p.PIMProductName || "")
               .filter(Boolean)
               .join("; ");
+
+            // Update BusinessLine and CountrySoldTo in MRT display
+            const uniqueBLs: string[] = [];
+            const blSet = new Set<string>();
+            payload.selectedProducts.forEach((p) => {
+              if (p.BusinessLine) {
+                String(p.BusinessLine)
+                  .split(/[;,]+/)
+                  .map((b) => b.trim())
+                  .filter(Boolean)
+                  .forEach((b) => {
+                    const lower = b.toLowerCase();
+                    if (!blSet.has(lower)) {
+                      blSet.add(lower);
+                      uniqueBLs.push(b);
+                    }
+                  });
+              }
+            });
+            updated.BusinessLine = uniqueBLs.join("; ");
+
+            const uniqueCountries: string[] = [];
+            const countrySet = new Set<string>();
+            payload.selectedProducts.forEach((p) => {
+              if (p.Country) {
+                String(p.Country)
+                  .split(/[;,]+/)
+                  .map((c) => c.trim())
+                  .filter(Boolean)
+                  .forEach((c) => {
+                    const lower = c.toLowerCase();
+                    if (!countrySet.has(lower)) {
+                      countrySet.add(lower);
+                      uniqueCountries.push(c);
+                    }
+                  });
+              }
+            });
+            updated.CountrySoldTo = uniqueCountries.join("; ");
           }
 
           // 2. Clients
