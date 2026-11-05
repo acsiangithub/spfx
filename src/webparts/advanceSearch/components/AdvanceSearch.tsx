@@ -5055,6 +5055,11 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     },
   });
 
+  const handleShareSuccess = (): void => {
+    table.resetRowSelection();
+    setSelectedRowsData([]);
+  };
+
   const renderKeywordInput = () => (
     <Autocomplete
       multiple
@@ -6013,6 +6018,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         <EmailShareDialog
           open={isShareDialogOpen}
           onClose={() => setIsShareDialogOpen(false)}
+          onSendSuccess={handleShareSuccess}
           selectedItems={selectedRowsData}
           siteUrl={props.urlSite}
           shareFlowUrl={props.shareFlowUrl}

@@ -27,6 +27,7 @@ import CircularProgress from "@mui/material/CircularProgress";
 export interface IEmailShareDialogProps {
   open: boolean;
   onClose: () => void;
+  onSendSuccess?: () => void;
   selectedItems?: any[];
   siteUrl: string;
   shareFlowUrl?: string;
@@ -35,6 +36,69 @@ export interface IEmailShareDialogProps {
   currentUserEmail?: string;
   sp?: SPFI;
 }
+
+/**
+ * Strips display name from a recipient string.
+ * e.g. '"Kavitha Kanniappan" <kavitha.kanniappan@dksh.com>' -> 'kavitha.kanniappan@dksh.com'
+ *      'Kavitha Kanniappan <kavitha.kanniappan@dksh.com>' -> 'kavitha.kanniappan@dksh.com'
+ *      '<kavitha.kanniappan@dksh.com>' -> 'kavitha.kanniappan@dksh.com'
+ */
+export const stripDisplayName = (emailStr: string): string => {
+  if (!emailStr) return "";
+  const trimmed = emailStr.trim();
+  const angleMatch = trimmed.match(/<([^>]+)>/);
+  if (angleMatch && angleMatch[1]) {
+    return angleMatch[1].trim();
+  }
+  return trimmed.replace(/^["']|["']$/g, "").trim();
+};
+
+/**
+ * Extracts clean email addresses from a raw input string (e.g. pasted from Outlook).
+ * Handles multiple recipients, angle-bracketed emails, and common separators.
+ */
+export const parseEmailRecipients = (raw: string): string[] => {
+  if (!raw || !raw.trim()) return [];
+
+  const results: string[] = [];
+
+  // 1. If string contains angle brackets (<email@domain.com>), extract all emails from them
+  const angleBracketMatches = raw.match(/<([^>]+)>/g);
+  if (angleBracketMatches && angleBracketMatches.length > 0) {
+    angleBracketMatches.forEach((m) => {
+      const email = m.replace(/[<>]/g, "").trim();
+      if (email && results.indexOf(email) === -1) {
+        results.push(email);
+      }
+    });
+
+    // Also extract any plain emails that might be mixed in outside angle brackets
+    const withoutAngleParts = raw.replace(/(?:"[^"]*"|'[^']*'|[^;,<\n]+)?<[^>]+>/g, " ");
+    const remaining = withoutAngleParts
+      .split(/[,;\r\n]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    remaining.forEach((rem) => {
+      const clean = stripDisplayName(rem);
+      if (clean && results.indexOf(clean) === -1 && clean.includes("@")) {
+        results.push(clean);
+      }
+    });
+
+    return results;
+  }
+
+  // 2. Otherwise split by comma, semicolon, or newline
+  const parts = raw.split(/[,;\r\n]+/).map((p) => p.trim()).filter(Boolean);
+  parts.forEach((p) => {
+    const clean = stripDisplayName(p);
+    if (clean && results.indexOf(clean) === -1) {
+      results.push(clean);
+    }
+  });
+
+  return results;
+};
 
 interface IEmailPeoplePickerInputProps {
   field: "to" | "cc" | "bcc";
@@ -113,29 +177,30 @@ const EmailPeoplePickerInput: React.FC<IEmailPeoplePickerInputProps> = ({
       inputValue={inputValue}
       getOptionLabel={(option: string | IPeoplePickerUserOption) => {
         if (typeof option === "string") {
-          return option;
+          return stripDisplayName(option);
         }
         return option.email || option.displayText || "";
       }}
       isOptionEqualToValue={(option: any, val: any) => {
-        const optEmail = typeof option === "string" ? option : option.email || option.displayText;
-        const valEmail = typeof val === "string" ? val : val.email || val.displayText;
+        const optEmail = stripDisplayName(typeof option === "string" ? option : option.email || option.displayText || "");
+        const valEmail = stripDisplayName(typeof val === "string" ? val : val.email || val.displayText || "");
         return optEmail.toLowerCase() === valEmail.toLowerCase();
       }}
       onInputChange={(_event, newInputValue, reason) => {
         if (reason === "input") {
-          if (newInputValue.includes(",") || newInputValue.includes(";")) {
-            const parts = newInputValue
-              .split(/[,;]/)
-              .map((p) => p.trim())
-              .filter(Boolean);
-            setValues((prev) => Array.from(new Set([...prev, ...parts])));
-            setInputValue("");
-            setOptions([]);
-            onFieldChange(field);
-          } else {
-            setInputValue(newInputValue);
+          const hasDelimiters = newInputValue.includes(",") || newInputValue.includes(";");
+          const hasAngleBrackets = newInputValue.includes("<") && newInputValue.includes(">");
+          if (hasDelimiters || hasAngleBrackets) {
+            const parts = parseEmailRecipients(newInputValue);
+            if (parts.length > 0) {
+              setValues((prev) => Array.from(new Set([...prev, ...parts])));
+              setInputValue("");
+              setOptions([]);
+              onFieldChange(field);
+              return;
+            }
           }
+          setInputValue(newInputValue);
         } else if (reason === "reset" || reason === "clear") {
           setInputValue("");
         }
@@ -144,14 +209,13 @@ const EmailPeoplePickerInput: React.FC<IEmailPeoplePickerInputProps> = ({
         const cleaned: string[] = [];
         (newValue as (string | IPeoplePickerUserOption)[]).forEach((val) => {
           if (typeof val === "string") {
-            val.split(/[,;]/).forEach((item) => {
-              const trimmed = item.trim();
-              if (trimmed && cleaned.indexOf(trimmed) === -1) {
-                cleaned.push(trimmed);
+            parseEmailRecipients(val).forEach((item) => {
+              if (item && cleaned.indexOf(item) === -1) {
+                cleaned.push(item);
               }
             });
           } else if (val && typeof val === "object") {
-            const email = (val.email || val.displayText || "").trim();
+            const email = stripDisplayName((val.email || val.displayText || "").trim());
             if (email && cleaned.indexOf(email) === -1) {
               cleaned.push(email);
             }
@@ -237,7 +301,8 @@ const EmailPeoplePickerInput: React.FC<IEmailPeoplePickerInputProps> = ({
       }}
       renderTags={(value: any[], getTagProps) =>
         value.map((option: any, index: number) => {
-          const emailText = typeof option === "string" ? option : option.email || option.displayText || "";
+          const rawText = typeof option === "string" ? option : option.email || option.displayText || "";
+          const emailText = stripDisplayName(rawText);
           const isValid = validateEmail(emailText);
           return (
             <Chip
@@ -274,13 +339,26 @@ const EmailPeoplePickerInput: React.FC<IEmailPeoplePickerInputProps> = ({
           error={Boolean(errorText)}
           helperText={errorText}
           margin="dense"
+          inputProps={{
+            ...params.inputProps,
+            onPaste: (e: React.ClipboardEvent<HTMLInputElement>) => {
+              const pasted = e.clipboardData?.getData("text") || "";
+              if (pasted && (pasted.includes("<") || pasted.includes(";") || pasted.includes(","))) {
+                const parts = parseEmailRecipients(pasted);
+                if (parts.length > 0) {
+                  e.preventDefault();
+                  setValues((prev) => Array.from(new Set([...prev, ...parts])));
+                  setInputValue("");
+                  setOptions([]);
+                  onFieldChange(field);
+                }
+              }
+            },
+          }}
           onBlur={() => {
             let currentAll = [...values];
             if (inputValue.trim()) {
-              const parts = inputValue
-                .split(/[,;]/)
-                .map((p) => p.trim())
-                .filter(Boolean);
+              const parts = parseEmailRecipients(inputValue);
               if (parts.length > 0) {
                 currentAll = Array.from(new Set([...values, ...parts]));
                 setValues(currentAll);
@@ -307,6 +385,7 @@ const EmailPeoplePickerInput: React.FC<IEmailPeoplePickerInputProps> = ({
 export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
   open,
   onClose,
+  onSendSuccess,
   selectedItems = [],
   siteUrl,
   shareFlowUrl,
@@ -342,7 +421,7 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
     if (open) {
       setToEmails([]);
       setToInput("");
-      const initialCc = currentUserEmail ? [currentUserEmail.trim()] : [];
+      const initialCc = currentUserEmail ? [stripDisplayName(currentUserEmail.trim())] : [];
       setCcEmails(initialCc);
       setCcInput("");
       setBccEmails([]);
@@ -375,7 +454,7 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
   const handleClose = () => {
     setToEmails([]);
     setToInput("");
-    setCcEmails(currentUserEmail ? [currentUserEmail.trim()] : []);
+    setCcEmails(currentUserEmail ? [stripDisplayName(currentUserEmail.trim())] : []);
     setCcInput("");
     setBccEmails([]);
     setBccInput("");
@@ -392,17 +471,17 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
   const handleSend = async () => {
     // Flush any pending text input into the email arrays
     const finalTo = [
-      ...toEmails,
-      ...(toInput.trim() ? toInput.split(/[,;]/).map((e) => e.trim()).filter(Boolean) : []),
-    ];
+      ...toEmails.map(stripDisplayName),
+      ...(toInput.trim() ? parseEmailRecipients(toInput) : []),
+    ].filter(Boolean);
     const finalCc = [
-      ...ccEmails,
-      ...(ccInput.trim() ? ccInput.split(/[,;]/).map((e) => e.trim()).filter(Boolean) : []),
-    ];
+      ...ccEmails.map(stripDisplayName),
+      ...(ccInput.trim() ? parseEmailRecipients(ccInput) : []),
+    ].filter(Boolean);
     const finalBcc = [
-      ...bccEmails,
-      ...(bccInput.trim() ? bccInput.split(/[,;]/).map((e) => e.trim()).filter(Boolean) : []),
-    ];
+      ...bccEmails.map(stripDisplayName),
+      ...(bccInput.trim() ? parseEmailRecipients(bccInput) : []),
+    ].filter(Boolean);
 
     const toError = finalTo.length === 0 ? "At least one recipient is required." : validateEmailList(finalTo);
     const ccError = validateEmailList(finalCc);
@@ -538,9 +617,12 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
         return;
       }
 
-      const toRecipients = finalTo.filter((r) => r.trim().length > 0).join("; ");
-      alert(`The external sharing emails are currently being processed. The respective recipients: ${toRecipients} should receive the email shortly.`);
+      const allRecipientsText = allRecipients.join("; ");
+      alert(`The external sharing emails are currently being processed. The respective recipients: ${allRecipientsText} should receive the email shortly.`);
       handleClose();
+      if (onSendSuccess) {
+        onSendSuccess();
+      }
     } catch (error: any) {
       console.error("Error during sharing flow:", error);
       setShareErrorMessage(error?.message || "Unable to connect to the document sharing service. Please try again.");
@@ -552,17 +634,17 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
   const handleNewSend = async () => {
     // Flush any pending text input into the email arrays
     const finalTo = [
-      ...toEmails,
-      ...(toInput.trim() ? toInput.split(/[,;]/).map((e) => e.trim()).filter(Boolean) : []),
-    ];
+      ...toEmails.map(stripDisplayName),
+      ...(toInput.trim() ? parseEmailRecipients(toInput) : []),
+    ].filter(Boolean);
     const finalCc = [
-      ...ccEmails,
-      ...(ccInput.trim() ? ccInput.split(/[,;]/).map((e) => e.trim()).filter(Boolean) : []),
-    ];
+      ...ccEmails.map(stripDisplayName),
+      ...(ccInput.trim() ? parseEmailRecipients(ccInput) : []),
+    ].filter(Boolean);
     const finalBcc = [
-      ...bccEmails,
-      ...(bccInput.trim() ? bccInput.split(/[,;]/).map((e) => e.trim()).filter(Boolean) : []),
-    ];
+      ...bccEmails.map(stripDisplayName),
+      ...(bccInput.trim() ? parseEmailRecipients(bccInput) : []),
+    ].filter(Boolean);
 
     const toError = finalTo.length === 0 ? "At least one recipient is required." : validateEmailList(finalTo);
     const ccError = validateEmailList(finalCc);
@@ -728,9 +810,12 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
         return;
       }
 
-      const toRecipients = finalTo.filter((r) => r.trim().length > 0).join("; ");
-      alert(`The external sharing emails are currently being processed. The respective recipients: ${toRecipients} should receive the email shortly.`);
+      const allRecipientsText = allRecipients.join("; ");
+      alert(`The external sharing emails are currently being processed. The respective recipients: ${allRecipientsText} should receive the email shortly.`);
       handleClose();
+      if (onSendSuccess) {
+        onSendSuccess();
+      }
     } catch (error: any) {
       console.error("Error during New Send sharing flow:", error);
       setShareErrorMessage(error?.message || "Unable to connect to the document sharing service. Please try again.");
@@ -740,10 +825,11 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
   };
 
   const handleFieldBlur = (field: "to" | "cc" | "bcc", currentAll: string[]) => {
+    const cleaned = currentAll.map(stripDisplayName).filter(Boolean);
     const err =
-      field === "to" && currentAll.length === 0
+      field === "to" && cleaned.length === 0
         ? "At least one recipient is required."
-        : validateEmailList(currentAll);
+        : validateEmailList(cleaned);
     setEmailErrors((prev) => ({ ...prev, [field]: err }));
   };
 
