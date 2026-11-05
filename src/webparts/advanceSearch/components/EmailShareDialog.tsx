@@ -846,70 +846,100 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
     !emailErrors.bcc;
 
   return (
-    <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
-      <DialogTitle>Share Selected Items</DialogTitle>
-      <DialogContent sx={{ pt: 1 }}>
-        {shareErrorMessage && (
-          <Typography
-            color="error"
-            variant="body2"
-            sx={{ mb: 1, p: 1, backgroundColor: "#ffebee", borderRadius: "4px", whiteSpace: "pre-line" }}
-          >
-            {shareErrorMessage}
-          </Typography>
-        )}
+    <Dialog
+      open={open}
+      onClose={handleClose}
+      fullWidth
+      maxWidth={false}
+      PaperProps={{
+        sx: {
+          resize: "both",
+          overflow: "hidden",
+          width: "600px",
+          minWidth: "600px",
+          maxWidth: "95vw",
+          height: "580px",
+          minHeight: "580px",
+          maxHeight: "95vh",
+          display: "flex",
+          flexDirection: "column",
+        },
+      }}
+    >
+      <DialogTitle sx={{ flexShrink: 0 }}>Share Selected Items</DialogTitle>
+      <DialogContent
+        sx={{
+          pt: 1,
+          display: "flex",
+          flexDirection: "column",
+          flexGrow: 1,
+          overflowY: "auto",
+        }}
+      >
+        <Box sx={{ flexShrink: 0, display: "flex", flexDirection: "column" }}>
+          {shareErrorMessage && (
+            <Typography
+              color="error"
+              variant="body2"
+              sx={{ mb: 1, p: 1, backgroundColor: "#ffebee", borderRadius: "4px", whiteSpace: "pre-line" }}
+            >
+              {shareErrorMessage}
+            </Typography>
+          )}
 
-        <EmailPeoplePickerInput
-          field="to"
-          label="To"
-          values={toEmails}
-          setValues={setToEmails}
-          inputValue={toInput}
-          setInputValue={setToInput}
-          placeholder="e.g. user@domain.com or search name..."
-          errorText={emailErrors.to}
-          onFieldBlur={(all) => handleFieldBlur("to", all)}
-          onFieldChange={handleFieldChange}
-          validateEmail={validateEmail}
-          sp={activeSp}
-        />
-        <EmailPeoplePickerInput
-          field="cc"
-          label="CC"
-          values={ccEmails}
-          setValues={setCcEmails}
-          inputValue={ccInput}
-          setInputValue={setCcInput}
-          placeholder="e.g. user@domain.com or search name..."
-          errorText={emailErrors.cc}
-          onFieldBlur={(all) => handleFieldBlur("cc", all)}
-          onFieldChange={handleFieldChange}
-          validateEmail={validateEmail}
-          sp={activeSp}
-        />
-        <EmailPeoplePickerInput
-          field="bcc"
-          label="BCC"
-          values={bccEmails}
-          setValues={setBccEmails}
-          inputValue={bccInput}
-          setInputValue={setBccInput}
-          placeholder="e.g. user@domain.com or search name..."
-          errorText={emailErrors.bcc}
-          onFieldBlur={(all) => handleFieldBlur("bcc", all)}
-          onFieldChange={handleFieldChange}
-          validateEmail={validateEmail}
-          sp={activeSp}
-        />
+          <EmailPeoplePickerInput
+            field="to"
+            label="To"
+            values={toEmails}
+            setValues={setToEmails}
+            inputValue={toInput}
+            setInputValue={setToInput}
+            placeholder="e.g. user@domain.com or search name..."
+            errorText={emailErrors.to}
+            onFieldBlur={(all) => handleFieldBlur("to", all)}
+            onFieldChange={handleFieldChange}
+            validateEmail={validateEmail}
+            sp={activeSp}
+          />
+          <EmailPeoplePickerInput
+            field="cc"
+            label="CC"
+            values={ccEmails}
+            setValues={setCcEmails}
+            inputValue={ccInput}
+            setInputValue={setCcInput}
+            placeholder="e.g. user@domain.com or search name..."
+            errorText={emailErrors.cc}
+            onFieldBlur={(all) => handleFieldBlur("cc", all)}
+            onFieldChange={handleFieldChange}
+            validateEmail={validateEmail}
+            sp={activeSp}
+          />
+          <EmailPeoplePickerInput
+            field="bcc"
+            label="BCC"
+            values={bccEmails}
+            setValues={setBccEmails}
+            inputValue={bccInput}
+            setInputValue={setBccInput}
+            placeholder="e.g. user@domain.com or search name..."
+            errorText={emailErrors.bcc}
+            onFieldBlur={(all) => handleFieldBlur("bcc", all)}
+            onFieldChange={handleFieldChange}
+            validateEmail={validateEmail}
+            sp={activeSp}
+          />
 
-        <TextField
-          fullWidth
-          size="small"
-          label="Subject"
-          value={subject}
-          onChange={(e) => setSubject(e.target.value)}
-          margin="dense"
-        />
+          <TextField
+            fullWidth
+            size="small"
+            label="Subject"
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            margin="dense"
+          />
+        </Box>
+
         <TextField
           fullWidth
           size="small"
@@ -919,9 +949,27 @@ export const EmailShareDialog: React.FC<IEmailShareDialogProps> = ({
           margin="dense"
           multiline
           rows={4}
+          sx={{
+            flexGrow: 1,
+            display: "flex",
+            flexDirection: "column",
+            "& .MuiInputBase-root": {
+              flexGrow: 1,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "stretch",
+              minHeight: "100px",
+            },
+            "& .MuiInputBase-inputMultiline": {
+              flexGrow: 1,
+              height: "100% !important",
+              boxSizing: "border-box",
+              resize: "none",
+            },
+          }}
         />
       </DialogContent>
-      <DialogActions>
+      <DialogActions sx={{ flexShrink: 0, pr: 2.5 }}>
         <Button onClick={handleClose}>Cancel</Button>
         <Button
           onClick={handleNewSend}
