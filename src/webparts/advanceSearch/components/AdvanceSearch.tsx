@@ -46,7 +46,6 @@ import FormControlLabel from "@mui/material/FormControlLabel";
 import FormLabel from "@mui/material/FormLabel";
 import Radio from "@mui/material/Radio";
 import RadioGroup from "@mui/material/RadioGroup";
-import Switch from "@mui/material/Switch";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
 import Menu from "@mui/material/Menu";
@@ -1216,21 +1215,6 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const activeColumnFilters = React.useMemo(() => {
     return columnFilters.filter((f) => isFilterActive(f.value));
   }, [columnFilters]);
-  const [applyColumnFilters, setApplyColumnFilters] = React.useState<boolean>(false);
-  const savedDialogValuesRef = React.useRef<{
-    selectedProducts: IProductLookupItem[];
-    productSearchText: string;
-    selectedClients: IClientLookupItem[];
-    clientSearchText: string;
-    selectedDocumentTypes: string[];
-    selectedSubDocumentTypes: string[];
-    dateFilters: IDateFiltersState;
-    additionalKeywords: string[];
-    keywordInput: string;
-    selectedBusinessLines: string[];
-    selectedCountries: string[];
-    selectedConfidentialities: string[];
-  } | null>(null);
   const [grouping, setGrouping] = React.useState<MRT_GroupingState>([]);
 
   // --- View Management State ---
@@ -2564,9 +2548,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       setSelectedConfidentialities([]);
     }
 
-    if (hasMoreFilterActive) {
-      setShowMoreFilters(true);
-    }
+    setShowMoreFilters(hasMoreFilterActive);
 
     // 9. Keyword / File Name
     const filenameFilter = activeColumnFilters.find((f) => f.id === "filename")?.value;
@@ -2584,128 +2566,13 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       setKeywordInput("");
     }
 
-    // 10. Automatically route any active column filters that are NOT dedicated controls in the Search dialog into Additional Keywords (excluding date columns)
-    const directDialogColIds = new Set<string>([
-      "ManufacturerSearchText",
-      "PIMProductSearchText",
-      "DocumentTypeSearchText",
-      "SubDocumentTypeSearchText",
-      "BusinessLine",
-      "CountrySoldTo",
-      "Confidentiality",
-      "filename",
-      "DocumentDate",
-      "ExpiryDate",
-      "NextReviewDate",
-      "Created",
-      "Modified",
-    ]);
-
-    const columnGroups: string[][] = [];
-
-    activeColumnFilters.forEach((filter) => {
-      if (directDialogColIds.has(filter.id)) {
-        return;
-      }
-
-      const fVal = filter.value;
-      if (fVal === null || fVal === undefined) return;
-
-      const extractStringValues = (val: any): string[] => {
-        if (Array.isArray(val)) {
-          const res: string[] = [];
-          val.forEach((v: any) => {
-            res.push(...extractStringValues(v));
-          });
-          return res;
-        }
-        if (typeof val === "string" || typeof val === "number" || typeof val === "boolean") {
-          const s = String(val).trim();
-          return s && s.toLowerCase() !== "(empty)" && s !== "-" ? [s] : [];
-        }
-        if (typeof val === "object" && val !== null) {
-          // In case of custom filter objects like { text: 'xyz' }
-          if (typeof val.text === "string") {
-            const s = val.text.trim();
-            return s && s.toLowerCase() !== "(empty)" && s !== "-" ? [s] : [];
-          }
-        }
-        return [];
-      };
-
-      const extracted = Array.from(new Set(extractStringValues(fVal)));
-      if (extracted.length > 0) {
-        columnGroups.push(extracted);
-      }
-    });
-
-    const extraKeywords: string[] = [];
-
-    columnGroups.forEach((group, groupIdx) => {
-      if (groupIdx > 0) {
-        extraKeywords.push("AND");
-      }
-      group.forEach((item, itemIdx) => {
-        if (itemIdx > 0) {
-          extraKeywords.push("OR");
-        }
-        extraKeywords.push(item);
-      });
-    });
-
-    setAdditionalKeywords(extraKeywords);
+    // Do not route non-matching column filters into Additional Keywords
+    setAdditionalKeywords([]);
   };
 
   const handleOpenSearchDialog = (): void => {
-    // Only apply column filters into dialog if the toggle is ON; otherwise retain previous dialog values
-    if (applyColumnFilters) {
-      applyColumnFiltersToDialog();
-    }
+    applyColumnFiltersToDialog();
     setIsSearchDialogOpen(true);
-  };
-
-  const handleToggleApplyColumnFilters = (enabled: boolean): void => {
-    setApplyColumnFilters(enabled);
-    if (enabled) {
-      // Snapshot current dialog control values so they can be restored if user unchecks
-      savedDialogValuesRef.current = {
-        selectedProducts,
-        productSearchText,
-        selectedClients,
-        clientSearchText,
-        selectedDocumentTypes,
-        selectedSubDocumentTypes,
-        dateFilters,
-        additionalKeywords,
-        keywordInput,
-        selectedBusinessLines,
-        selectedCountries,
-        selectedConfidentialities,
-      };
-      applyColumnFiltersToDialog();
-    } else {
-      // Restore previous dialog values if available
-      if (savedDialogValuesRef.current) {
-        const prev = savedDialogValuesRef.current;
-        setSelectedProducts(prev.selectedProducts);
-        setProductSearchText(prev.productSearchText);
-        setSelectedClients(prev.selectedClients);
-        setClientSearchText(prev.clientSearchText);
-        setSelectedDocumentTypes(prev.selectedDocumentTypes);
-        setSelectedSubDocumentTypes(prev.selectedSubDocumentTypes);
-        setDateFilters(prev.dateFilters);
-        setAdditionalKeywords(prev.additionalKeywords);
-        setKeywordInput(prev.keywordInput);
-        setSelectedBusinessLines(prev.selectedBusinessLines);
-        setSelectedCountries(prev.selectedCountries);
-        setSelectedConfidentialities(prev.selectedConfidentialities);
-        setShowMoreFilters(
-          prev.selectedBusinessLines.length > 0 ||
-          prev.selectedCountries.length > 0 ||
-          prev.selectedConfidentialities.length > 0
-        );
-      }
-    }
   };
 
   const handleProductInputChange = (
@@ -2789,8 +2656,6 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     setSelectedCountries([]);
     setSelectedConfidentialities([]);
     setShowMoreFilters(false);
-    setApplyColumnFilters(false);
-    savedDialogValuesRef.current = null;
   };
 
   const handleSearch = async () => {
@@ -2801,10 +2666,139 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       setItems_AllProducts([]);
       setIsSearchDialogOpen(false);
       setIsBrowseMode(false);
-      // Retain columnFilters and grouping across searches
       setHasMoreRecords(false);
       setNextSkipId(undefined);
       setNextSearchStartRow(undefined);
+
+      // Apply dialog filters back to matching MRT column filters and clear non-matching columns
+      const newColumnFilters: MRT_ColumnFiltersState = [];
+
+      // 1. Clients
+      if (selectedClients.length > 0) {
+        const clientVals = Array.from(
+          new Set(
+            selectedClients
+              .map((c) => (c.Title || "").trim())
+              .filter(Boolean)
+          )
+        );
+        if (clientVals.length > 0) {
+          newColumnFilters.push({
+            id: "ManufacturerSearchText",
+            value: clientVals,
+          });
+        }
+      }
+
+      // 2. Products
+      if (selectedProducts.length > 0) {
+        const prodVals = Array.from(
+          new Set(
+            selectedProducts
+              .map((p) => `${p.Title || ""} ${p.PIMProductName || ""}`.trim())
+              .filter(Boolean)
+          )
+        );
+        if (prodVals.length > 0) {
+          newColumnFilters.push({
+            id: "PIMProductSearchText",
+            value: prodVals,
+          });
+        }
+      }
+
+      // 3. Document Types
+      if (selectedDocumentTypes.length > 0) {
+        newColumnFilters.push({
+          id: "DocumentTypeSearchText",
+          value: selectedDocumentTypes,
+        });
+      }
+
+      // 4. Sub Document Types
+      if (selectedSubDocumentTypes.length > 0) {
+        newColumnFilters.push({
+          id: "SubDocumentTypeSearchText",
+          value: selectedSubDocumentTypes,
+        });
+      }
+
+      // 5. Date Filters
+      const dateKeys: (keyof IDateFiltersState)[] = [
+        "DocumentDate",
+        "ExpiryDate",
+        "NextReviewDate",
+        "Created",
+        "Modified",
+      ];
+      dateKeys.forEach((key) => {
+        const filter = dateFilters[key];
+        if (filter?.from && filter.from.isValid()) {
+          newColumnFilters.push({
+            id: key,
+            value: filter.from.toISOString(),
+          });
+        } else if (filter?.to && filter.to.isValid()) {
+          newColumnFilters.push({
+            id: key,
+            value: filter.to.toISOString(),
+          });
+        }
+      });
+
+      // 6. Business Line
+      if (selectedBusinessLines.length > 0) {
+        newColumnFilters.push({
+          id: "BusinessLine",
+          value: selectedBusinessLines,
+        });
+      }
+
+      // 7. Country Sold To
+      if (selectedCountries.length > 0) {
+        newColumnFilters.push({
+          id: "CountrySoldTo",
+          value: selectedCountries,
+        });
+      }
+
+      // 8. Confidentiality
+      if (selectedConfidentialities.length > 0) {
+        newColumnFilters.push({
+          id: "Confidentiality",
+          value: selectedConfidentialities,
+        });
+      }
+
+      // 9. Keyword / File Name
+      const existingFilenameFilter = columnFilters.find((f) => f.id === "filename")?.value;
+      const existingFileTypes =
+        typeof existingFilenameFilter === "object" && existingFilenameFilter !== null
+          ? (existingFilenameFilter as { fileTypes?: string[] }).fileTypes || []
+          : [];
+
+      const nonOpKeywords = additionalKeywords.filter(
+        (k) => !["AND", "OR", "NOT"].includes(k.toUpperCase())
+      );
+      const combinedKeywords = [
+        ...nonOpKeywords,
+        ...(keywordInput.trim() && !nonOpKeywords.includes(keywordInput.trim())
+          ? [keywordInput.trim()]
+          : []),
+      ];
+      const filenameText = combinedKeywords.join(" ").trim();
+
+      if (filenameText || existingFileTypes.length > 0) {
+        newColumnFilters.push({
+          id: "filename",
+          value:
+            existingFileTypes.length > 0
+              ? { text: filenameText, fileTypes: existingFileTypes }
+              : filenameText,
+        });
+      }
+
+      setColumnFilters(newColumnFilters);
 
       const queryText = buildSearchQuery();
       if (!queryText) {
@@ -5305,47 +5299,6 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             </Box>
           </DialogTitle>
           <DialogContent sx={{ p: 2.5, pt: 2.5, mt: 1 }}>
-            {/* Toggle: Apply Column Filters */}
-            <Box
-              sx={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                mb: 1.5,
-                pb: 1,
-                borderBottom: "1px solid #f0f0f0",
-              }}
-            >
-              <FormControlLabel
-                control={
-                  <Switch
-                    size="small"
-                    checked={applyColumnFilters}
-                    onChange={(e) => handleToggleApplyColumnFilters(e.target.checked)}
-                    color="primary"
-                  />
-                }
-                label={
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      fontSize: "13px",
-                      fontWeight: 500,
-                      color: "text.primary",
-                      userSelect: "none",
-                    }}
-                  >
-                    Apply Column filters
-                  </Typography>
-                }
-              />
-              {activeColumnFilters.length > 0 && (
-                <Typography variant="caption" sx={{ fontSize: "11px", color: "text.secondary" }}>
-                  {activeColumnFilters.length} column filter{activeColumnFilters.length > 1 ? "s" : ""} active in grid
-                </Typography>
-              )}
-            </Box>
-
             <div
               className="filter-row-grid"
               style={{
