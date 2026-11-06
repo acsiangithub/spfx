@@ -5298,7 +5298,15 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
               </IconButton>
             </Box>
           </DialogTitle>
-          <DialogContent sx={{ p: 2.5, pt: 2.5, mt: 1 }}>
+          <DialogContent
+            sx={{
+              p: 2.5,
+              "&.MuiDialogContent-root": {
+                pt: 3,
+              },
+              pt: "24px !important",
+            }}
+          >
             <div
               className="filter-row-grid"
               style={{
@@ -5306,6 +5314,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                 gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
                 gap: "12px",
                 marginBottom: "12px",
+                paddingTop: "8px",
               }}
             >
               <Autocomplete
