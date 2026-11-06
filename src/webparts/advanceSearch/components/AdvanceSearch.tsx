@@ -2659,7 +2659,11 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   };
 
   const handleSearch = async () => {
-    if (!isSearchFormValid) return;
+    if (!isSearchFormValid) {
+      setIsSearchDialogOpen(false);
+      await handleRefresh();
+      return;
+    }
 
     try {
       setResultsLoading(true);
@@ -5282,17 +5286,6 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
               </Typography>
             </Box>
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              {isSearchFormValid && (
-                <Button
-                  size="small"
-                  color="inherit"
-                  onClick={handleClearDialogFilters}
-                  startIcon={<FilterListOffIcon fontSize="small" />}
-                  sx={{ textTransform: "none", fontSize: "12px", color: "text.secondary" }}
-                >
-                  Clear Filters
-                </Button>
-              )}
               <IconButton size="small" onClick={() => setIsSearchDialogOpen(false)}>
                 <CloseIcon fontSize="small" />
               </IconButton>
@@ -5962,7 +5955,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
               color="primary"
               size="small"
               onClick={handleSearch}
-              disabled={!isSearchFormValid || resultsLoading}
+              disabled={resultsLoading}
               sx={{ textTransform: "none", fontWeight: 600 }}
             >
               {resultsLoading ? "Searching..." : "Search"}
