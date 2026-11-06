@@ -2478,38 +2478,9 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       setSelectedSubDocumentTypes([]);
     }
 
-    // 5. Date filters (Document Date, Expiry Date, Next Review Date, Created, Modified)
-    const dateColCandidates: { id: string; key: keyof IDateFiltersState }[] = [
-      { id: "DocumentDate", key: "DocumentDate" },
-      { id: "ExpiryDate", key: "ExpiryDate" },
-      { id: "NextReviewDate", key: "NextReviewDate" },
-      { id: "Created", key: "Created" },
-      { id: "Modified", key: "Modified" },
-    ];
-    const newDateFilters: IDateFiltersState = {
-      DocumentDate: { from: null, to: null },
-      ExpiryDate: { from: null, to: null },
-      NextReviewDate: { from: null, to: null },
-      Created: { from: null, to: null },
-      Modified: { from: null, to: null },
-    };
-    dateColCandidates.forEach((item) => {
-      const dateColFilter = activeColumnFilters.find((f) => f.id === item.id)?.value;
-      if (dateColFilter) {
-        const { date: parsedDate } = parseDateFilterValue(dateColFilter);
-        if (parsedDate && parsedDate.isValid()) {
-          newDateFilters[item.key] = {
-            from: parsedDate,
-            to: null,
-          };
-        }
-      }
-    });
-    setDateFilters(newDateFilters);
-
     let hasMoreFilterActive = false;
 
-    // 6. Business Line
+    // 5. Business Line
     const blFilter = activeColumnFilters.find((f) => f.id === "BusinessLine")?.value;
     if (blFilter) {
       const vals = (Array.isArray(blFilter) ? blFilter : [blFilter])
@@ -2550,24 +2521,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
 
     setShowMoreFilters(hasMoreFilterActive);
 
-    // 9. Keyword / File Name
-    const filenameFilter = activeColumnFilters.find((f) => f.id === "filename")?.value;
-    if (filenameFilter) {
-      const textVal =
-        typeof filenameFilter === "string"
-          ? filenameFilter
-          : (filenameFilter as { text?: string })?.text;
-      if (textVal && typeof textVal === "string" && textVal.trim()) {
-        setKeywordInput(textVal.trim());
-      } else {
-        setKeywordInput("");
-      }
-    } else {
-      setKeywordInput("");
-    }
-
-    // Do not route non-matching column filters into Additional Keywords
-    setAdditionalKeywords([]);
+    // Note: Additional Keywords are retained across searches until the user clicks Clear Filters in the dialog
   };
 
   const handleOpenSearchDialog = (): void => {
@@ -2665,6 +2619,23 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       return;
     }
 
+    // Commit any pending un-submitted keyword input into additionalKeywords chips
+    if (keywordInput.trim()) {
+      const parts: string[] = [];
+      keywordInput.split(",").forEach((item) => {
+        const trimmed = item.trim();
+        const upper = trimmed.toUpperCase();
+        const isOp = upper === "AND" || upper === "OR" || upper === "NOT";
+        if (trimmed && (isOp || additionalKeywords.indexOf(trimmed) === -1)) {
+          parts.push(isOp ? upper : trimmed);
+        }
+      });
+      if (parts.length > 0) {
+        setAdditionalKeywords((prev) => Array.from(new Set([...prev, ...parts])));
+      }
+      setKeywordInput("");
+    }
+
     try {
       setResultsLoading(true);
       setItems_AllProducts([]);
@@ -2727,30 +2698,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         });
       }
 
-      // 5. Date Filters
-      const dateKeys: (keyof IDateFiltersState)[] = [
-        "DocumentDate",
-        "ExpiryDate",
-        "NextReviewDate",
-        "Created",
-        "Modified",
-      ];
-      dateKeys.forEach((key) => {
-        const filter = dateFilters[key];
-        if (filter?.from && filter.from.isValid()) {
-          newColumnFilters.push({
-            id: key,
-            value: filter.from.toISOString(),
-          });
-        } else if (filter?.to && filter.to.isValid()) {
-          newColumnFilters.push({
-            id: key,
-            value: filter.to.toISOString(),
-          });
-        }
-      });
-
-      // 6. Business Line
+      // 5. Business Line
       if (selectedBusinessLines.length > 0) {
         newColumnFilters.push({
           id: "BusinessLine",
@@ -2771,34 +2719,6 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         newColumnFilters.push({
           id: "Confidentiality",
           value: selectedConfidentialities,
-        });
-      }
-
-      // 9. Keyword / File Name
-      const existingFilenameFilter = columnFilters.find((f) => f.id === "filename")?.value;
-      const existingFileTypes =
-        typeof existingFilenameFilter === "object" && existingFilenameFilter !== null
-          ? (existingFilenameFilter as { fileTypes?: string[] }).fileTypes || []
-          : [];
-
-      const nonOpKeywords = additionalKeywords.filter(
-        (k) => !["AND", "OR", "NOT"].includes(k.toUpperCase())
-      );
-      const combinedKeywords = [
-        ...nonOpKeywords,
-        ...(keywordInput.trim() && !nonOpKeywords.includes(keywordInput.trim())
-          ? [keywordInput.trim()]
-          : []),
-      ];
-      const filenameText = combinedKeywords.join(" ").trim();
-
-      if (filenameText || existingFileTypes.length > 0) {
-        newColumnFilters.push({
-          id: "filename",
-          value:
-            existingFileTypes.length > 0
-              ? { text: filenameText, fileTypes: existingFileTypes }
-              : filenameText,
         });
       }
 
@@ -5284,11 +5204,6 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
               <Typography variant="h6" sx={{ fontSize: "16px", fontWeight: 600 }}>
                 Search Filters
               </Typography>
-            </Box>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <IconButton size="small" onClick={() => setIsSearchDialogOpen(false)}>
-                <CloseIcon fontSize="small" />
-              </IconButton>
             </Box>
           </DialogTitle>
           <DialogContent
