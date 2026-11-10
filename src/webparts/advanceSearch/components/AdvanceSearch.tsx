@@ -86,6 +86,7 @@ import {
   getSemanticConfidentialityStyle,
   getSemanticAlertStyle,
   getSemanticDocumentStatusStyle,
+  getDocumentStatusRowStyle,
   evaluateDateCustomFormatter,
   compileKeywordsToKql,
 } from "../utils/formatters";
@@ -4922,25 +4923,43 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         cursor: "default",
       },
     },
-    muiTableBodyRowProps: ({ row }) => ({
-      onDoubleClick: (e: React.MouseEvent<HTMLTableRowElement>) => {
-        if (row.getIsGrouped && row.getIsGrouped()) return;
+    muiTableBodyRowProps: ({ row }) => {
+      const docStatus = row.original?.DocumentStatus;
+      const statusRowStyle = getDocumentStatusRowStyle(docStatus);
+      const isSelected = row.getIsSelected();
 
-        const target = e.target as HTMLElement | null;
-        if (
-          target &&
-          target.closest(
-            'button, input, textarea, select, a, [role="button"], [role="checkbox"], .MuiButtonBase-root, .MuiCheckbox-root'
-          )
-        ) {
-          return;
-        }
+      return {
+        onDoubleClick: (e: React.MouseEvent<HTMLTableRowElement>) => {
+          if (row.getIsGrouped && row.getIsGrouped()) return;
 
-        if (row.original) {
-          handleViewFile(row.original);
-        }
-      },
-    }),
+          const target = e.target as HTMLElement | null;
+          if (
+            target &&
+            target.closest(
+              'button, input, textarea, select, a, [role="button"], [role="checkbox"], .MuiButtonBase-root, .MuiCheckbox-root'
+            )
+          ) {
+            return;
+          }
+
+          if (row.original) {
+            handleViewFile(row.original);
+          }
+        },
+        sx: {
+          ...(statusRowStyle && !isSelected
+            ? {
+                backgroundColor: statusRowStyle.rowBg,
+                "&:hover": {
+                  backgroundColor: statusRowStyle.rowBg,
+                  filter: "brightness(0.96)",
+                },
+              }
+            : {}),
+          transition: "background-color 0.15s ease",
+        },
+      };
+    },
     muiPaginationProps: {
       rowsPerPageOptions: [10, 50, 100, 500, 1000],
       sx: {

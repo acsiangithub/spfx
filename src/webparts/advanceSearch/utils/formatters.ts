@@ -148,6 +148,108 @@ export const SP_FORMAT_CLASS_MAP: Record<string, IChipStyle> = {
   "sp-css-backgroundcolor-successbackground1": { bg: "#dff6dd", border: "#92c353", text: "#107c10" },
   "sp-css-backgroundcolor-successbackground3": { bg: "#dff6dd", border: "#92c353", text: "#107c10" },
   "sp-css-backgroundcolor-neutralbackground1": { bg: "#f3f2f1", border: "#edebe9", text: "#323130" },
+
+  // SharePoint Modern Column Formatting Color Classes
+  "sp-css-backgroundcolor-bgcornflowerblue": { bg: "#c7e0f4", border: "#2b88d8", text: "#004e8c" },
+  "sp-css-backgroundcolor-bgmintgreen": { bg: "#c8e6c9", border: "#4caf50", text: "#1b5e20" },
+  "sp-css-backgroundcolor-bggold": { bg: "#fff4ce", border: "#ffb900", text: "#795b00" },
+  "sp-css-backgroundcolor-bgcoral": { bg: "#fed9cc", border: "#d13438", text: "#a4262c" },
+  "sp-css-backgroundcolor-bgdustrose": { bg: "#f3d6db", border: "#c239b3", text: "#7719aa" },
+  "sp-css-backgroundcolor-bgcyan": { bg: "#cceee8", border: "#00b7c3", text: "#005b70" },
+  "sp-css-backgroundcolor-bgpeach": { bg: "#ffdfd9", border: "#ff8c00", text: "#8e562e" },
+  "sp-css-backgroundcolor-bgsage": { bg: "#d5e8ce", border: "#5c824c", text: "#2e4822" },
+  "sp-css-backgroundcolor-bglightpurple": { bg: "#e1dfdd", border: "#8764b8", text: "#4c3282" },
+  "sp-css-backgroundcolor-bgviolet": { bg: "#e8d4f0", border: "#881798", text: "#5c0e66" },
+};
+
+// Exact Document Status Color Definitions based on SharePoint Column Formatting JSON
+export const DOCUMENT_STATUS_FORMAT_MAP: Record<
+  string,
+  IChipStyle & { rowBg: string; borderAccent: string }
+> = {
+  migrated: {
+    bg: "#e1ecf4",
+    border: "#5c9ecc",
+    text: "#004e8c",
+    rowBg: "rgba(92, 158, 204, 0.08)",
+    borderAccent: "#2b88d8",
+  },
+  "reviewed - to be amended": {
+    bg: "#e2f2e5",
+    border: "#81c784",
+    text: "#1b5e20",
+    rowBg: "rgba(129, 199, 132, 0.10)",
+    borderAccent: "#4caf50",
+  },
+  active: {
+    bg: "#fff8db",
+    border: "#ffc107",
+    text: "#795b00",
+    rowBg: "rgba(255, 193, 7, 0.09)",
+    borderAccent: "#ffb900",
+  },
+  inactive: {
+    bg: "#fdeae7",
+    border: "#e57373",
+    text: "#a4262c",
+    rowBg: "rgba(229, 115, 115, 0.08)",
+    borderAccent: "#d13438",
+  },
+  "pending ra review": {
+    bg: "#f9e9ec",
+    border: "#f06292",
+    text: "#880e4f",
+    rowBg: "rgba(240, 98, 146, 0.08)",
+    borderAccent: "#c239b3",
+  },
+  "ra validated": {
+    bg: "#e0f7f6",
+    border: "#4dd0e1",
+    text: "#005b70",
+    rowBg: "rgba(77, 208, 225, 0.09)",
+    borderAccent: "#00b7c3",
+  },
+  "ra rejected": {
+    bg: "#feebe6",
+    border: "#ff8a65",
+    text: "#bf360c",
+    rowBg: "rgba(255, 138, 101, 0.09)",
+    borderAccent: "#ff8c00",
+  },
+  discontinued: {
+    bg: "#eef4ec",
+    border: "#aed581",
+    text: "#2e4822",
+    rowBg: "rgba(174, 213, 129, 0.09)",
+    borderAccent: "#5c824c",
+  },
+  outdated: {
+    bg: "#f2edf8",
+    border: "#ba68c8",
+    text: "#4c3282",
+    rowBg: "rgba(186, 104, 200, 0.08)",
+    borderAccent: "#8764b8",
+  },
+  "updated version requested": {
+    bg: "#f5e8fa",
+    border: "#ce93d8",
+    text: "#5c0e66",
+    rowBg: "rgba(206, 147, 216, 0.09)",
+    borderAccent: "#881798",
+  },
+};
+
+// Gets subtle row background color and border accent for MRT rows
+export const getDocumentStatusRowStyle = (
+  val?: string | null
+): { rowBg: string; borderAccent: string } | null => {
+  if (!val) return null;
+  const clean = val.trim().toLowerCase();
+  const matched = DOCUMENT_STATUS_FORMAT_MAP[clean];
+  if (matched) {
+    return { rowBg: matched.rowBg, borderAccent: matched.borderAccent };
+  }
+  return null;
 };
 
 // Parse color choices from SharePoint field CustomFormatter JSON if present
@@ -295,6 +397,13 @@ export const parseAlertsCustomFormatter = (
 
 export const getSemanticDocumentStatusStyle = (val: string): IChipStyle | null => {
   const clean = val.trim().toLowerCase();
+
+  // Match the exact 10 document statuses from SharePoint Column Formatting first
+  if (DOCUMENT_STATUS_FORMAT_MAP[clean]) {
+    const { bg, border, text } = DOCUMENT_STATUS_FORMAT_MAP[clean];
+    return { bg, border, text };
+  }
+
   if (
     clean === "approved" ||
     clean === "published" ||
