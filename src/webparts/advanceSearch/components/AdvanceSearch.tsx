@@ -4409,6 +4409,14 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const table = useMaterialReactTable({
     columns: columns_AllProducts,
     data: items_AllProducts,
+    filterFns: {
+      contains: (row, columnId, filterValue) => {
+        const value = row.getValue(columnId);
+        if (value === null || value === undefined) return false;
+        const searchValue = String(filterValue ?? "").trim().toLowerCase();
+        return String(value).trim().toLowerCase().includes(searchValue);
+      },
+    },
     globalFilterFn: "contains",
     enableRowSelection: true,
     enableStickyHeader: true,
