@@ -2162,7 +2162,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     if (documentTypeValues.length > 0) {
       clauses.push(
         `(${documentTypeValues
-          .map((value) => `"${sanitizeKqlValue(value)}"`)
+          .map((value) => `DocumentTypeOWSTEXT:"${sanitizeKqlValue(value)}"`)
           .join(" OR ")})`
       );
     }
@@ -2170,7 +2170,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     if (subDocumentTypeValues.length > 0) {
       clauses.push(
         `(${subDocumentTypeValues
-          .map((value) => `"${sanitizeKqlValue(value)}"`)
+          .map((value) => `SubDocumentTypeOWSMTXT:"${sanitizeKqlValue(value)}"`)
           .join(" OR ")})`
       );
     }
