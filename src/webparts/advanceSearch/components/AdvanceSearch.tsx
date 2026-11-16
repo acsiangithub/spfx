@@ -9,6 +9,7 @@ import {
   MRT_ShowHideColumnsButton,
   MRT_ToggleDensePaddingButton,
   MRT_ToggleGlobalFilterButton,
+  MRT_ToggleFiltersButton,
   type MRT_ColumnDef,
   type MRT_ColumnFiltersState,
   type MRT_GroupingState,
@@ -1213,6 +1214,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   );
 
   const [columnFilters, setColumnFilters] = React.useState<MRT_ColumnFiltersState>([]);
+  const [showColumnFilters, setShowColumnFilters] = React.useState<boolean>(false);
   const activeColumnFilters = React.useMemo(() => {
     return columnFilters.filter((f) => isFilterActive(f.value));
   }, [columnFilters]);
@@ -2051,6 +2053,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     const loadInitialRecords = async (): Promise<void> => {
       try {
         setResultsLoading(true);
+        setShowColumnFilters(false);
+        setColumnFilters([]);
         const result = await loadRecordsBatchService(activeSp, undefined, BATCH_SIZE);
         setItems_AllProducts(result.items);
         setNextSkipId(result.nextSkipId);
@@ -2248,6 +2252,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       setItems_AllProducts([]);
       setIsBrowseMode(true);
       setColumnFilters([]);
+      setShowColumnFilters(false);
       setNextSearchStartRow(undefined);
       setCurrentSearchQuery("");
 
@@ -2268,6 +2273,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       setItems_AllProducts([]);
       setIsBrowseMode(true);
       setColumnFilters([]);
+      setShowColumnFilters(false);
       setNextSearchStartRow(undefined);
       setCurrentSearchQuery("");
 
@@ -2342,191 +2348,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     }
   };
 
-  const applyColumnFiltersToDialog = (): void => {
-    // 1. Clients
-    const clientColFilter = activeColumnFilters.find((f) => f.id === "ManufacturerSearchText")?.value;
-    if (clientColFilter) {
-      const vals = (Array.isArray(clientColFilter) ? clientColFilter : [clientColFilter])
-        .map((v) => String(v).trim())
-        .filter((v) => v && v.toLowerCase() !== "(empty)" && v !== "-");
-
-      if (vals.length > 0) {
-        const seenTitles = new Set<string>();
-        const newItems: IClientLookupItem[] = [];
-        vals.forEach((v) => {
-          const vLower = v.toLowerCase();
-          if (!seenTitles.has(vLower)) {
-            seenTitles.add(vLower);
-            const fromLoaded = clients.find((c) => (c.Title || "").toLowerCase() === vLower);
-            newItems.push(fromLoaded || { ID: -Math.floor(Math.random() * 100000), Title: v });
-          }
-        });
-        setSelectedClients(newItems);
-      } else {
-        setSelectedClients([]);
-      }
-    } else {
-      setSelectedClients([]);
-    }
-    setClientSearchText("");
-
-    // 2. Products
-    const productColFilter = activeColumnFilters.find((f) => f.id === "PIMProductSearchText")?.value;
-    if (productColFilter) {
-      const vals = (Array.isArray(productColFilter) ? productColFilter : [productColFilter])
-        .map((v) => String(v).trim())
-        .filter((v) => v && v.toLowerCase() !== "(empty)" && v !== "-");
-
-      if (vals.length > 0) {
-        const allKnownProducts: IProductLookupItem[] = [];
-        const seenProductKeys = new Set<string>();
-
-        const registerProduct = (item: IProductLookupItem) => {
-          const key = `${item.Title || ""} ${item.PIMProductName || ""}`.trim().toLowerCase();
-          if (key && !seenProductKeys.has(key)) {
-            seenProductKeys.add(key);
-            allKnownProducts.push(item);
-          }
-        };
-
-        items_AllProducts.forEach((rec) => {
-          if (Array.isArray(rec.PIMProduct)) {
-            rec.PIMProduct.forEach(registerProduct);
-          }
-        });
-
-        products.forEach(registerProduct);
-
-        const newItems: IProductLookupItem[] = [];
-        const seenKeys = new Set<string>();
-
-        vals.forEach((v) => {
-          const vLower = v.toLowerCase();
-
-          const matched = allKnownProducts.find((p) => {
-            const fullKey = `${p.Title || ""} ${p.PIMProductName || ""}`.trim().toLowerCase();
-            return (
-              fullKey === vLower ||
-              (p.Title && p.Title.toLowerCase() === vLower) ||
-              (p.PIMProductName && p.PIMProductName.toLowerCase() === vLower)
-            );
-          });
-
-          if (matched) {
-            const matchedKey = `${matched.Title || ""} ${matched.PIMProductName || ""}`.trim().toLowerCase();
-            if (!seenKeys.has(matchedKey)) {
-              newItems.push(matched);
-              seenKeys.add(matchedKey);
-            }
-          } else {
-            let parsedTitle = v;
-            let parsedName = "";
-
-            if (v.includes("|")) {
-              const parts = v.split("|").map((p) => p.trim());
-              parsedTitle = parts[0] || "";
-              parsedName = parts.slice(1).join(" ");
-            } else {
-              const spaceIdx = v.indexOf(" ");
-              if (spaceIdx > 0) {
-                parsedTitle = v.substring(0, spaceIdx).trim();
-                parsedName = v.substring(spaceIdx + 1).trim();
-              }
-            }
-
-            const itemKey = `${parsedTitle} ${parsedName}`.trim().toLowerCase();
-            if (!seenKeys.has(itemKey)) {
-              newItems.push({
-                ID: -Math.floor(Math.random() * 100000),
-                Title: parsedTitle,
-                PIMProductName: parsedName,
-              });
-              seenKeys.add(itemKey);
-            }
-          }
-        });
-
-        setSelectedProducts(newItems);
-      } else {
-        setSelectedProducts([]);
-      }
-    } else {
-      setSelectedProducts([]);
-    }
-    setProductSearchText("");
-
-    // 3. Document Types
-    const docTypeColFilter = activeColumnFilters.find((f) => f.id === "DocumentTypeSearchText")?.value;
-    if (docTypeColFilter) {
-      const vals = (Array.isArray(docTypeColFilter) ? docTypeColFilter : [docTypeColFilter])
-        .map((v) => String(v).trim())
-        .filter((v) => v && v.toLowerCase() !== "(empty)" && v !== "-");
-
-      setSelectedDocumentTypes(Array.from(new Set(vals)));
-    } else {
-      setSelectedDocumentTypes([]);
-    }
-
-    // 4. Sub Document Types
-    const subDocTypeColFilter = activeColumnFilters.find((f) => f.id === "SubDocumentTypeSearchText")?.value;
-    if (subDocTypeColFilter) {
-      const vals = (Array.isArray(subDocTypeColFilter) ? subDocTypeColFilter : [subDocTypeColFilter])
-        .map((v) => String(v).trim())
-        .filter((v) => v && v.toLowerCase() !== "(empty)" && v !== "-");
-
-      setSelectedSubDocumentTypes(Array.from(new Set(vals)));
-    } else {
-      setSelectedSubDocumentTypes([]);
-    }
-
-    let hasMoreFilterActive = false;
-
-    // 5. Business Line
-    const blFilter = activeColumnFilters.find((f) => f.id === "BusinessLine")?.value;
-    if (blFilter) {
-      const vals = (Array.isArray(blFilter) ? blFilter : [blFilter])
-        .map((v) => String(v).trim())
-        .filter((v) => v && v.toLowerCase() !== "(empty)" && v !== "-");
-      const uniqueVals = Array.from(new Set(vals));
-      setSelectedBusinessLines(uniqueVals);
-      if (uniqueVals.length > 0) hasMoreFilterActive = true;
-    } else {
-      setSelectedBusinessLines([]);
-    }
-
-    // 7. Country Sold To
-    const countryFilter = activeColumnFilters.find((f) => f.id === "CountrySoldTo")?.value;
-    if (countryFilter) {
-      const vals = (Array.isArray(countryFilter) ? countryFilter : [countryFilter])
-        .map((v) => String(v).trim())
-        .filter((v) => v && v.toLowerCase() !== "(empty)" && v !== "-");
-      const uniqueVals = Array.from(new Set(vals));
-      setSelectedCountries(uniqueVals);
-      if (uniqueVals.length > 0) hasMoreFilterActive = true;
-    } else {
-      setSelectedCountries([]);
-    }
-
-    // 8. Confidentiality
-    const confFilter = activeColumnFilters.find((f) => f.id === "Confidentiality")?.value;
-    if (confFilter) {
-      const vals = (Array.isArray(confFilter) ? confFilter : [confFilter])
-        .map((v) => String(v).trim())
-        .filter((v) => v && v.toLowerCase() !== "(empty)" && v !== "-");
-      const uniqueVals = Array.from(new Set(vals));
-      setSelectedConfidentialities(uniqueVals);
-      if (uniqueVals.length > 0) hasMoreFilterActive = true;
-    } else {
-      setSelectedConfidentialities([]);
-    }
-
-    setShowMoreFilters(hasMoreFilterActive);
-
-    // Note: Additional Keywords are retained across searches until the user clicks Clear Filters in the dialog
-  };
-
   const handleOpenSearchDialog = (): void => {
-    applyColumnFiltersToDialog();
     setIsSearchDialogOpen(true);
   };
 
@@ -2645,85 +2467,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       setHasMoreRecords(false);
       setNextSkipId(undefined);
       setNextSearchStartRow(undefined);
-
-      // Apply dialog filters back to matching MRT column filters and clear non-matching columns
-      const newColumnFilters: MRT_ColumnFiltersState = [];
-
-      // 1. Clients
-      if (selectedClients.length > 0) {
-        const clientVals = Array.from(
-          new Set(
-            selectedClients
-              .map((c) => (c.Title || "").trim())
-              .filter(Boolean)
-          )
-        );
-        if (clientVals.length > 0) {
-          newColumnFilters.push({
-            id: "ManufacturerSearchText",
-            value: clientVals,
-          });
-        }
-      }
-
-      // 2. Products
-      if (selectedProducts.length > 0) {
-        const prodVals = Array.from(
-          new Set(
-            selectedProducts
-              .map((p) => `${p.Title || ""} ${p.PIMProductName || ""}`.trim())
-              .filter(Boolean)
-          )
-        );
-        if (prodVals.length > 0) {
-          newColumnFilters.push({
-            id: "PIMProductSearchText",
-            value: prodVals,
-          });
-        }
-      }
-
-      // 3. Document Types
-      if (selectedDocumentTypes.length > 0) {
-        newColumnFilters.push({
-          id: "DocumentTypeSearchText",
-          value: selectedDocumentTypes,
-        });
-      }
-
-      // 4. Sub Document Types
-      if (selectedSubDocumentTypes.length > 0) {
-        newColumnFilters.push({
-          id: "SubDocumentTypeSearchText",
-          value: selectedSubDocumentTypes,
-        });
-      }
-
-      // 5. Business Line
-      if (selectedBusinessLines.length > 0) {
-        newColumnFilters.push({
-          id: "BusinessLine",
-          value: selectedBusinessLines,
-        });
-      }
-
-      // 7. Country Sold To
-      if (selectedCountries.length > 0) {
-        newColumnFilters.push({
-          id: "CountrySoldTo",
-          value: selectedCountries,
-        });
-      }
-
-      // 8. Confidentiality
-      if (selectedConfidentialities.length > 0) {
-        newColumnFilters.push({
-          id: "Confidentiality",
-          value: selectedConfidentialities,
-        });
-      }
-
-      setColumnFilters(newColumnFilters);
+      setColumnFilters([]);
+      setShowColumnFilters(true);
 
       const queryText = buildSearchQuery();
       if (!queryText) {
@@ -4851,6 +4596,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     layoutMode: "grid-no-grow",
     renderToolbarInternalActions: ({ table }) => (
       <>
+        <MRT_ToggleFiltersButton table={table} />
         <MRT_ToggleGlobalFilterButton table={table} />
         <MRT_ShowHideColumnsButton table={table} />
         <MRT_ToggleDensePaddingButton table={table} />
@@ -4858,6 +4604,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     ),
     initialState: {
       density: "compact",
+      showColumnFilters: false,
       columnFilters: [],
       pagination: {
         pageIndex: 0,
@@ -4974,6 +4721,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
         return next.filter((f) => isFilterActive(f.value));
       });
     },
+    onShowColumnFiltersChange: setShowColumnFilters,
     onGroupingChange: setGrouping,
     onSortingChange: setSorting,
     onColumnVisibilityChange: setColumnVisibility,
@@ -4982,7 +4730,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     state: {
       isLoading: resultsLoading,
       showProgressBars: isLoadingMore,
-      showColumnFilters: true,
+      showColumnFilters,
       columnFilters,
       columnPinning,
       grouping,
