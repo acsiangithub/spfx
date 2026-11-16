@@ -1072,6 +1072,24 @@ export interface IDateFiltersState {
   Modified: IDateRange;
 }
 
+interface ISearchFilterCriteria {
+  selectedProducts: IProductLookupItem[];
+  selectedClients: IClientLookupItem[];
+  selectedDocumentTypes: string[];
+  selectedSubDocumentTypes: string[];
+  keywords: string[];
+  dateFilters: IDateFiltersState;
+  selectedBusinessLines: string[];
+  selectedCountries: string[];
+  selectedConfidentialities: string[];
+}
+
+interface IAppliedSearchFilterChip {
+  id: string;
+  label: string;
+  remove: (filters: ISearchFilterCriteria) => ISearchFilterCriteria;
+}
+
 const INITIAL_DATE_FILTERS: IDateFiltersState = {
   DocumentDate: { from: null, to: null },
   ExpiryDate: { from: null, to: null },
@@ -1104,6 +1122,9 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const [additionalKeywords, setAdditionalKeywords] = React.useState<string[]>([]);
   const [keywordInput, setKeywordInput] = React.useState<string>("");
   const [dateFilters, setDateFilters] = React.useState<IDateFiltersState>(INITIAL_DATE_FILTERS);
+  const [appliedSearchFilters, setAppliedSearchFilters] =
+    React.useState<ISearchFilterCriteria | null>(null);
+  const [isAppliedFiltersExpanded, setIsAppliedFiltersExpanded] = React.useState(false);
 
   const handleDateChange = React.useCallback(
     (field: keyof IDateFiltersState, bound: "from" | "to", value: Dayjs | null) => {
@@ -2114,14 +2135,89 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     }
   }, [availableSubDocumentTypes, selectedDocumentTypes]);
 
-  const buildSearchQuery = (): string => {
+  const getCurrentSearchCriteria = (): ISearchFilterCriteria => {
+    const keywords = [...additionalKeywords];
+    keywordInput.split(",").forEach((item) => {
+      const trimmed = item.trim();
+      const upper = trimmed.toUpperCase();
+      const isOperator = upper === "AND" || upper === "OR" || upper === "NOT";
+      if (trimmed && (isOperator || !keywords.includes(trimmed))) {
+        keywords.push(isOperator ? upper : trimmed);
+      }
+    });
+
+    return {
+      selectedProducts: [...selectedProducts],
+      selectedClients: [...selectedClients],
+      selectedDocumentTypes: [...selectedDocumentTypes],
+      selectedSubDocumentTypes: [...selectedSubDocumentTypes],
+      keywords: Array.from(new Set(keywords)),
+      dateFilters: { ...dateFilters },
+      selectedBusinessLines: [...selectedBusinessLines],
+      selectedCountries: [...selectedCountries],
+      selectedConfidentialities: [...selectedConfidentialities],
+    };
+  };
+
+  const hasSearchCriteria = (filters: ISearchFilterCriteria): boolean => {
+    const hasProduct = filters.selectedProducts.some(
+      (item) => Boolean(item.Title?.trim()) || Boolean(item.PIMProductName?.trim())
+    );
+    const hasClient = filters.selectedClients.some((item) => Boolean(item.Title?.trim()));
+    const hasDate = Object.values(filters.dateFilters).some(
+      (range) => range.from !== null || range.to !== null
+    );
+
+    return (
+      hasProduct ||
+      hasClient ||
+      filters.selectedDocumentTypes.length > 0 ||
+      filters.selectedSubDocumentTypes.length > 0 ||
+      hasDate ||
+      Boolean(compileKeywordsToKql(filters.keywords)) ||
+      filters.selectedBusinessLines.length > 0 ||
+      filters.selectedCountries.length > 0 ||
+      filters.selectedConfidentialities.length > 0
+    );
+  };
+
+  const syncDialogFilters = (filters: ISearchFilterCriteria): void => {
+    setSelectedProducts(filters.selectedProducts);
+    setSelectedClients(filters.selectedClients);
+    setSelectedDocumentTypes(filters.selectedDocumentTypes);
+    setSelectedSubDocumentTypes(filters.selectedSubDocumentTypes);
+    setAdditionalKeywords(filters.keywords);
+    setKeywordInput("");
+    setDateFilters(filters.dateFilters);
+    setSelectedBusinessLines(filters.selectedBusinessLines);
+    setSelectedCountries(filters.selectedCountries);
+    setSelectedConfidentialities(filters.selectedConfidentialities);
+  };
+
+  const handleClearDialogFilters = (): void => {
+    setSelectedProducts([]);
+    setProductSearchText("");
+    setSelectedClients([]);
+    setClientSearchText("");
+    setSelectedDocumentTypes([]);
+    setSelectedSubDocumentTypes([]);
+    setDateFilters(INITIAL_DATE_FILTERS);
+    setAdditionalKeywords([]);
+    setKeywordInput("");
+    setSelectedBusinessLines([]);
+    setSelectedCountries([]);
+    setSelectedConfidentialities([]);
+    setShowMoreFilters(false);
+  };
+
+  const buildSearchQuery = (filters: ISearchFilterCriteria): string => {
     const clauses: string[] = [];
     const searchPath = `${props.urlSite.replace(/\/$/, "")}/Products/*`;
     clauses.push(`Path:"${searchPath}"`);
     clauses.push("IsDocument:1");
 
     const productClauses: string[] = [];
-    selectedProducts.forEach((item) => {
+    filters.selectedProducts.forEach((item) => {
       const title = (item.Title || "").trim();
       const productName = (item.PIMProductName || "").trim();
       if (title && productName) {
@@ -2135,15 +2231,15 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       }
     });
 
-    const clientValues = selectedClients
+    const clientValues = filters.selectedClients
       .map((item) => (item.Title || "").trim())
       .filter(Boolean);
 
-    const documentTypeValues = selectedDocumentTypes
+    const documentTypeValues = filters.selectedDocumentTypes
       .map((item) => item.trim())
       .filter(Boolean);
 
-    const subDocumentTypeValues = selectedSubDocumentTypes
+    const subDocumentTypeValues = filters.selectedSubDocumentTypes
       .map((item) => item.trim())
       .filter(Boolean);
 
@@ -2175,15 +2271,15 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       );
     }
 
-    const businessLineValues = selectedBusinessLines
+    const businessLineValues = filters.selectedBusinessLines
       .map((item) => item.trim())
       .filter(Boolean);
 
-    const countryValues = selectedCountries
+    const countryValues = filters.selectedCountries
       .map((item) => item.trim())
       .filter(Boolean);
 
-    const confidentialityValues = selectedConfidentialities
+    const confidentialityValues = filters.selectedConfidentialities
       .map((item) => item.trim())
       .filter(Boolean);
 
@@ -2211,7 +2307,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       );
     }
 
-    const keywordClause = compileKeywordsToKql(additionalKeywords, keywordInput);
+    const keywordClause = compileKeywordsToKql(filters.keywords);
     if (keywordClause) {
       clauses.push(keywordClause);
     }
@@ -2224,8 +2320,8 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       Modified: "LastModifiedTime",
     };
 
-    (Object.keys(dateFilters) as (keyof IDateFiltersState)[]).forEach((fieldKey) => {
-      const { from, to } = dateFilters[fieldKey];
+    (Object.keys(filters.dateFilters) as (keyof IDateFiltersState)[]).forEach((fieldKey) => {
+      const { from, to } = filters.dateFilters[fieldKey];
       const targetProp = datePropertyMap[fieldKey];
 
       if (from && to) {
@@ -2268,6 +2364,10 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   };
 
   const handleRefresh = async (): Promise<void> => {
+    handleClearDialogFilters();
+    setAppliedSearchFilters(null);
+    setIsAppliedFiltersExpanded(false);
+
     try {
       setResultsLoading(true);
       setItems_AllProducts([]);
@@ -2419,47 +2519,17 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     selectedConfidentialities,
   ]);
 
-  const handleClearDialogFilters = (): void => {
-    setSelectedProducts([]);
-    setProductSearchText("");
-    setSelectedClients([]);
-    setClientSearchText("");
-    setSelectedDocumentTypes([]);
-    setSelectedSubDocumentTypes([]);
-    setDateFilters(INITIAL_DATE_FILTERS);
-    setAdditionalKeywords([]);
-    setKeywordInput("");
-    setSelectedBusinessLines([]);
-    setSelectedCountries([]);
-    setSelectedConfidentialities([]);
-    setShowMoreFilters(false);
-  };
-
-  const handleSearch = async () => {
-    if (!isSearchFormValid) {
+  const handleSearch = async (filtersToApply?: ISearchFilterCriteria): Promise<void> => {
+    const filters = filtersToApply ?? getCurrentSearchCriteria();
+    if (!hasSearchCriteria(filters)) {
       setIsSearchDialogOpen(false);
       await handleRefresh();
       return;
     }
 
-    // Commit any pending un-submitted keyword input into additionalKeywords chips
-    if (keywordInput.trim()) {
-      const parts: string[] = [];
-      keywordInput.split(",").forEach((item) => {
-        const trimmed = item.trim();
-        const upper = trimmed.toUpperCase();
-        const isOp = upper === "AND" || upper === "OR" || upper === "NOT";
-        if (trimmed && (isOp || additionalKeywords.indexOf(trimmed) === -1)) {
-          parts.push(isOp ? upper : trimmed);
-        }
-      });
-      if (parts.length > 0) {
-        setAdditionalKeywords((prev) => Array.from(new Set([...prev, ...parts])));
-      }
-      setKeywordInput("");
-    }
-
     try {
+      setAdditionalKeywords(filters.keywords);
+      setKeywordInput("");
       setResultsLoading(true);
       setItems_AllProducts([]);
       setIsSearchDialogOpen(false);
@@ -2470,12 +2540,14 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
       setColumnFilters([]);
       setShowColumnFilters(true);
 
-      const queryText = buildSearchQuery();
+      const queryText = buildSearchQuery(filters);
       if (!queryText) {
         await handleLoadAllRecords();
         return;
       }
 
+      setAppliedSearchFilters(filters);
+      setIsAppliedFiltersExpanded(false);
       setCurrentSearchQuery(queryText);
       const result = await searchRecordsService(activeSp, queryText, 0, BATCH_SIZE);
       setItems_AllProducts(result.items);
@@ -2486,6 +2558,143 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     } finally {
       setResultsLoading(false);
     }
+  };
+
+  const appliedFilterChips = React.useMemo<IAppliedSearchFilterChip[]>(() => {
+    if (!appliedSearchFilters) return [];
+
+    const chips: IAppliedSearchFilterChip[] = [];
+    appliedSearchFilters.selectedProducts.forEach((item, index) => {
+      const productName = [item.Title, item.PIMProductName].filter(Boolean).join(" ").trim();
+      if (!productName) return;
+      chips.push({
+        id: `product-${item.ID}-${index}`,
+        label: `Product: ${productName}`,
+        remove: (filters) => ({
+          ...filters,
+          selectedProducts: filters.selectedProducts.filter((_value, i) => i !== index),
+        }),
+      });
+    });
+    appliedSearchFilters.selectedClients.forEach((item, index) => {
+      if (!item.Title?.trim()) return;
+      chips.push({
+        id: `client-${item.ID}-${index}`,
+        label: `Client: ${item.Title}`,
+        remove: (filters) => ({
+          ...filters,
+          selectedClients: filters.selectedClients.filter((_value, i) => i !== index),
+        }),
+      });
+    });
+    appliedSearchFilters.selectedDocumentTypes.forEach((value, index) => {
+      if (!value.trim()) return;
+      chips.push({
+        id: `document-type-${index}-${value}`,
+        label: `Document Type: ${value}`,
+        remove: (filters) => ({
+          ...filters,
+          selectedDocumentTypes: filters.selectedDocumentTypes.filter((_value, i) => i !== index),
+        }),
+      });
+    });
+    appliedSearchFilters.selectedSubDocumentTypes.forEach((value, index) => {
+      if (!value.trim()) return;
+      chips.push({
+        id: `sub-document-type-${index}-${value}`,
+        label: `Sub Document Type: ${value}`,
+        remove: (filters) => ({
+          ...filters,
+          selectedSubDocumentTypes: filters.selectedSubDocumentTypes.filter((_value, i) => i !== index),
+        }),
+      });
+    });
+    appliedSearchFilters.keywords.forEach((value, index) => {
+      if (!value.trim()) return;
+      chips.push({
+        id: `keyword-${index}-${value}`,
+        label: `Keyword: ${value}`,
+        remove: (filters) => ({
+          ...filters,
+          keywords: filters.keywords.filter((_value, i) => i !== index),
+        }),
+      });
+    });
+
+    const dateFilterLabels: Record<keyof IDateFiltersState, string> = {
+      DocumentDate: "Document Date",
+      ExpiryDate: "Expiry Date",
+      NextReviewDate: "Next Review Date",
+      Created: "Created Date",
+      Modified: "Modified Date",
+    };
+    (Object.keys(dateFilterLabels) as (keyof IDateFiltersState)[]).forEach((field) => {
+      const range = appliedSearchFilters.dateFilters[field];
+      if (!range.from && !range.to) return;
+      const rangeLabel =
+        range.from && range.to
+          ? `${range.from.format("DD/MM/YYYY")} - ${range.to.format("DD/MM/YYYY")}`
+          : range.from
+          ? `From ${range.from.format("DD/MM/YYYY")}`
+          : `Until ${range.to?.format("DD/MM/YYYY")}`;
+      chips.push({
+        id: `date-${field}`,
+        label: `${dateFilterLabels[field]}: ${rangeLabel}`,
+        remove: (filters) => ({
+          ...filters,
+          dateFilters: {
+            ...filters.dateFilters,
+            [field]: { from: null, to: null },
+          },
+        }),
+      });
+    });
+
+    const addValueChips = (
+      values: string[],
+      idPrefix: string,
+      labelPrefix: string,
+      field: "selectedBusinessLines" | "selectedCountries" | "selectedConfidentialities"
+    ): void => {
+      values.forEach((value, index) => {
+        if (!value.trim()) return;
+        chips.push({
+          id: `${idPrefix}-${index}-${value}`,
+          label: `${labelPrefix}: ${value}`,
+          remove: (filters) => ({
+            ...filters,
+            [field]: filters[field].filter((_value, i) => i !== index),
+          }),
+        });
+      });
+    };
+    addValueChips(
+      appliedSearchFilters.selectedBusinessLines,
+      "business-line",
+      "Business Line",
+      "selectedBusinessLines"
+    );
+    addValueChips(
+      appliedSearchFilters.selectedCountries,
+      "country",
+      "Country Sold To",
+      "selectedCountries"
+    );
+    addValueChips(
+      appliedSearchFilters.selectedConfidentialities,
+      "confidentiality",
+      "Confidentiality",
+      "selectedConfidentialities"
+    );
+
+    return chips;
+  }, [appliedSearchFilters]);
+
+  const handleRemoveAppliedFilterChip = (chip: IAppliedSearchFilterChip): void => {
+    if (!appliedSearchFilters) return;
+    const nextFilters = chip.remove(appliedSearchFilters);
+    syncDialogFilters(nextFilters);
+    void handleSearch(nextFilters);
   };
 
   const getItemsFilteredExcluding = React.useCallback(
@@ -4200,6 +4409,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
   const table = useMaterialReactTable({
     columns: columns_AllProducts,
     data: items_AllProducts,
+    globalFilterFn: "contains",
     enableRowSelection: true,
     enableStickyHeader: true,
     enableFullScreenToggle: false,
@@ -4894,18 +5104,79 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             px: 0.5,
           }}
         >
-          <Typography
-            variant="h6"
-            component="h2"
-            sx={{
-              fontSize: "18px",
-              fontWeight: 600,
-              color: "text.primary",
-              m: 0,
-            }}
-          >
-            Search Clients & Products
-          </Typography>
+          <Box sx={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 1.25, flex: 1, minWidth: 0 }}>
+            <Typography
+              variant="h6"
+              component="h2"
+              sx={{
+                fontSize: "18px",
+                fontWeight: 600,
+                color: "text.primary",
+                m: 0,
+                flexShrink: 0,
+              }}
+            >
+              Search Clients & Products
+            </Typography>
+            {appliedFilterChips.length > 0 && (
+              <Box sx={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 0.5 }}>
+                {(isAppliedFiltersExpanded
+                  ? appliedFilterChips
+                  : appliedFilterChips.slice(0, 6)
+                ).map((chip) => (
+                  <Chip
+                    key={chip.id}
+                    size="small"
+                    label={chip.label}
+                    title={chip.label}
+                    clickable
+                    disabled={resultsLoading || isLoadingMore}
+                    onClick={handleOpenSearchDialog}
+                    onDelete={() => handleRemoveAppliedFilterChip(chip)}
+                    sx={{
+                      maxWidth: 260,
+                      height: 24,
+                      "& .MuiChip-label": {
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      },
+                    }}
+                  />
+                ))}
+                {appliedFilterChips.length > 6 && (
+                  <button
+                    type="button"
+                    disabled={resultsLoading || isLoadingMore}
+                    onClick={() => setIsAppliedFiltersExpanded((expanded) => !expanded)}
+                    title={
+                      isAppliedFiltersExpanded
+                        ? "Show less"
+                        : `Show ${appliedFilterChips.length - 6} more filters`
+                    }
+                    style={{
+                      cursor: resultsLoading || isLoadingMore ? "not-allowed" : "pointer",
+                      border: "1px solid #c0c0c0",
+                      backgroundColor: isAppliedFiltersExpanded ? "#e3f2fd" : "#f5f5f5",
+                      color: "#1976d2",
+                      borderRadius: "10px",
+                      padding: "0 6px",
+                      fontSize: "10px",
+                      fontWeight: 700,
+                      lineHeight: "16px",
+                      height: "16px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {isAppliedFiltersExpanded
+                      ? "▴ less"
+                      : `... +${appliedFilterChips.length - 6}`}
+                  </button>
+                )}
+              </Box>
+            )}
+          </Box>
 
           <Box sx={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <Button
@@ -5636,7 +5907,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
               variant="contained"
               color="primary"
               size="small"
-              onClick={handleSearch}
+              onClick={() => handleSearch()}
               disabled={resultsLoading}
               sx={{ textTransform: "none", fontWeight: 600 }}
             >
