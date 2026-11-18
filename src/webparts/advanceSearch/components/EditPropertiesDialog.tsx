@@ -474,6 +474,40 @@ const parseDateString = (text: string): Dayjs | null => {
   return fallback.isValid() ? fallback : null;
 };
 
+const splitMultiValue = (value?: string | null): string[] => {
+  const seen = new Set<string>();
+  return (value || "")
+    .split(/[\r\n;,]+/)
+    .map((part) => part.trim())
+    .filter((part) => {
+      const key = part.toLowerCase();
+      if (!part || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+};
+
+const getCommonValues = (
+  items: doclib_AllProducts[],
+  getValue: (item: doclib_AllProducts) => string
+): string[] => {
+  if (items.length === 0) return [];
+  const valuesByItem = items.map((item) => splitMultiValue(getValue(item)));
+  const common = new Set(valuesByItem[0].map((value) => value.toLowerCase()));
+  valuesByItem.slice(1).forEach((values) => {
+    const itemValues = new Set(values.map((value) => value.toLowerCase()));
+    common.forEach((value) => {
+      if (!itemValues.has(value)) common.delete(value);
+    });
+  });
+  return valuesByItem[0].filter((value) => common.has(value.toLowerCase()));
+};
+
+const getProductValues = (
+  products: IProductLookupItem[],
+  property: "BusinessLine" | "Country"
+): string[] => splitMultiValue(products.map((product) => product[property] || "").join("; "));
+
 export interface IEditPropertiesDialogProps {
   open: boolean;
   onClose: () => void;
@@ -533,6 +567,9 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
   // Track field values
   const [selectedProducts, setSelectedProducts] = React.useState<IProductLookupItem[]>([]);
   const [productsModified, setProductsModified] = React.useState<boolean>(false);
+  const [productSelectionChanged, setProductSelectionChanged] = React.useState<boolean>(false);
+  const [businessLines, setBusinessLines] = React.useState<string[]>([]);
+  const [countrySoldToValues, setCountrySoldToValues] = React.useState<string[]>([]);
 
   const [selectedClients, setSelectedClients] = React.useState<IClientLookupItem[]>([]);
   const [clientsModified, setClientsModified] = React.useState<boolean>(false);
@@ -604,6 +641,9 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
   // Reset form
   const resetForm = React.useCallback(() => {
     setSelectedProducts([]);
+    setProductSelectionChanged(false);
+    setBusinessLines([]);
+    setCountrySoldToValues([]);
     setSelectedClients([]);
     setSelectedDocumentType(null);
     setSelectedSubDocumentTypes([]);
@@ -655,6 +695,8 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
     // Explicit check: If more than 1 item is selected, ALWAYS wipe and keep empty!
     if (selectedItems.length > 1) {
       resetForm();
+      setBusinessLines(getCommonValues(selectedItems, (item) => item.BusinessLine));
+      setCountrySoldToValues(getCommonValues(selectedItems, (item) => item.CountrySoldTo));
       return;
     }
 
@@ -662,8 +704,11 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
       const itemToEdit = selectedItems[0];
       const itemId = itemToEdit.id as number;
       // 1. Initial fast prepopulate from data table to avoid layout shift
+      setProductSelectionChanged(false);
       setSelectedProducts(itemToEdit.PIMProduct ? [...itemToEdit.PIMProduct] : []);
       setProductsModified(true);
+      setBusinessLines(splitMultiValue(itemToEdit.BusinessLine));
+      setCountrySoldToValues(splitMultiValue(itemToEdit.CountrySoldTo));
 
       const clientStr = itemToEdit.ManufacturerSearchText || "";
       if (clientStr.trim()) {
@@ -751,6 +796,8 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
           if (live.products && live.products.length > 0) {
             setSelectedProducts(live.products);
           }
+          if (live.businessLines !== undefined) setBusinessLines(live.businessLines);
+          if (live.countrySoldTo !== undefined) setCountrySoldToValues(live.countrySoldTo);
 
           // Clients
           if (live.clients && live.clients.length > 0) {
@@ -812,6 +859,12 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
       resetForm();
     }
   }, [open, selectedItems, sp, documentTypes, allSubDocumentTypes, resetForm]);
+
+  React.useEffect(() => {
+    if (!productSelectionChanged) return;
+    setBusinessLines(getProductValues(selectedProducts, "BusinessLine"));
+    setCountrySoldToValues(getProductValues(selectedProducts, "Country"));
+  }, [productSelectionChanged, selectedProducts]);
 
   // Check user write permissions whenever dialog opens or selectedItems change
   React.useEffect(() => {
@@ -1037,6 +1090,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
       if (newEntries.length > 0) {
         setSelectedProducts((prev) => [...prev, ...newEntries]);
         setProductsModified(true);
+        setProductSelectionChanged(true);
         setProductSearchText("");
 
         if (sp) {
@@ -1608,6 +1662,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
             onChange={(_e, newValue) => {
               setSelectedProducts(newValue);
               setProductsModified(true);
+              setProductSelectionChanged(true);
 
               if (newValue && newValue.length > 0) {
                 const currentClientTitles = new Set(
@@ -1715,6 +1770,23 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
                 }}
               />
             )}
+          />
+        </Box>
+
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2 }}>
+          <TextField
+            fullWidth
+            size="small"
+            label="Business Line"
+            value={businessLines.join(", ")}
+            InputProps={{ readOnly: true }}
+          />
+          <TextField
+            fullWidth
+            size="small"
+            label="Country Sold To"
+            value={countrySoldToValues.join(", ")}
+            InputProps={{ readOnly: true }}
           />
         </Box>
 

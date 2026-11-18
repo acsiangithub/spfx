@@ -1450,6 +1450,8 @@ export interface ILoadedItemForEdit {
   documentStatus?: string;
   customerName?: string;
   batchNumber?: string;
+  businessLines?: string[];
+  countrySoldTo?: string[];
 }
 
 export const loadItemDetailsForEdit = async (
@@ -1465,6 +1467,8 @@ export const loadItemDetailsForEdit = async (
       "PIMProductCode/Title",
       "PIMProductCode/PIMProductName",
       "Manufacturer",
+      "Business_x0020_Line",
+      "Country",
       "GlobalClientTermSet",
       "PIMProductTermSet",
       "Document_x0020_Type",
@@ -1693,6 +1697,14 @@ export const loadItemDetailsForEdit = async (
     documentStatus: choiceToString(raw.Document_x0020_Status),
     customerName: raw.Customer_x0020_Name || "",
     batchNumber: raw.Batch_x0020_Number || "",
+    businessLines: choiceToString(raw.Business_x0020_Line)
+      .split(/[\r\n;,]+/)
+      .map((value) => value.trim())
+      .filter(Boolean),
+    countrySoldTo: choiceToString(raw.Country)
+      .split(/[\r\n;,]+/)
+      .map((value) => value.trim())
+      .filter(Boolean),
   };
 };
 
