@@ -278,6 +278,39 @@ const parseDelimitedText = (text: string): string[] => {
   return [clean];
 };
 
+const getRelatedClients = (
+  products: IProductLookupItem[],
+  existingClients: IClientLookupItem[],
+  clientOptions: IClientLookupItem[]
+): IClientLookupItem[] => {
+  const clientTitles = new Map<string, string>();
+  products.forEach((product) => {
+    parseDelimitedText(product.Manufacturer || "").forEach((title) => {
+      const key = title.toLowerCase();
+      if (!clientTitles.has(key)) clientTitles.set(key, title);
+    });
+  });
+
+  return Array.from(clientTitles.entries()).map(([key, title], index) =>
+    existingClients.find((client) => (client.Title || "").trim().toLowerCase() === key) ||
+    clientOptions.find((client) => (client.Title || "").trim().toLowerCase() === key) || {
+      ID: -(index + 100),
+      Title: title,
+    }
+  );
+};
+
+const haveSameClients = (
+  first: IClientLookupItem[],
+  second: IClientLookupItem[]
+): boolean =>
+  first.length === second.length &&
+  first.every(
+    (client, index) =>
+      (client.Title || "").trim().toLowerCase() ===
+      (second[index].Title || "").trim().toLowerCase()
+  );
+
 const parseDelimitedPaste = (
   e: React.ClipboardEvent<HTMLInputElement | HTMLDivElement>
 ): string[] | null => {
@@ -566,6 +599,16 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
 
   // Track field values
   const [selectedProducts, setSelectedProducts] = React.useState<IProductLookupItem[]>([]);
+  const selectedProductsRef = React.useRef<IProductLookupItem[]>(selectedProducts);
+  const updateSelectedProducts = React.useCallback(
+    (value: React.SetStateAction<IProductLookupItem[]>) => {
+      const nextProducts =
+        typeof value === "function" ? value(selectedProductsRef.current) : value;
+      selectedProductsRef.current = nextProducts;
+      setSelectedProducts(nextProducts);
+    },
+    []
+  );
   const [productsModified, setProductsModified] = React.useState<boolean>(false);
   const [productSelectionChanged, setProductSelectionChanged] = React.useState<boolean>(false);
   const [businessLines, setBusinessLines] = React.useState<string[]>([]);
@@ -623,6 +666,17 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
   const [clientOptions, setClientOptions] = React.useState<IClientLookupItem[]>([]);
   const [clientLoading, setClientLoading] = React.useState(false);
 
+  const updateClientsForProducts = React.useCallback(
+    (products: IProductLookupItem[]) => {
+      const relatedClients = getRelatedClients(products, selectedClients, clientOptions);
+      if (!haveSameClients(selectedClients, relatedClients)) {
+        setSelectedClients(relatedClients);
+        setClientsModified(true);
+      }
+    },
+    [clientOptions, selectedClients]
+  );
+
   // Save execution state
   const [isSaving, setIsSaving] = React.useState<boolean>(false);
   const [isLoadingLiveItem, setIsLoadingLiveItem] = React.useState<boolean>(false);
@@ -640,7 +694,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
 
   // Reset form
   const resetForm = React.useCallback(() => {
-    setSelectedProducts([]);
+    updateSelectedProducts([]);
     setProductSelectionChanged(false);
     setBusinessLines([]);
     setCountrySoldToValues([]);
@@ -680,7 +734,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
     setIsLoadingLiveItem(false);
     setHasWritePermission(true);
     setIsCheckingPermissions(false);
-  }, []);
+  }, [updateSelectedProducts]);
 
   // Initialize form state whenever dialog opens or selectedItems change
   React.useEffect(() => {
@@ -705,7 +759,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
       const itemId = itemToEdit.id as number;
       // 1. Initial fast prepopulate from data table to avoid layout shift
       setProductSelectionChanged(false);
-      setSelectedProducts(itemToEdit.PIMProduct ? [...itemToEdit.PIMProduct] : []);
+      updateSelectedProducts(itemToEdit.PIMProduct ? [...itemToEdit.PIMProduct] : []);
       setProductsModified(true);
       setBusinessLines(splitMultiValue(itemToEdit.BusinessLine));
       setCountrySoldToValues(splitMultiValue(itemToEdit.CountrySoldTo));
@@ -794,7 +848,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
 
           // Products
           if (live.products && live.products.length > 0) {
-            setSelectedProducts(live.products);
+            updateSelectedProducts(live.products);
           }
           if (live.businessLines !== undefined) setBusinessLines(live.businessLines);
           if (live.countrySoldTo !== undefined) setCountrySoldToValues(live.countrySoldTo);
@@ -858,7 +912,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
     } else {
       resetForm();
     }
-  }, [open, selectedItems, sp, documentTypes, allSubDocumentTypes, resetForm]);
+  }, [open, selectedItems, sp, documentTypes, allSubDocumentTypes, resetForm, updateSelectedProducts]);
 
   React.useEffect(() => {
     if (!productSelectionChanged) return;
@@ -1023,7 +1077,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
       if (parts.length === 0) return;
 
       const currentKeys = new Set(
-        selectedProducts.map(
+        selectedProductsRef.current.map(
           (p) => `${p.Title || ""} ${p.PIMProductName || ""}`.trim().toLowerCase()
         )
       );
@@ -1088,7 +1142,8 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
       });
 
       if (newEntries.length > 0) {
-        setSelectedProducts((prev) => [...prev, ...newEntries]);
+        const nextProducts = [...selectedProductsRef.current, ...newEntries];
+        updateSelectedProducts(nextProducts);
         setProductsModified(true);
         setProductSelectionChanged(true);
         setProductSearchText("");
@@ -1098,72 +1153,41 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
           if (unresolved.length > 0) {
             resolveProductsBatch(sp, unresolved)
               .then((resolved) => {
-                setSelectedProducts((currentList) =>
-                  currentList.map((item) => {
-                    const itemTitle = (item.Title || "").trim().toLowerCase();
-                    const itemName = (item.PIMProductName || "").trim().toLowerCase();
+                const updatedProducts = selectedProductsRef.current.map((item) => {
+                  const itemTitle = (item.Title || "").trim().toLowerCase();
+                  const itemName = (item.PIMProductName || "").trim().toLowerCase();
 
-                    const found = resolved.find((r) => {
-                      const rTitle = (r.Title || "").trim().toLowerCase();
-                      const rName = (r.PIMProductName || "").trim().toLowerCase();
+                  const found = resolved.find((r) => {
+                    const rTitle = (r.Title || "").trim().toLowerCase();
+                    const rName = (r.PIMProductName || "").trim().toLowerCase();
 
-                      // Priority 1: Match by Product Code (Title)
-                      if (itemTitle && rTitle) {
-                        return itemTitle === rTitle;
-                      }
-                      // Priority 2: Only match by ProductName if item had no Product Code
-                      if (!itemTitle && itemName && rName) {
-                        return itemName === rName;
-                      }
-                      return false;
-                    });
-                    return found ? { ...item, ...found } : item;
-                  })
-                );
-
-                // Populate clients from resolved products without duplicates
-                setSelectedClients((currentClients) => {
-                  const currentTitles = new Set(
-                    currentClients.map((c) => (c.Title || "").trim().toLowerCase())
-                  );
-                  const toAdd: IClientLookupItem[] = [];
-
-                  resolved.forEach((prod) => {
-                    if (prod.Manufacturer) {
-                      const clientNames = parseDelimitedText(prod.Manufacturer);
-                      clientNames.forEach((clientTitle) => {
-                        const lower = clientTitle.toLowerCase();
-                        if (!currentTitles.has(lower)) {
-                          currentTitles.add(lower);
-                          const matched = clientOptions.find(
-                            (c) => (c.Title || "").trim().toLowerCase() === lower
-                          );
-                          toAdd.push(
-                            matched || {
-                              ID: -(toAdd.length + 100),
-                              Title: clientTitle,
-                            }
-                          );
-                        }
-                      });
+                    // Priority 1: Match by Product Code (Title)
+                    if (itemTitle && rTitle) {
+                      return itemTitle === rTitle;
                     }
+                    // Priority 2: Only match by ProductName if item had no Product Code
+                    if (!itemTitle && itemName && rName) {
+                      return itemName === rName;
+                    }
+                    return false;
                   });
-
-                  if (toAdd.length > 0) {
-                    setClientsModified(true);
-                    return [...currentClients, ...toAdd];
-                  }
-                  return currentClients;
+                  return found ? { ...item, ...found } : item;
                 });
+                updateSelectedProducts(updatedProducts);
+                updateClientsForProducts(updatedProducts);
               })
               .catch((err) => {
                 console.warn("Could not batch resolve pasted products immediately:", err);
               });
+          } else {
+            updateClientsForProducts(nextProducts);
           }
+        } else {
+          updateClientsForProducts(nextProducts);
         }
       }
     },
-    [selectedProducts, productOptions, clientOptions, sp]
+    [productOptions, sp, updateClientsForProducts, updateSelectedProducts]
   );
 
   const handlePasteClients = React.useCallback(
@@ -1660,42 +1684,10 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
             }
             onInputChange={(_e, val) => setProductSearchText(val)}
             onChange={(_e, newValue) => {
-              setSelectedProducts(newValue);
+              updateSelectedProducts(newValue);
               setProductsModified(true);
               setProductSelectionChanged(true);
-
-              if (newValue && newValue.length > 0) {
-                const currentClientTitles = new Set(
-                  selectedClients.map((c) => (c.Title || "").trim().toLowerCase())
-                );
-                const newClientsToAdd: IClientLookupItem[] = [];
-
-                newValue.forEach((prod) => {
-                  if (prod.Manufacturer) {
-                    const clientNames = parseDelimitedText(prod.Manufacturer);
-                    clientNames.forEach((clientTitle) => {
-                      const lower = clientTitle.toLowerCase();
-                      if (!currentClientTitles.has(lower)) {
-                        currentClientTitles.add(lower);
-                        const matched = clientOptions.find(
-                          (c) => (c.Title || "").trim().toLowerCase() === lower
-                        );
-                        newClientsToAdd.push(
-                          matched || {
-                            ID: -(newClientsToAdd.length + 100),
-                            Title: clientTitle,
-                          }
-                        );
-                      }
-                    });
-                  }
-                });
-
-                if (newClientsToAdd.length > 0) {
-                  setSelectedClients((prev) => [...prev, ...newClientsToAdd]);
-                  setClientsModified(true);
-                }
-              }
+              updateClientsForProducts(newValue);
             }}
             renderOption={(props, option) => (
               <li {...props} key={option.ID}>
@@ -1798,7 +1790,11 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
                 Client
               </Typography>
               <CopyFieldValueButton value={selectedClients} label="clients" />
-              <PasteFieldValueButton onPasteText={handlePasteClients} label="clients" />
+              <PasteFieldValueButton
+                onPasteText={handlePasteClients}
+                label="clients"
+                disabled={selectedProducts.length > 0}
+              />
             </Box>
             {isBulkEdit && clientsModified && (
               <Chip
@@ -1814,6 +1810,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
             multiple
             fullWidth
             size="small"
+            readOnly={selectedProducts.length > 0}
             loading={clientLoading}
             options={clientOptions}
             value={selectedClients}
