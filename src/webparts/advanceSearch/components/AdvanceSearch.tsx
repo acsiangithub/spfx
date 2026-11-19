@@ -1667,33 +1667,12 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
     [getUserPermissions]
   );
 
-  // Close preview dialog and automatically perform targeted 1-item in-place refresh
-  const handleClosePreviewDialog = React.useCallback(async () => {
-    const rawTarget = lastViewedItemIdRef.current ?? previewFileItem?.id;
-    const targetItemId = rawTarget ? Number(rawTarget) : null;
+  // Close preview dialog without refreshing the viewed item
+  const handleClosePreviewDialog = React.useCallback(() => {
     setIsPreviewDialogOpen(false);
     setPreviewFileItem(null);
     setPreviewUrl("");
-
-    if (targetItemId && targetItemId > 0 && activeSp) {
-      try {
-        console.log(`[AdvanceSearch] Reloading item ${targetItemId} after preview closed...`);
-        const latestItem = await fetchSingleProductItemService(activeSp, targetItemId);
-        if (latestItem) {
-          console.log(`[AdvanceSearch] Successfully reloaded item ${targetItemId}:`, latestItem);
-          setItems_AllProducts((prev) =>
-            prev.map((it) =>
-              Number(it.id) === Number(latestItem.id) || Number(it.id) === targetItemId
-                ? { ...it, ...latestItem }
-                : it
-            )
-          );
-        }
-      } catch (err) {
-        console.warn("Could not refresh item after preview close:", err);
-      }
-    }
-  }, [previewFileItem, activeSp]);
+  }, []);
 
   // Tab focus listener: also re-fetch the last viewed item if user opened it in a new window and returned
   React.useEffect(() => {
