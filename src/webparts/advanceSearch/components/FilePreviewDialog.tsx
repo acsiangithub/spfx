@@ -75,6 +75,21 @@ export const FilePreviewDialog: React.FC<IFilePreviewDialogProps> = ({
           doc.head?.appendChild(styleEl);
         }
 
+        // Hide the primary command bar group, including its overflow menu.
+        const primaryCommandsStyleId = "hide-sp-inner-primary-command-set";
+        if (!doc.getElementById(primaryCommandsStyleId)) {
+          const primaryCommandsStyleEl = doc.createElement("style");
+          primaryCommandsStyleEl.id = primaryCommandsStyleId;
+          primaryCommandsStyleEl.textContent = `
+            div[role="group"].OneUpCommandBar-primaryCommandSet {
+              display: none !important;
+              visibility: hidden !important;
+              pointer-events: none !important;
+            }
+          `;
+          doc.head?.appendChild(primaryCommandsStyleEl);
+        }
+
         // 2. Hide Share button (#shareCommandGroup) when viewing non-confidential files
         if (!isConfidential) {
           const shareStyleId = "hide-sp-inner-share-command";

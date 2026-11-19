@@ -546,6 +546,18 @@ const getClientValues = (
   property: "BusinessLine" | "Country"
 ): string[] => splitMultiValue(clients.map((client) => client[property] || "").join("; "));
 
+type FilePreviewType = "pdf" | "office" | null;
+
+const getFilePreviewType = (item: doclib_AllProducts): FilePreviewType => {
+  const paths = [item.filename, item.OriginalFilename, item.fileUrl].map((value) =>
+    (value || "").split(/[?#]/)[0].toLowerCase()
+  );
+
+  if (paths.some((path) => path.endsWith(".pdf"))) return "pdf";
+  if (paths.some((path) => /\.(docx|xlsx|pptx)$/.test(path))) return "office";
+  return null;
+};
+
 export interface IEditPropertiesDialogProps {
   open: boolean;
   onClose: () => void;
@@ -573,6 +585,10 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
 }) => {
   const isBulkEdit = selectedItems.length > 1;
   const singleItem = selectedItems.length === 1 ? selectedItems[0] : null;
+  const [selectedPreviewItem, setSelectedPreviewItem] = React.useState<doclib_AllProducts | null>(null);
+  const [officePreviewUrl, setOfficePreviewUrl] = React.useState<string>("");
+  const [isLoadingOfficePreview, setIsLoadingOfficePreview] = React.useState<boolean>(false);
+  const [officePreviewError, setOfficePreviewError] = React.useState<string | null>(null);
 
   const getAbsoluteFileUrl = React.useCallback(
     (rawUrl?: string): string => {
@@ -601,6 +617,86 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
     },
     [siteUrl]
   );
+
+  const getDirectPreviewFileUrl = React.useCallback(
+    (item: doclib_AllProducts): string => {
+      if ((item.Confidentiality || "").trim().toLowerCase() === "confidential") {
+        const cleanFileName = (item.filename || item.OriginalFilename || "")
+          .replace(/\.url$/i, "")
+          .trim();
+        if (!cleanFileName) return "";
+        const webUrl = (siteUrl?.trim() || window.location.origin).replace(/\/+$/, "");
+        return `${webUrl}/Clients%20%20ProductsConfidential/${encodeURIComponent(cleanFileName)}`;
+      }
+
+      return getAbsoluteFileUrl(item.fileUrl);
+    },
+    [getAbsoluteFileUrl, siteUrl]
+  );
+
+  const getOfficeViewUrl = React.useCallback(
+    async (item: doclib_AllProducts): Promise<string> => {
+      const absoluteFileUrl = getDirectPreviewFileUrl(item);
+      if (!absoluteFileUrl) {
+        throw new Error("No file URL is available for this Office document.");
+      }
+
+      const serverRelativeUrl = decodeURIComponent(new URL(absoluteFileUrl).pathname);
+      const file = await sp.web
+        .getFileByServerRelativePath(serverRelativeUrl)
+        .select("UniqueId")();
+      if (!file.UniqueId) {
+        throw new Error("SharePoint did not return a unique file ID for this Office document.");
+      }
+
+      const webUrl = (siteUrl?.trim() || new URL(absoluteFileUrl).origin).replace(/\/+$/, "");
+      const viewerUrl = new URL(`${webUrl}/_layouts/15/WopiFrame.aspx`);
+      viewerUrl.searchParams.set("sourcedoc", `{${file.UniqueId.replace(/[{}]/g, "")}}`);
+      // Embed view keeps Office for the web in viewing mode instead of opening its editor.
+      viewerUrl.searchParams.set("action", "embedview");
+      return viewerUrl.toString();
+    },
+    [getDirectPreviewFileUrl, siteUrl, sp]
+  );
+
+  React.useEffect(() => {
+    if (!open || selectedItems.length !== 1 || !getFilePreviewType(selectedItems[0])) {
+      setSelectedPreviewItem(null);
+      return;
+    }
+
+    setSelectedPreviewItem(selectedItems[0]);
+  }, [open, selectedItems]);
+
+  React.useEffect(() => {
+    if (!open || !selectedPreviewItem || getFilePreviewType(selectedPreviewItem) !== "office") {
+      setOfficePreviewUrl("");
+      setOfficePreviewError(null);
+      setIsLoadingOfficePreview(false);
+      return;
+    }
+
+    let isCancelled = false;
+    setOfficePreviewUrl("");
+    setOfficePreviewError(null);
+    setIsLoadingOfficePreview(true);
+
+    getOfficeViewUrl(selectedPreviewItem)
+      .then((url) => {
+        if (!isCancelled) setOfficePreviewUrl(url);
+      })
+      .catch((err) => {
+        console.error("Could not prepare Office document preview:", err);
+        if (!isCancelled) {
+          setOfficePreviewError("Could not load the Office preview. Check your SharePoint access and try again.");
+          setIsLoadingOfficePreview(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [getOfficeViewUrl, open, selectedPreviewItem]);
 
   // Track field values
   const [selectedProducts, setSelectedProducts] = React.useState<IProductLookupItem[]>([]);
@@ -1504,6 +1600,13 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
       customerNameModified ||
       batchNumberModified
     : true;
+  const selectedPreviewType = selectedPreviewItem ? getFilePreviewType(selectedPreviewItem) : null;
+  const selectedPreviewUrl =
+    selectedPreviewItem && selectedPreviewType === "pdf"
+      ? getDirectPreviewFileUrl(selectedPreviewItem)
+      : selectedPreviewType === "office"
+      ? officePreviewUrl
+      : "";
 
   return (
     <Dialog
@@ -1512,7 +1615,16 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
       PaperComponent={DraggablePaper}
       aria-labelledby="draggable-edit-dialog-title"
       fullWidth
-      maxWidth="md"
+      maxWidth={false}
+      PaperProps={{
+        sx: {
+          height: "90vh",
+          maxHeight: "95vh",
+          width: "calc(100vw - 32px)",
+          maxWidth: "none",
+          m: "16px",
+        },
+      }}
     >
       <DialogTitle
         id="draggable-edit-dialog-title"
@@ -1543,41 +1655,51 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
                 <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, mt: 0.5, maxHeight: "60px", overflowY: "auto" }}>
                   {selectedItems.map((item) => {
                     const fileUrl = getAbsoluteFileUrl(item.fileUrl);
+                    const previewType = getFilePreviewType(item);
+                    const newTabUrl =
+                      previewType === "pdf" ? getDirectPreviewFileUrl(item) : fileUrl;
+                    const isPreviewSelected = selectedPreviewItem === item;
                     return (
                       <Chip
                         key={item.id ?? item.filename}
                         size="small"
                         label={item.filename || "Document"}
-                        component={fileUrl ? "a" : "div"}
-                        href={fileUrl || undefined}
-                        target={fileUrl ? "_blank" : undefined}
-                        rel={fileUrl ? "noopener noreferrer" : undefined}
+                        component={fileUrl && !previewType ? "a" : "div"}
+                        href={fileUrl && !previewType ? fileUrl : undefined}
+                        target={fileUrl && !previewType ? "_blank" : undefined}
+                        rel={fileUrl && !previewType ? "noopener noreferrer" : undefined}
                         data-interception="off"
-                        clickable={Boolean(fileUrl)}
-                        deleteIcon={<OpenInNewIcon sx={{ fontSize: 13 }} />}
+                        clickable={Boolean(fileUrl || previewType)}
+                        color={isPreviewSelected ? "primary" : "default"}
+                        variant={isPreviewSelected ? "filled" : "outlined"}
+                        deleteIcon={previewType === "office" ? undefined : <OpenInNewIcon sx={{ fontSize: 13 }} />}
                         onDelete={
-                          fileUrl
+                          newTabUrl && previewType !== "office"
                             ? (e: any) => {
                                 if (e?.preventDefault) e.preventDefault();
                                 if (e?.stopPropagation) e.stopPropagation();
-                                window.open(fileUrl, "_blank", "noopener,noreferrer");
+                                window.open(newTabUrl, "_blank", "noopener,noreferrer");
                               }
                             : undefined
                         }
                         onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}
                         onClick={
-                          fileUrl
+                          fileUrl || previewType
                             ? (e: React.MouseEvent) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                window.open(fileUrl, "_blank", "noopener,noreferrer");
+                                if (previewType) {
+                                  setSelectedPreviewItem(item);
+                                } else if (fileUrl) {
+                                  window.open(fileUrl, "_blank", "noopener,noreferrer");
+                                }
                               }
                             : undefined
                         }
                         sx={{
                           fontSize: "11px",
                           height: "22px",
-                          cursor: fileUrl ? "pointer" : "default",
+                          cursor: fileUrl || previewType ? "pointer" : "default",
                           "& .MuiChip-deleteIcon": {
                             fontSize: "13px",
                             color: "primary.main",
@@ -1596,6 +1718,36 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
                 {(() => {
                   const fileUrl = getAbsoluteFileUrl(singleItem?.fileUrl);
                   const fileName = singleItem?.filename || "Document";
+                  const previewType = singleItem ? getFilePreviewType(singleItem) : null;
+                  if (singleItem && previewType) {
+                    const viewerUrl =
+                      previewType === "pdf" ? getDirectPreviewFileUrl(singleItem) : officePreviewUrl;
+                    return (
+                      <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.25, minWidth: 0 }}>
+                        <Typography
+                          variant="h6"
+                          component="span"
+                          sx={{ fontSize: "15px", fontWeight: 600, wordBreak: "break-all" }}
+                        >
+                          {fileName}
+                        </Typography>
+                        {viewerUrl && (
+                          <Tooltip title={`Open ${previewType === "office" ? "Office viewer" : "PDF"} in new tab`}>
+                            <IconButton
+                              size="small"
+                              onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}
+                              onClick={(e: React.MouseEvent) => {
+                                e.stopPropagation();
+                                window.open(viewerUrl, "_blank", "noopener,noreferrer");
+                              }}
+                            >
+                              <OpenInNewIcon sx={{ fontSize: 16 }} />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                      </Box>
+                    );
+                  }
                   if (fileUrl) {
                     return (
                       <Link
@@ -1646,21 +1798,44 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
       </DialogTitle>
       {(isLoadingLiveItem || isCheckingPermissions) && <LinearProgress sx={{ height: "2.5px" }} />}
 
-      <DialogContent sx={{ p: 2.5, display: "flex", flexDirection: "column", gap: 2.5 }}>
+      <DialogContent sx={{ p: 2, display: "flex", minHeight: 0, overflow: "hidden" }}>
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: { xs: "minmax(0, 1fr)", md: "minmax(0, 1fr) minmax(0, 1fr)" },
+            gridTemplateRows: { xs: "minmax(0, 1fr) minmax(220px, 0.8fr)", md: "minmax(0, 1fr)" },
+            gap: 2,
+            flex: 1,
+            minHeight: 0,
+            width: "100%",
+          }}
+        >
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: { xs: "minmax(0, 1fr)", lg: "repeat(2, minmax(0, 1fr))" },
+            alignContent: "start",
+            gap: 2.5,
+            minWidth: 0,
+            minHeight: 0,
+            overflowY: "auto",
+            pr: 0.5,
+          }}
+        >
         {errorMessage && (
-          <Alert severity="error" onClose={() => setErrorMessage(null)}>
+          <Alert severity="error" onClose={() => setErrorMessage(null)} sx={{ gridColumn: { xs: "auto", lg: "1 / -1" } }}>
             {errorMessage}
           </Alert>
         )}
 
         {!hasWritePermission && !isCheckingPermissions && (
-          <Alert severity="warning">
+          <Alert severity="warning" sx={{ gridColumn: { xs: "auto", lg: "1 / -1" } }}>
             You do not have write permission to edit items in the <strong>Clients &amp; Products</strong> library. The Save button is disabled.
           </Alert>
         )}
 
         {/* 1. Product (multi value) */}
-        <Box>
+        <Box sx={{ gridColumn: { xs: "auto", lg: "1 / -1" } }}>
           <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
             <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
               <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
@@ -1780,7 +1955,13 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
           />
         </Box>
 
-        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2 }}>
+        <Box
+          sx={{
+            display: { xs: "grid", lg: "contents" },
+            gridTemplateColumns: "1fr",
+            gap: 2,
+          }}
+        >
           <TextField
             fullWidth
             size="small"
@@ -1798,7 +1979,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
         </Box>
 
         {/* 2. Client (multi value) */}
-        <Box>
+        <Box sx={{ gridColumn: { xs: "auto", lg: "1 / -1" } }}>
           <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
             <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
               <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600 }}>
@@ -1871,8 +2052,8 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
         {/* 3. Document Type (single value) & 4. Sub Document Type (multi value) */}
         <Box
           sx={{
-            display: "grid",
-            gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+            display: { xs: "grid", lg: "contents" },
+            gridTemplateColumns: "1fr",
             gap: 2,
           }}
         >
@@ -1989,8 +2170,8 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
         {/* Row 1: Issued by, Issuer Name (Supplier), Document Provider Email */}
         <Box
           sx={{
-            display: "grid",
-            gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr 1fr" },
+            display: { xs: "grid", lg: "contents" },
+            gridTemplateColumns: "1fr",
             gap: 2,
           }}
         >
@@ -2099,8 +2280,8 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
         {/* Row 2: Confidentiality, Document Status, Document Language */}
         <Box
           sx={{
-            display: "grid",
-            gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr 1fr" },
+            display: { xs: "grid", lg: "contents" },
+            gridTemplateColumns: "1fr",
             gap: 2,
           }}
         >
@@ -2252,8 +2433,8 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
         <LocalizationProvider dateAdapter={AdapterDayjs}>
           <Box
             sx={{
-              display: "grid",
-              gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr 1fr" },
+              display: { xs: "grid", lg: "contents" },
+              gridTemplateColumns: "1fr",
               gap: 2,
             }}
           >
@@ -2363,8 +2544,8 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
         {/* Row 4: Customer Name, Batch Number */}
         <Box
           sx={{
-            display: "grid",
-            gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+            display: { xs: "grid", lg: "contents" },
+            gridTemplateColumns: "1fr",
             gap: 2,
           }}
         >
@@ -2427,6 +2608,116 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
               }}
             />
           </Box>
+        </Box>
+        </Box>
+
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            minWidth: 0,
+            minHeight: 0,
+            border: "1px solid",
+            borderColor: "divider",
+            borderRadius: 1,
+            overflow: "hidden",
+            backgroundColor: "#f5f5f5",
+          }}
+        >
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 1,
+              px: 1.5,
+              py: 1,
+              borderBottom: "1px solid",
+              borderColor: "divider",
+              backgroundColor: "#fff",
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ fontWeight: 600, flexShrink: 0 }}>
+              {selectedPreviewType === "office" ? "Office Preview" : "Document Preview"}
+            </Typography>
+            {selectedPreviewType === "office" && (
+              <Chip size="small" label="View only" color="info" variant="outlined" sx={{ height: "20px" }} />
+            )}
+            {selectedPreviewItem && (
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                title={selectedPreviewItem.filename}
+                sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}
+              >
+                {selectedPreviewItem.filename}
+              </Typography>
+            )}
+            {selectedPreviewUrl && (
+              <Tooltip title="Open viewer in new tab">
+                <IconButton
+                  size="small"
+                  onClick={() => window.open(selectedPreviewUrl, "_blank", "noopener,noreferrer")}
+                  sx={{ flexShrink: 0 }}
+                >
+                  <OpenInNewIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
+          </Box>
+          <Box sx={{ flex: 1, minHeight: 0, position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {isLoadingOfficePreview && (
+              <Box
+                sx={{
+                  position: "absolute",
+                  inset: 0,
+                  zIndex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 1,
+                  backgroundColor: "rgba(255,255,255,0.8)",
+                }}
+              >
+                <CircularProgress size={24} />
+                <Typography variant="body2" color="text.secondary">
+                  Loading Office preview...
+                </Typography>
+              </Box>
+            )}
+            {officePreviewError ? (
+              <Alert severity="error" sx={{ m: 2 }}>
+                {officePreviewError}
+              </Alert>
+            ) : selectedPreviewUrl ? (
+              <iframe
+                key={selectedPreviewUrl}
+                src={selectedPreviewUrl}
+                title={selectedPreviewItem?.filename || "Document preview"}
+                onLoad={() => {
+                  if (selectedPreviewType === "office") setIsLoadingOfficePreview(false);
+                }}
+                onError={() => {
+                  if (selectedPreviewType === "office") {
+                    setOfficePreviewError("The Office viewer could not load this document.");
+                    setIsLoadingOfficePreview(false);
+                  }
+                }}
+                style={{ width: "100%", height: "100%", border: "none", backgroundColor: "#fff" }}
+              />
+            ) : (
+              <Typography variant="body2" color="text.secondary" sx={{ p: 2, textAlign: "center" }}>
+                {selectedPreviewItem
+                  ? selectedPreviewType === "office"
+                    ? "The Office preview is not available."
+                    : "No file URL is available for this PDF."
+                  : isBulkEdit
+                  ? "Select a PDF or Office file above to preview it."
+                  : "This file type opens in a new tab from its filename."}
+              </Typography>
+            )}
+          </Box>
+        </Box>
         </Box>
       </DialogContent>
 
