@@ -541,6 +541,11 @@ const getProductValues = (
   property: "BusinessLine" | "Country"
 ): string[] => splitMultiValue(products.map((product) => product[property] || "").join("; "));
 
+const getClientValues = (
+  clients: IClientLookupItem[],
+  property: "BusinessLine" | "Country"
+): string[] => splitMultiValue(clients.map((client) => client[property] || "").join("; "));
+
 export interface IEditPropertiesDialogProps {
   open: boolean;
   onClose: () => void;
@@ -610,7 +615,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
     []
   );
   const [productsModified, setProductsModified] = React.useState<boolean>(false);
-  const [productSelectionChanged, setProductSelectionChanged] = React.useState<boolean>(false);
+  const [metadataSource, setMetadataSource] = React.useState<"product" | "client" | null>(null);
   const [businessLines, setBusinessLines] = React.useState<string[]>([]);
   const [countrySoldToValues, setCountrySoldToValues] = React.useState<string[]>([]);
 
@@ -691,11 +696,16 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
   const availableConfidentiality = libraryChoices?.confidentiality || [];
   const availableDocStatus = libraryChoices?.documentStatus || [];
   const availableDocLanguage = libraryChoices?.documentLanguage || [];
+  const isNextReviewDateReadOnly = Boolean(documentDate?.isValid() || expiryDate?.isValid());
+  const isConfidentialityReadOnly = Boolean(
+    selectedDocumentType?.Title?.trim() ||
+      selectedSubDocumentTypes.some((item) => Boolean(item.Title?.trim()))
+  );
 
   // Reset form
   const resetForm = React.useCallback(() => {
     updateSelectedProducts([]);
-    setProductSelectionChanged(false);
+    setMetadataSource(null);
     setBusinessLines([]);
     setCountrySoldToValues([]);
     setSelectedClients([]);
@@ -758,7 +768,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
       const itemToEdit = selectedItems[0];
       const itemId = itemToEdit.id as number;
       // 1. Initial fast prepopulate from data table to avoid layout shift
-      setProductSelectionChanged(false);
+      setMetadataSource(null);
       updateSelectedProducts(itemToEdit.PIMProduct ? [...itemToEdit.PIMProduct] : []);
       setProductsModified(true);
       setBusinessLines(splitMultiValue(itemToEdit.BusinessLine));
@@ -915,10 +925,14 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
   }, [open, selectedItems, sp, documentTypes, allSubDocumentTypes, resetForm, updateSelectedProducts]);
 
   React.useEffect(() => {
-    if (!productSelectionChanged) return;
-    setBusinessLines(getProductValues(selectedProducts, "BusinessLine"));
-    setCountrySoldToValues(getProductValues(selectedProducts, "Country"));
-  }, [productSelectionChanged, selectedProducts]);
+    if (metadataSource === "product") {
+      setBusinessLines(getProductValues(selectedProducts, "BusinessLine"));
+      setCountrySoldToValues(getProductValues(selectedProducts, "Country"));
+    } else if (metadataSource === "client") {
+      setBusinessLines(getClientValues(selectedClients, "BusinessLine"));
+      setCountrySoldToValues(getClientValues(selectedClients, "Country"));
+    }
+  }, [metadataSource, selectedProducts, selectedClients]);
 
   // Check user write permissions whenever dialog opens or selectedItems change
   React.useEffect(() => {
@@ -1145,7 +1159,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
         const nextProducts = [...selectedProductsRef.current, ...newEntries];
         updateSelectedProducts(nextProducts);
         setProductsModified(true);
-        setProductSelectionChanged(true);
+        setMetadataSource("product");
         setProductSearchText("");
 
         if (sp) {
@@ -1216,6 +1230,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
       if (newEntries.length > 0) {
         setSelectedClients((prev) => [...prev, ...newEntries]);
         setClientsModified(true);
+        setMetadataSource("client");
         setClientSearchText("");
       }
     },
@@ -1686,7 +1701,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
             onChange={(_e, newValue) => {
               updateSelectedProducts(newValue);
               setProductsModified(true);
-              setProductSelectionChanged(true);
+              setMetadataSource("product");
               updateClientsForProducts(newValue);
             }}
             renderOption={(props, option) => (
@@ -1825,6 +1840,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
             onChange={(_e, newValue) => {
               setSelectedClients(newValue);
               setClientsModified(true);
+              setMetadataSource("client");
             }}
             renderInput={(params) => (
               <TextField
@@ -2096,7 +2112,11 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
                   Confidentiality
                 </Typography>
                 <CopyFieldValueButton value={confidentiality} label="confidentiality" />
-                <PasteFieldValueButton onPasteText={handlePasteConfidentiality} label="confidentiality" />
+                <PasteFieldValueButton
+                  onPasteText={handlePasteConfidentiality}
+                  label="confidentiality"
+                  disabled={isConfidentialityReadOnly}
+                />
               </Box>
               {isBulkEdit && confidentialityModified && (
                 <Chip size="small" label="Modified" color="primary" variant="outlined" sx={{ height: "18px", fontSize: "10px" }} />
@@ -2107,12 +2127,13 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
               size="small"
               onPaste={(e) => {
                 const t = e.clipboardData?.getData("text");
-                if (t) handlePasteConfidentiality(t);
+                if (t && !isConfidentialityReadOnly) handlePasteConfidentiality(t);
               }}
             >
               <Select
                 value={confidentiality}
                 displayEmpty
+                readOnly={isConfidentialityReadOnly}
                 onChange={(e) => {
                   setConfidentiality(e.target.value);
                   setConfidentialityModified(true);
@@ -2308,7 +2329,11 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
                     Next Review Date
                   </Typography>
                   <CopyFieldValueButton value={nextReviewDate} label="next review date" />
-                  <PasteFieldValueButton onPasteText={handlePasteNextReviewDate} label="next review date" />
+                  <PasteFieldValueButton
+                    onPasteText={handlePasteNextReviewDate}
+                    label="next review date"
+                    disabled={isNextReviewDateReadOnly}
+                  />
                 </Box>
                 {isBulkEdit && nextReviewDateModified && (
                   <Chip size="small" label="Modified" color="primary" variant="outlined" sx={{ height: "18px", fontSize: "10px" }} />
@@ -2317,6 +2342,7 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
               <DatePicker
                 format="DD/MM/YYYY"
                 value={nextReviewDate}
+                readOnly={isNextReviewDateReadOnly}
                 onChange={(newValue) => {
                   setNextReviewDate(newValue);
                   setNextReviewDateModified(true);

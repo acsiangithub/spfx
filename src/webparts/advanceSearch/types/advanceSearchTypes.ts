@@ -51,6 +51,8 @@ export type IProductLookupItem = {
 export type IClientLookupItem = {
   ID: number;
   Title: string;
+  BusinessLine?: string;
+  Country?: string;
   TermGuid?: string;
   TermLabel?: string;
   WssId?: number;

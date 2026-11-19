@@ -192,7 +192,7 @@ export const searchClients = async (
     filterClause += " and HasDocument eq 1";
   }
 
-  const selectFields = ["ID", "Title"];
+  const selectFields = ["ID", "Title", "BusinessLine", "Country"];
   if (includeTermSet) {
     selectFields.push("GlobalClientTermSet");
   }
@@ -222,6 +222,8 @@ export const searchClients = async (
     return {
       ID: item.ID,
       Title: item.Title || "",
+      BusinessLine: choiceToString(item.BusinessLine) || (item.BusinessLine ? String(item.BusinessLine) : ""),
+      Country: choiceToString(item.Country) || (item.Country ? String(item.Country) : ""),
       TermGuid: termGuid,
       TermLabel: termLabel,
       WssId: wssId,
