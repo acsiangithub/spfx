@@ -520,22 +520,6 @@ const splitMultiValue = (value?: string | null): string[] => {
     });
 };
 
-const getCommonValues = (
-  items: doclib_AllProducts[],
-  getValue: (item: doclib_AllProducts) => string
-): string[] => {
-  if (items.length === 0) return [];
-  const valuesByItem = items.map((item) => splitMultiValue(getValue(item)));
-  const common = new Set(valuesByItem[0].map((value) => value.toLowerCase()));
-  valuesByItem.slice(1).forEach((values) => {
-    const itemValues = new Set(values.map((value) => value.toLowerCase()));
-    common.forEach((value) => {
-      if (!itemValues.has(value)) common.delete(value);
-    });
-  });
-  return valuesByItem[0].filter((value) => common.has(value.toLowerCase()));
-};
-
 const getProductValues = (
   products: IProductLookupItem[],
   property: "BusinessLine" | "Country"
@@ -585,6 +569,19 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
 }) => {
   const isBulkEdit = selectedItems.length > 1;
   const singleItem = selectedItems.length === 1 ? selectedItems[0] : null;
+  const formatMetadataDate = (value?: Date | string | null): string => {
+    if (!value) return "-";
+    const date = dayjs(value);
+    return date.isValid() ? date.format("DD/MM/YYYY") : "-";
+  };
+  const documentId = singleItem?.OData__dlc_DocId?.trim() || "-";
+  const documentVersion = singleItem?.DocVersion !== undefined && singleItem?.DocVersion !== null
+    ? String(singleItem.DocVersion)
+    : "-";
+  const created = formatMetadataDate(singleItem?.Created);
+  const createdBy = singleItem?.AuthorTitle?.trim() || "-";
+  const modified = formatMetadataDate(singleItem?.Modified);
+  const modifiedBy = singleItem?.EditorTitle?.trim() || "-";
   const [selectedPreviewItem, setSelectedPreviewItem] = React.useState<doclib_AllProducts | null>(null);
   const [officePreviewUrl, setOfficePreviewUrl] = React.useState<string>("");
   const [isLoadingOfficePreview, setIsLoadingOfficePreview] = React.useState<boolean>(false);
@@ -855,8 +852,6 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
     // Explicit check: If more than 1 item is selected, ALWAYS wipe and keep empty!
     if (selectedItems.length > 1) {
       resetForm();
-      setBusinessLines(getCommonValues(selectedItems, (item) => item.BusinessLine));
-      setCountrySoldToValues(getCommonValues(selectedItems, (item) => item.CountrySoldTo));
       return;
     }
 
@@ -2609,6 +2604,42 @@ export const EditPropertiesDialog: React.FC<IEditPropertiesDialogProps> = ({
             />
           </Box>
         </Box>
+
+        {/* Read-only document metadata: single-item edit only */}
+        {!isBulkEdit && (
+          <Box
+            sx={{
+              gridColumn: { xs: "auto", lg: "1 / -1" },
+              display: "grid",
+              gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))" },
+              gap: 2,
+              pt: 0.5,
+              borderTop: "1px solid",
+              borderColor: "divider",
+            }}
+          >
+            {[
+              { label: "Document ID", value: documentId },
+              { label: "Document Version", value: documentVersion },
+              { label: "Created", value: created },
+              { label: "Created By", value: createdBy },
+              { label: "Modified", value: modified },
+              { label: "Modified By", value: modifiedBy },
+            ].map((field) => (
+              <Box key={field.label}>
+                <Typography variant="subtitle2" sx={{ fontSize: "13px", fontWeight: 600, mb: 0.5 }}>
+                  {field.label}
+                </Typography>
+                <TextField
+                  fullWidth
+                  size="small"
+                  value={field.value}
+                  inputProps={{ readOnly: true }}
+                />
+              </Box>
+            ))}
+          </Box>
+        )}
         </Box>
 
         <Box

@@ -4896,7 +4896,6 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
                 backgroundColor: statusRowStyle.rowBg,
                 "&:hover": {
                   backgroundColor: statusRowStyle.rowBg,
-                  filter: "brightness(0.96)",
                 },
               }
             : {}),
