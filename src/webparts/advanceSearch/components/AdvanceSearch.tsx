@@ -4777,7 +4777,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
             }}
             title="Clear all column filters"
           >
-            Clear Filters{activeColumnFilters.length > 0 ? ` (${activeColumnFilters.length})` : ""}
+            Clear Column Filters{activeColumnFilters.length > 0 ? ` (${activeColumnFilters.length})` : ""}
           </Button>
         </Box>
       </Box>
@@ -5195,7 +5195,7 @@ const AdvanceSearch: React.FC<IAdvanceSearchProps> = (props) => {
               }}
             >
               <RefreshIcon fontSize="small" sx={{ fontSize: "16px" }} />
-              Refresh
+              Reset All Filters
             </Link>
           </Box>
         </Box>
